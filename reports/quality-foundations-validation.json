@@ -1,0 +1,82 @@
+{
+  "scope": "New or changed executable cases in the two foundations source files",
+  "environment": "Python 3.12, CPU, PYTHONPATH=/tmp/embodied-torch, one thread per isolated subprocess",
+  "passed": 9,
+  "failed": 0,
+  "executed": 9,
+  "unchanged_cases_preserved": 51,
+  "records": [
+    {
+      "case": "tensor/pytorchTask",
+      "source_sha256": "8d2599df9b3ac35dc8462d27ca4d0218ddc1e385855ef49e6c8e765b4bdc2e4f",
+      "status": "passed",
+      "elapsed_seconds": 1.664,
+      "stdout": "PyTorch 测试通过：有效平均、无效 NaN、全部输入梯度与单例轴。\n",
+      "stderr": ""
+    },
+    {
+      "case": "probability/section/1",
+      "source_sha256": "4258b6abc050cda3ef046b31e8b5b97e896475c80c688e15c59973e3921a04de",
+      "status": "passed",
+      "elapsed_seconds": 1.568,
+      "stdout": "通过：两个观测模型的 NLL 与预测梯度均符合推导。\n",
+      "stderr": ""
+    },
+    {
+      "case": "losses/demo",
+      "source_sha256": "e1210393320514e301c3bb424d3ba8ed0e09036f9d190cafa39d5a78e12d3f0d",
+      "status": "passed",
+      "elapsed_seconds": 1.513,
+      "stdout": "正确损失: 6.222222328186035 错误 Padding mean: 4.666666507720947\n有效标量数: 6 加权分母: 9.0\n",
+      "stderr": ""
+    },
+    {
+      "case": "losses/pytorchTask",
+      "source_sha256": "b96e0056fa1644d4e6d019c246afdeb2cd4503034ab42647f5f7060fee370150",
+      "status": "passed",
+      "elapsed_seconds": 1.52,
+      "stdout": "PyTorch 测试通过：有效集合、值域、分母和全部预测梯度正确。\n",
+      "stderr": ""
+    },
+    {
+      "case": "losses/section/0",
+      "source_sha256": "c7f8a167bbcba3ba750973e4d67c38f11381f4185f6fbaa5d71fc5d6510de98f",
+      "status": "passed",
+      "elapsed_seconds": 1.551,
+      "stdout": "残差: [-3.0, -1.0, -0.25, 0.0, 0.5, 1.0, 3.0]\nHuber 导数: [-1.0, -1.0, -0.25, 0.0, 0.5, 1.0, 1.0]\n",
+      "stderr": ""
+    },
+    {
+      "case": "optimization/section/0",
+      "source_sha256": "f5f81e80e6734b31876ed9f40af53c878b504faed7cb226fc7d1f43478dd220c",
+      "status": "passed",
+      "elapsed_seconds": 1.534,
+      "stdout": "完整梯度: 1.25\n枚举的二样本梯度均值与方差: 1.25 2.8237500000000004\n",
+      "stderr": ""
+    },
+    {
+      "case": "optimization/section/1",
+      "source_sha256": "c6d7f903bdbae45dbf53a7c93b98129b3ce38aa94f92a09bdd969aa3299de673",
+      "status": "passed",
+      "elapsed_seconds": 2.019,
+      "stdout": "归一化动量: [0.3999999999999999, 0.7199999999999999, 0.376] 最终参数: 0.8504\n",
+      "stderr": ""
+    },
+    {
+      "case": "numerical/section/1",
+      "source_sha256": "a621c966dd9d2f805d9bf168f11d807dc1b3443d91a29ac9c892f0656664e4f5",
+      "status": "passed",
+      "elapsed_seconds": 1.632,
+      "stdout": "标准化后的 Hessian: [[1.0, 0.993689057556347], [0.993689057556347, 1.0]]\n",
+      "stderr": ""
+    },
+    {
+      "case": "training-diagnostics/section/5",
+      "source_sha256": "5680922fd643282da76c9b7467821801f7a9737b8424cfc71cf7569bb2e1c762",
+      "status": "passed",
+      "elapsed_seconds": 2.08,
+      "stdout": "可表示目标的 MSE: 3.1217485247708666e-16\n同输入冲突标签的 MSE: 1.0\n",
+      "stderr": ""
+    }
+  ]
+}

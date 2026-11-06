@@ -1,0 +1,1623 @@
+[
+  {
+    "id": "cnn-receptive-field",
+    "number": 35,
+    "module": "architecture",
+    "level": "P0",
+    "title": "CNN 基础：卷积与感受野",
+    "subtitle": "局部连接、采样网格、通道混合与平移等变性。",
+    "minutes": 95,
+    "tags": [
+      "CNN",
+      "Conv2d",
+      "Receptive Field",
+      "Stride",
+      "Padding"
+    ],
+    "prerequisites": [
+      "tensor",
+      "mlp"
+    ],
+    "objectives": [
+      "解释 Conv2d 的通道求和及输出尺寸公式。",
+      "推导多层卷积的感受野与输入采样间隔。",
+      "用手写实现和输入梯度核对卷积计算，而不只检查形状。"
+    ],
+    "why": "读懂视觉编码器、Diffusion Policy 的 CNN 和 ViT 的 Patch 投影，都需要理解卷积如何聚合空间信息。小目标经过几次下采样后是否仍有足够分辨率，是具身视觉中的实际问题。",
+    "code": {
+      "title": "从单核互相关到七乘七感受野",
+      "source": "# [1] 手写一个有效二维互相关，没有翻转卷积核\nimport torch\nfrom torch.nn import functional as F\ntorch.manual_seed(35)\nx = torch.arange(1, 26, dtype=torch.float32).reshape(1, 1, 5, 5)\nkernel = torch.tensor([[1., 0., -1.], [2., 0., -2.], [1., 0., -1.]])\nweight = kernel[None, None]\nmanual = torch.empty(1, 1, 3, 3)\nfor row in range(3):\n    for col in range(3):\n        patch = x[0, 0, row:row+3, col:col+3]\n        manual[0, 0, row, col] = (patch * kernel).sum()\nreference = F.conv2d(x, weight)\ntorch.testing.assert_close(manual, reference)\nprint(\"单层输出形状:\", tuple(reference.shape))\n\n# [2] 两层卷积：先更新感受野，再更新输入间隔\nlayers = [(3, 2, 1), (3, 1, 1)]  # kernel, stride, dilation\nreceptive, jump = 1, 1\nfor k, stride, dilation in layers:\n    receptive += (k - 1) * dilation * jump\n    jump *= stride\nassert (receptive, jump) == (7, 2)\n\n# [3] 用全正权重和线性路径观察实际依赖支持\nimage = torch.zeros(1, 1, 9, 9, requires_grad=True)\nones = torch.ones(1, 1, 3, 3)\nhidden = F.conv2d(image, ones, stride=2, padding=1)\noutput = F.conv2d(hidden, ones, stride=1, padding=0)\noutput[0, 0, 1, 1].backward()\nsupport = image.grad[0, 0] != 0\nexpected = torch.zeros(9, 9, dtype=torch.bool)\nexpected[1:8, 1:8] = True\nassert torch.equal(support, expected)\nprint(\"中间 / 最终形状:\", tuple(hidden.shape), tuple(output.shape))\nprint(\"理论感受野:\", receptive, \"非零梯度像素:\", support.sum().item())\nprint(\"卷积与感受野检查通过\")\n",
+      "expected": "单层输出 [1,1,3,3]；两层为 [1,1,5,5] 和 [1,1,3,3]；感受野 7、非零梯度像素 49。",
+      "explanations": [
+        {
+          "lines": "1–16",
+          "text": "有效卷积输出为 3×3；手算使用同一个核遍历窗口，并与 PyTorch 对照。"
+        },
+        {
+          "lines": "17–24",
+          "text": "r 使用上一层的 jump。若先更新 jump，会把当前层的步长错误地重复计入范围。"
+        },
+        {
+          "lines": "25–37",
+          "text": "这个特定正权重网络的中心输出依赖 49 个像素；零输入仍能产生非零输入梯度，因为路径是线性的。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "计算输出尺寸和感受野",
+      "prompt": "实现 conv_geometry(size,layers)。每层为 (kernel,stride,padding,dilation)，返回 (最终尺寸,感受野,累计步长)。一维计算代表图像的一条轴；无效参数或无输出位置时抛出 ValueError。",
+      "runtime": "python",
+      "starter": "def conv_geometry(size, layers):\n    # TODO: 同时维护 size、receptive、jump\n    raise NotImplementedError(\"请完成卷积几何递推\")\n",
+      "solution": "def conv_geometry(size, layers):\n    if size <= 0:\n        raise ValueError(\"输入尺寸必须为正\")\n    receptive, jump = 1, 1\n    for kernel, stride, padding, dilation in layers:\n        if min(kernel, stride, dilation) <= 0 or padding < 0:\n            raise ValueError(\"卷积参数无效\")\n        size = (size + 2*padding - dilation*(kernel-1) - 1)//stride + 1\n        if size <= 0:\n            raise ValueError(\"没有有效输出位置\")\n        receptive += (kernel-1)*dilation*jump\n        jump *= stride\n    return size, receptive, jump\n",
+      "tests": "assert conv_geometry(9, [(3,2,1,1), (3,1,0,1)]) == (3,7,2)\nassert conv_geometry(7, [(3,1,2,2)]) == (7,5,1)\nassert conv_geometry(8, [(4,4,0,1)]) == (2,4,4)\nassert conv_geometry(5, []) == (5,1,1)\ntry:\n    conv_geometry(2, [(5,1,0,1)])\n    raise AssertionError(\"无有效输出应被拒绝\")\nexcept ValueError:\n    pass\nprint(\"通过：尺寸、Dilation、累计步长与感受野\")\n",
+      "hints": [
+        "输出尺寸公式中的有效核宽度为 \\(\\mathrm{dilation}\\,(\\mathrm{kernel}-1)+1\\)。",
+        "感受野先使用旧 jump 更新，随后执行 `jump *= stride`。"
+      ],
+      "explanation": "步长会改变下一层窗口在原输入上的跨度，所以感受野不能简单相加核尺寸。Padding 影响输出位置，不增加中央输出的理论核跨度。"
+    },
+    "pytorchTask": {
+      "prompt": "使用 F.unfold 实现 unfold_conv2d，与普通 groups=1、dilation=1 的 F.conv2d 对齐。支持非方形核、整数 stride/padding 和可选 bias。不得直接调用 conv2d。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef unfold_conv2d(x, weight, bias=None, stride=1, padding=0):\n    # TODO: 展开窗口、跨输入通道求和，再还原空间轴\n    raise NotImplementedError(\"请实现展开形式的卷积\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef unfold_conv2d(x, weight, bias=None, stride=1, padding=0):\n    batch, channels, height, width = x.shape\n    out_channels, weight_channels, kh, kw = weight.shape\n    if channels != weight_channels:\n        raise ValueError(\"输入通道数不一致\")\n    patches = F.unfold(x, (kh, kw), padding=padding, stride=stride)\n    flat_weight = weight.reshape(out_channels, -1)\n    output = torch.einsum(\"oc,bcl->bol\", flat_weight, patches)\n    if bias is not None:\n        output = output + bias[None, :, None]\n    oh = (height + 2*padding - kh)//stride + 1\n    ow = (width + 2*padding - kw)//stride + 1\n    return output.reshape(batch, out_channels, oh, ow)\n",
+      "tests": "torch.manual_seed(35)\nx = torch.randn(2, 2, 6, 7, requires_grad=True)\nweight, bias = torch.randn(3, 2, 2, 3), torch.randn(3)\nactual = unfold_conv2d(x, weight, bias, stride=2, padding=1)\nexpected = F.conv2d(x, weight, bias, stride=2, padding=1)\ntorch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-5)\ntorch.testing.assert_close(unfold_conv2d(x, weight), F.conv2d(x, weight))\nactual.square().mean().backward()\nassert x.grad is not None and torch.isfinite(x.grad).all()\nprint(\"通过：多通道、非方形核、偏置、步长与梯度\")\n",
+      "hints": [
+        "unfold 的中间维已经合并 Cin、Kh、Kw，权重也要按同一顺序展平。",
+        "输出空间位置 L 仍保留在最后一维；einsum 要对窗口元素轴求和，不能对 L 求和。"
+      ],
+      "explanation": "展开后的每个窗口是一个向量，卷积等价于在所有窗口上复用同一个线性映射。测试使用两个输入通道和非方形核，能够暴露误把通道独立处理或交换 H/W 的错误。"
+    },
+    "sources": [
+      {
+        "title": "PyTorch：Conv2d",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html"
+      },
+      {
+        "title": "PyTorch：unfold",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.unfold.html"
+      },
+      {
+        "title": "Deep Residual Learning for Image Recognition",
+        "url": "https://arxiv.org/abs/1512.03385"
+      },
+      {
+        "title": "Understanding the Effective Receptive Field in Deep Convolutional Neural Networks",
+        "url": "https://arxiv.org/abs/1701.04128"
+      },
+      {
+        "title": "Making Convolutional Networks Shift-Invariant Again",
+        "url": "https://proceedings.mlr.press/v97/zhang19a.html"
+      },
+      {
+        "title": "MobileNets：Depthwise Separable Convolution",
+        "url": "https://arxiv.org/abs/1704.04861"
+      }
+    ],
+    "theoryTopic": "cnn",
+    "legacySectionMap": {
+      "0": "local-correlation",
+      "1": "spatial-shape",
+      "2": "receptive-field",
+      "3": "receptive-field",
+      "4": "groups-depthwise",
+      "5": "equivariance",
+      "6": "patch-embedding",
+      "7": "implementation-checks"
+    },
+    "legacyAnchorMap": {
+      "question-0": "section-local-correlation",
+      "question-1": "section-receptive-field",
+      "question-2": "section-receptive-field",
+      "pitfall-0": "section-local-correlation",
+      "pitfall-1": "section-receptive-field",
+      "pitfall-2": "question-8",
+      "pitfall-3": "section-receptive-field",
+      "pitfall-4": "section-equivariance"
+    }
+  },
+  {
+    "id": "contrastive-pretraining",
+    "number": 36,
+    "module": "vlm",
+    "level": "P0",
+    "title": "图文预训练：CLIP 与 SigLIP",
+    "subtitle": "从双编码器、匹配目标到可复用的视觉表征。",
+    "minutes": 90,
+    "tags": [
+      "CLIP",
+      "SigLIP",
+      "Contrastive Learning",
+      "Temperature",
+      "Representation"
+    ],
+    "prerequisites": [
+      "probability",
+      "losses",
+      "multimodal"
+    ],
+    "objectives": [
+      "构建图像—文本相似度矩阵和正确的配对标签。",
+      "实现对称对比交叉熵，区分 Sigmoid 成对目标。",
+      "解释温度、假负例及全局语义表征对精确读出的限制。"
+    ],
+    "why": "复用预训练图文编码器时，需要理解可迁移特征由什么目标产生，以及它没有直接保证哪些下游能力。全局匹配、细粒度空间关系和动作建模需要分别评估。",
+    "sections": [
+      {
+        "title": "配对关系与监督目标",
+        "body": [
+          "图文对比学习从配对样本出发：图像编码器和文本编码器各输出一个向量，希望匹配对在相似度矩阵中更容易被识别。训练目标规定哪些对应关系被奖励，却不会自动告诉模型所有物理属性。描述中常出现的对象和属性可能被强调，未被描述的精细几何或操作状态可能缺少直接监督。理解特征为何可迁移，要从目标与数据覆盖开始，而不是只看骨干规模。",
+          "将一个 Batch 的 B 张图像与 B 条文本两两比较，得到 [B,B] 分数矩阵，通常对角线是本批给定的匹配关系。这个对角结构依赖数据保持顺序：独立 shuffle 文本后仍使用 arange(B) 作标签，会训练错误配对。不同数据可能一图多描述、一文本多图，原始的一一对角假设需要扩展，不能把所有非对角关系都无条件当成语义上互斥的负例。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "先验证配对，再讨论温度或网络结构",
+          "explanation": "相似度和交叉熵都能正常计算，但标签排列错误会优化完全不同的任务。",
+          "check": "打印图像 ID 与文本源 ID，做已知匹配/打乱配对对照，确认标签矩阵符合数据关系。"
+        },
+        "id": "0",
+        "lead": "多模态融合需要可比较的表征，而原始图像与文本没有共同的数值坐标系。配对监督提供了一种建立联系的方式：先明确哪些样本应该对应，再让编码器学会从候选中识别这种关系。"
+      },
+      {
+        "title": "相似度单位化、温度与梯度",
+        "body": [
+          "常见做法先将图像与文本向量按 L2 范数单位化，点积于是等于余弦相似度，再乘正尺度 \\(s=\\exp(\\alpha)\\)，或除以温度 \\(\\tau\\)。单位化减少模型仅靠放大向量范数提高分数的自由度，温度控制候选之间的区分强度。这里 \\(\\alpha\\) 若是可学习参数，应明确是否实际优化其指数，并防止不合理尺度；不能把 logit_scale 本身和 `exp(logit_scale)` 混为一谈。",
+          "小温度使 Softmax 更尖锐，也会放大梯度尺度及对困难配对的关注；它不增加冻结特征中原本没有的可区分信息。若所有候选方向相同，单纯提高尺度不会让正确配对变得唯一。F.normalize 的 \\(\\varepsilon\\) 与零向量处理也应纳入数值检查。相似度分数并不能直接解释为可跨数据集比较的置信概率，候选集合与温度改变都会改变 Softmax 概率。",
+          "单位化的导数可以直接由微分建立。令 \\(r=\\sqrt{v^\\top v}>0\\)，则 \\(dr=v^\\top dv/r=u^\\top dv\\)；对 \\(u=v/r\\) 求导得到 \\(du=dv/r-v\\,dr/r^2=(I-uu^\\top)dv/r\\)。括号内删除沿 \\(u\\) 的分量，剩余变化位于单位球面的切空间。此处不经过零范数或实现中的截断区域，因此结论不能直接替代那个区域的具体数值约定。",
+          "对非零向量 v，令 \\(u=\\frac v{\\lVert v\\rVert_2}\\)，并假定范数大于实现的 \\(\\varepsilon\\) 截断阈值。Jacobian 为 \\(\\frac{I-uu^\\top}{\\lVert v\\rVert_2}\\)，所以单位化前的梯度与 v 正交：损失主要推动方向改变，径向变化不会一阶改变余弦分数。但范数仍出现在分母中，同样的上游梯度会因原向量范数不同而产生不同的参数更新幅度；前向对正比例缩放不敏感，不等于 SGD 训练过程对缩放完全不敏感。"
+        ],
+        "formula": "\\hat v_i=\\frac{v_i}{\\|v_i\\|},\\quad\\hat t_j=\\frac{t_j}{\\|t_j\\|},\\quad S_{ij}=e^{\\alpha}\\hat v_i^T\\hat t_j",
+        "id": "1",
+        "lead": "有了配对关系，还需要规定怎样比较两个编码向量。直接点积同时受方向与长度影响；先区分这两种变化，才能理解单位化和温度分别控制了什么，以及梯度为何会沿特定方向传播。"
+      },
+      {
+        "title": "双向交叉熵与尺度参数梯度",
+        "body": [
+          "图像到文本方向把 S 的每一行当成 B 类 logits，目标是同索引文本；文本到图像方向对 S 的转置做同样计算。两方向的平均要求每张图能找到其文本、每条文本也能找到其图像。虽然它们使用同一矩阵，但归一化分母分别沿行和列，不能只把某一个方向乘 2 当作对称目标。实现时 cross_entropy 接收原始 logits，不需要再先做 Softmax。",
+          "对一行分类损失，分数梯度为 \\(p_j-\\mathbf1[j=i]\\)，因此正确项被拉高，其他项按当前预测概率被压低。温度又通过链式法则影响特征梯度。可以把这看成在当前候选集合中区分匹配，而不是要求所有负图文在绝对意义上毫不相似。Batch 组成会改变分母与负例难度，报告损失时要记录 Batch 及采样约定，不能跨完全不同设置直接比较数值大小。",
+          "令一行余弦相似度为 \\(c_j\\)，正例为 \\(c_+\\)，\\(\\mathrm{logits}_j=e^\\alpha c_j\\)。由交叉熵可得 \\(\\frac{\\partial L}{\\partial\\alpha}=e^\\alpha\\left(\\sum_jp_jc_j-c_+\\right)\\)。若正例高于当前概率加权平均，梯度下降倾向增大尺度，让分布更尖；若最高分主要来自错误匹配，继续增大尺度反而加重损失。所有 \\(c_j\\)相同时，这个导数为零，调温度无法打破并列。这个式子只针对固定候选的一行，完整对称目标还要汇总所有行与列。"
+        ],
+        "formula": "L=\\frac12\\left[-\\frac1B\\sum_i\\log\\frac{e^{S_{ii}}}{\\sum_j e^{S_{ij}}}-\\frac1B\\sum_i\\log\\frac{e^{S_{ii}}}{\\sum_j e^{S_{ji}}}\\right]",
+        "example": {
+          "title": "行分类与列分类确实是两项不同损失",
+          "steps": [
+            "取匹配分数矩阵 \\(S=\\begin{bmatrix}2&0\\\\1&3\\end{bmatrix}\\)，两个对角位置为正例。两行的正确分数均领先 2，因此图像到文本平均损失为 \\(\\log(1+e^{-2})\\)。",
+            "第一列的正确分数领先 1，第二列领先 3，因此文本到图像损失为 \\(\\tfrac12[\\log(1+e^{-1})+\\log(1+e^{-3})]\\)。",
+            "对称目标再取两者平均；候选分数没有改变，变化的是每次归一化所使用的集合。"
+          ],
+          "conclusion": "共享一个相似度矩阵不意味着两个方向的交叉熵相等。"
+        },
+        "id": "2",
+        "lead": "相似度只是一个分数，还不是训练目标。将正确配对视为候选中的类别，就能沿用交叉熵的推导；但图像找文本和文本找图像采用不同的归一化集合，需要分别求导后再组合。"
+      },
+      {
+        "title": "批内负例与候选集合",
+        "body": [
+          "每个 Batch 给出 B 个正对和 \\(B(B-1)\\) 个非对角关系。更大的 Batch 通常引入更多候选，却不保证每个新增负例都有价值；重复描述和相近场景还可能产生假负例。\\(B=1\\) 时，对角 Softmax 的分母只有自己，交叉熵恒为零，这个目标无法提供区分配对的训练信号。单样本 loss 为零不能当作模型已经学会匹配。",
+          "多卡训练常汇聚不同 rank 的图文特征构造更大候选池，需要正确的全局标签偏移和梯度通信。简单把远端特征 detach 后拼接，是否得到想要的目标梯度取决于整体实现，不能只验证分数矩阵大小。教学代码的本地 \\(B\\times B\\) 数值验证不等同于完整分布式实现验证。若队列或历史特征被用作负例，还应说明它们对应旧参数，和当前同批特征的更新机制不同。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "B=1 的零损失不是学习成功",
+          "explanation": "单候选 Softmax 概率固定为 1，梯度消失；这由目标结构决定。",
+          "check": "至少用两个不同配对构造可区分测试，并检查错配损失、梯度及全局标签偏移。"
+        },
+        "id": "3",
+        "lead": "交叉熵中的分母由本批候选构成，因此采样方式直接进入了优化问题。理解批内负例应先看哪些比较实际参与损失，再讨论扩大候选集合带来的信息与计算变化。"
+      },
+      {
+        "title": "Sigmoid 成对目标与归约分母",
+        "body": [
+          "SigLIP 式目标可对每个图文对做二分类，正对符号 \\(z=+1\\)、负对 \\(z=-1\\)，用 \\(\\operatorname{softplus}(-z\\,\\mathrm{logit})\\) 稳定计算负对数似然。它不要求每一行概率总和为 1；某图与多条文本的预测可同时较高。通常还需分数尺度与偏置，偏置有助于处理匹配对比例。不能只将 CLIP 的 Softmax 换成 sigmoid 而保持所有其他假设不变。",
+          "归约方式必须明确。若对 \\(B^2\\) 个配对求和后除以 B，与直接 mean 除以 \\(B^2\\) 相差 B 倍，梯度尺度不同；当 B 改变时，这个差异不是固定常数。负例采样、正负权重和偏置初始化也会影响目标。当前教学示例按 B 归约，用已知正负关系验证稳定计算，不试图复刻任意公开训练系统的全部配置。比较方法时应先统一实际优化的目标与计算预算。"
+        ],
+        "formula": "L_{pair}=\\frac1B\\sum_{i,j}\\operatorname{softplus}(-z_{ij}S_{ij}),\\quad z_{ii}=1,\\ z_{ij}=-1\\ (i\\ne j)",
+        "example": {
+          "title": "两种归约为什么差一倍",
+          "steps": [
+            "\\(B=2\\) 时有 4 个配对损失，假设它们总和为 8。",
+            "按 B 归约得到 4；对全部配对 mean 得到 2。",
+            "\\(B=4\\) 时同一差异比例变为 4，而不是仍为 2。"
+          ],
+          "conclusion": "分母是算法约定的一部分，不能把 loss 的数值缩放当成无关显示细节。"
+        },
+        "id": "4",
+        "lead": "行内 Softmax 把候选放在同一次竞争中，但匹配关系也可以逐对判断。将问题改写成二分类会改变概率解释与梯度归约，下面据此比较两种目标，而不是仅替换一个激活函数。"
+      },
+      {
+        "title": "假负例与两种多正例目标",
+        "body": [
+          "若两张图都符合“红色杯子”的描述，标准一一匹配目标仍可能把交叉配对当成负例，这是数据语义与监督标签之间的冲突。可考虑更清晰描述、多正例目标或过滤/权重策略，但这些都改变了训练问题，应明确比较。把标签简单全改为正例又会失去区分能力，不能作为通用修复。需要先理解数据中的等价关系与希望保留的细粒度差异。",
+          "“使用多正例”也不是唯一目标。设正例集合为 P、所有候选概率为 \\(p_j\\)。\\(-\\log\\!\\left(\\sum_{j\\in P}p_j\\right)\\) 只要求总概率进入正例集合，一个正例吸收几乎全部质量也可得到低损失；\\(-\\frac1{|P|}\\sum_{j\\in P}\\log p_j\\) 则要求每个正例都分到概率。两个正例时，\\(p=(0.99,0.01)\\) 的前者为 0，后者约 2.31；\\(p=(0.5,0.5)\\) 的前者仍为 0，后者约 0.693。前者表达“任一个正确答案即可”，后者更接近“每个标注正例都应被检索到”；应由任务语义选择。",
+          "评估检索或迁移时，重复图像、相邻帧、同一原始样本的裁剪和描述变体可能跨集合泄漏。模型记住来源特征也能得到看似良好的配对指标，却未必学会任务所需概念。应按原始来源、场景或轨迹划分，并设计与目标泛化匹配的测试。图文匹配训练的成功还可能依赖水印、背景和固定模板，需要用内容替换、背景变化等对照判断捷径。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "非对角不必然意味着语义错误",
+          "explanation": "Batch 对角标签是一种数据假设；重复或等价描述会引入假负例。",
+          "check": "抽查高损失非对角对是否实际上匹配，保留原始来源 ID，按任务定义处理多正例关系。"
+        },
+        "id": "5",
+        "lead": "配对标签不一定描述唯一正确答案：同一对象可能对应多幅图和多种等价描述。确认这种语义后，仍需决定是允许任一正例被识别，还是要求所有正例都得到支持，这两种需求会产生不同损失。"
+      },
+      {
+        "title": "全局检索与下游表示",
+        "body": [
+          "全局对比向量适合检索和某些分类，但动作模型可能需要局部位置、对象关系、历史状态或接触信息。将整图压成一个向量可能丢失细粒度结构；某层 patch 表征则可能保留更丰富空间线索，却没有被全局目标逐项验证。选择特征层、池化和条件接口需要下游对照，不能认为“来自强视觉编码器”就自动解决所有机器人观测建模。",
+          "线性探针、非线性适配、冻结或微调都是检查表示可用性的不同方式。小数据上适配失败，可能是信息不足，也可能是优化、尺度、标签或划分问题；成功则只证明在该评价设置下可用。后训练应同时检查新任务表现与既有图文能力，记录条件是否真正影响输出。对比 Loss 下降、检索提升和闭环成功率是不同指标，需分别给出证据。"
+        ],
+        "id": "6",
+        "lead": "在配对任务上获得好的全局向量，并不意味着它已经保留了策略需要的所有局部信息。接下来把检索目标与下游读取方式分开，说明怎样判断特征的可用范围，而不把预训练规模直接当成能力证据。"
+      },
+      {
+        "id": "classic-works",
+        "title": "代表工作：CLIP、SigLIP 与 SigLIP 2",
+        "lead": "前面的目标函数说明了配对监督如何改变特征，现在可以把这些机制放回具体工作中。CLIP 与 SigLIP 都能提供图文匹配表征，但其训练目标、发布模型和下游使用方式需要分别理解；仅知道模型名称，还不足以决定应取哪一种输出。",
+        "body": [
+          "CLIP 和 SigLIP 采用双编码器：图像与文本分别编码，经过各自的汇聚与投影后，在共同特征空间比较全局向量。它们不是把图像和文本一起送入同一个融合 Transformer。视觉骨干与训练方法也是两个层次：原始 CLIP 同时研究了修改后的 ResNet 和 ViT，因此“使用 ViT”并不意味着“使用 CLIP 预训练”。",
+          "实际使用有两条路径。训练或适配图文检索模型时，保留图像塔、文本塔和匹配目标，数据要有可靠的配对关系；构建 VLM 或动作策略时，则可以只取预训练视觉塔，把未汇聚的视觉 Token 交给投影器和条件模型，再用问答、描述或动作监督适配。后一种做法不要求机器人数据重新附带 CLIP 式批内负例，也不等于从头训练图文编码器。是否冻结视觉塔，应作为下游训练方案的一部分验证。",
+          "例如，将“a photo of a red cup”和“a photo of a blue bowl”编码成两个候选向量，就能与一张图像的全局向量比较，形成零样本分类。这里的零样本指没有为这组下游类别另行训练分类头。CLIP 的候选 Softmax 会随候选集合变化；SigLIP 的逐对 Sigmoid 不要求这些分数和为 1，但其数值也受训练中的负例比例和偏置影响，不能直接解释成机器人任务成功概率。",
+          "接代码时还要核对返回值的处理阶段。[OpenAI CLIP 实现](https://github.com/openai/CLIP/blob/main/clip/model.py)的 `encode_image` / `encode_text` 返回投影后的特征，L2 单位化发生在计算匹配分数的 `forward` 中；自行缓存特征再算余弦相似度时仍需单位化。用于检索的全局向量与用于空间任务的视觉 Token 也不是同一输出，具体选择接续[视觉与语言融合](#/learn/multimodal?tab=theory)和[视觉预处理](#/learn/vision-preprocessing?tab=theory&section=0)。本章代码验证双向交叉熵和逐对 Sigmoid 的核心计算，不声称复现这些工作的完整预训练。"
+        ],
+        "comparison": {
+          "title": "三项工作的主要特点",
+          "columns": [
+            "工作",
+            "核心设计",
+            "典型用途与使用边界"
+          ],
+          "rows": [
+            [
+              "[CLIP（2021）](https://arxiv.org/abs/2103.00020v1)",
+              "双编码器通过双向 Softmax 对比目标学习图文对应；文本可用来构造下游类别的比较向量。",
+              "图文检索、文本定义的零样本分类，以及视觉塔初始化。完整模型输出匹配分数，并不自行生成图像描述或动作。"
+            ],
+            [
+              "[SigLIP（2023）](https://arxiv.org/abs/2303.15343v4)",
+              "将图文匹配写成含尺度与偏置的逐对二分类；归一化不依赖整行候选的 Softmax 分母，便于分块计算配对损失。",
+              "仍可用于图文匹配和视觉表征迁移。逐对目标仍需要正负例；若枚举全部组合，配对数仍为批大小的平方，不能据此宣称没有负例成本。"
+            ],
+            [
+              "[SigLIP 2（2025）](https://arxiv.org/abs/2502.14786v1)",
+              "在 SigLIP 基础上加入描述/定位相关的解码器监督、多语言数据，并在标准分支加入自蒸馏与掩码预测；部分小模型还采用主动数据筛选。",
+              "同时关注全局语义与局部表征，发布固定分辨率及 NaFlex 变体。论文 v1 的 NaFlex 分支未加入上述自蒸馏与掩码预测；训练用描述解码器也不包含在发布编码器中。下游效果需按任务验证。"
+            ]
+          ]
+        }
+      },
+      {
+        "title": "数值、梯度与语义对照",
+        "body": [
+          "第一层核对图文配对与矩阵轴；第二层检查单位范数、温度、logits 范围与稳定损失；第三层检查图像编码、文本编码和尺度参数的梯度；第四层做正误配对、重复描述和内容替换对照。纯合成相近向量应让正确配对损失低于打乱配对，但这种性质只验证实现，不代表真实图像与文字已经对齐。切勿把合成数据的高检索率作为预训练效果。",
+          "若训练不稳，先分别固定特征只优化尺度、固定尺度只优化编码器、缩小到可手算矩阵，定位问题来自目标还是表示。数值检查应覆盖零向量、极端分数和不同 B 的归约差异。将批次定义、正负例策略、分母、温度参数化与评价划分写入实验记录，才能让“CLIP 式”或“SigLIP 式”的名称对应到可复查的实际计算。"
+        ],
+        "id": "7",
+        "lead": "前面的定义把错误来源分成了配对关系、数值计算与表征学习三层。验证应按这个顺序推进，使每次实验只回答一个问题，再把局部计算的正确性与真实语义能力区分开。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "图像 / 文本向量",
+        "shape": "[B,D] / [B,D]",
+        "meaning": "投影到同一比较空间。"
+      },
+      {
+        "name": "相似度矩阵",
+        "shape": "[B,B]",
+        "meaning": "行是图像，列是文本。"
+      },
+      {
+        "name": "配对标签",
+        "shape": "[B]，整数 \\(0,\\ldots,B-1\\)",
+        "meaning": "一一匹配假设下的对角正例。"
+      },
+      {
+        "name": "SigLIP 正负标记",
+        "shape": "[B,B]，\\(\\pm1\\)",
+        "meaning": "逐对定义正负，不做行 Softmax。"
+      }
+    ],
+    "code": {
+      "title": "对称图文损失与成对 Sigmoid 目标",
+      "source": "# [1] 构造带小扰动的匹配向量，作为可验证教学数据\nimport torch\nfrom torch.nn import functional as F\ntorch.manual_seed(36)\nB, D = 4, 8\nimage_raw = torch.randn(B, D, requires_grad=True)\ntext_raw = (image_raw.detach() + 0.03*torch.randn(B, D)).requires_grad_()\nlogit_scale = torch.tensor(1.5, requires_grad=True)\nimage = F.normalize(image_raw, dim=-1)\ntext = F.normalize(text_raw, dim=-1)\n\n# [2] 每行和每列各做一次正确配对分类\nscores = logit_scale.exp() * (image @ text.T)\nlabels = torch.arange(B)\nclip_loss = (F.cross_entropy(scores, labels)\n             + F.cross_entropy(scores.T, labels)) / 2\nshuffled_scores = logit_scale.exp() * (image @ text.roll(1, 0).T)\nshuffled_loss = (F.cross_entropy(shuffled_scores, labels)\n                 + F.cross_entropy(shuffled_scores.T, labels)) / 2\nassert shuffled_loss > clip_loss\ntorch.testing.assert_close(image.norm(dim=-1), torch.ones(B))\n\n# [3] SigLIP 式逐对目标：正例 +1、负例 -1，按 B 归约\npair_logits = 4.0 * (image @ text.T) - 2.0\nsign = 2.0 * torch.eye(B) - 1.0\nsigmoid_loss = F.softplus(-sign * pair_logits).sum() / B\nassert torch.isfinite(sigmoid_loss)\n\n# [4] 验证两路特征和尺度都连接到对比目标\nclip_loss.backward()\nassert image_raw.grad is not None and text_raw.grad is not None\nassert logit_scale.grad is not None\nassert torch.isfinite(image_raw.grad).all()\nprint(\"匹配 / 错配 CLIP loss:\", round(clip_loss.item(), 4), round(shuffled_loss.item(), 4))\nprint(\"成对 Sigmoid loss:\", round(sigmoid_loss.item(), 4))\nprint(\"配对、单位化与梯度检查通过\")\n",
+      "expected": "匹配对的 CLIP loss 低于错配；特征范数为 1；两路特征和尺度均获得有限梯度。不同目标的数值不用于直接排名。",
+      "explanations": [
+        {
+          "lines": "1–11",
+          "text": "合成匹配用于测试目标函数，不代表经过预训练的视觉或语言编码器。"
+        },
+        {
+          "lines": "12–22",
+          "text": "矩阵转置交换图像检索文本与文本检索图像两个方向；错配测试能发现标签或排列错误。"
+        },
+        {
+          "lines": "23–28",
+          "text": "softplus(-sign×logit) 是稳定的负对数 Sigmoid 写法；这里使用 sum()/B。对于 \\(B\\times B\\) 的成对损失，mean() 等于 sum()/\\(B^2\\)，因此本例归约是 mean() 的 B 倍。"
+        },
+        {
+          "lines": "29–36",
+          "text": "反向检查涵盖两路特征和 logit_scale，避免某一路被意外 detach。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "手写对称配对交叉熵",
+      "prompt": "实现 symmetric_pair_ce(scores)。输入为非空方阵，正例在主对角线。分别计算行方向和列方向交叉熵后取平均，使用稳定的 log-sum-exp。",
+      "runtime": "python",
+      "starter": "def symmetric_pair_ce(scores):\n    # TODO: 正确配对为对角线，计算两个方向\n    raise NotImplementedError(\"请实现图文配对损失\")\n",
+      "solution": "import math\n\ndef symmetric_pair_ce(scores):\n    n = len(scores)\n    if n == 0 or any(len(row) != n for row in scores):\n        raise ValueError(\"需要非空方阵\")\n    def lse(values):\n        m = max(values)\n        return m + math.log(sum(math.exp(x-m) for x in values))\n    row_loss = sum(lse(row)-row[i] for i, row in enumerate(scores))\n    col_loss = 0.0\n    for i in range(n):\n        column = [scores[j][i] for j in range(n)]\n        col_loss += lse(column)-scores[i][i]\n    return (row_loss+col_loss)/(2*n)\n",
+      "tests": "import math\nassert abs(symmetric_pair_ce([[2.,0.],[0.,2.]])-math.log1p(math.exp(-2))) < 1e-12\nassert abs(symmetric_pair_ce([[0.,0.],[0.,0.]])-math.log(2)) < 1e-12\nexpected = (2*math.log1p(math.exp(-2)) + math.log1p(math.exp(-1))\n            + math.log1p(math.exp(-3))) / 4\nassert abs(symmetric_pair_ce([[2.,0.],[1.,3.]])-expected) < 1e-12\nassert symmetric_pair_ce([[1000.]]) == 0\nprint(\"通过：双向目标、非对称矩阵与稳定归约\")\n",
+      "hints": [
+        "行方向是每张图像选择文本；列方向需要真的取出每一列。",
+        "减最大值再求指数，最后把最大值加回 log-sum-exp。"
+      ],
+      "explanation": "非对称矩阵测试会识别把同一个行损失算两遍的错误。温度已包含在输入分数中，本函数只负责配对监督。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 clip_pair_loss(image_raw,text_raw,logit_scale)。沿最后一维单位化，使用 `exp(logit_scale)` 缩放，并返回两个方向平均 CE。保持所有输入的梯度连接。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef clip_pair_loss(image_raw, text_raw, logit_scale):\n    # TODO: 单位化、相似度、正确标签与双向损失\n    raise NotImplementedError(\"请实现 CLIP 式损失\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef clip_pair_loss(image_raw, text_raw, logit_scale):\n    image = F.normalize(image_raw, dim=-1)\n    text = F.normalize(text_raw, dim=-1)\n    scores = logit_scale.exp() * (image @ text.transpose(-1, -2))\n    labels = torch.arange(scores.shape[0], device=scores.device)\n    return (F.cross_entropy(scores, labels)\n            + F.cross_entropy(scores.T, labels)) / 2\n",
+      "tests": "torch.manual_seed(36)\na = torch.randn(3, 5, requires_grad=True)\nb = (a.detach()+0.02*torch.randn(3, 5)).requires_grad_()\nscale = torch.tensor(1.0, requires_grad=True)\nloss = clip_pair_loss(a, b, scale)\ntorch.testing.assert_close(loss, clip_pair_loss(7*a, 2*b, scale))\norder = torch.tensor([2, 0, 1])\ntorch.testing.assert_close(loss, clip_pair_loss(a[order], b[order], scale))\nassert clip_pair_loss(a, b.roll(1,0), scale) > loss\nloss.backward()\nassert all(x.grad is not None and torch.isfinite(x.grad).all() for x in (a,b,scale))\n# 非对称配对：两个检索方向的 CE 确实不同。\na_fixed = torch.tensor([[1., 0.], [0., 1.]])\nb_fixed = torch.tensor([[1., 0.], [1., 1.]])\nfixed_scale = torch.tensor(1.)\nscores = fixed_scale.exp() * (F.normalize(a_fixed, dim=-1) @ F.normalize(b_fixed, dim=-1).T)\nlabels = torch.arange(2)\nexpected = (F.cross_entropy(scores, labels) + F.cross_entropy(scores.T, labels)) / 2\ntorch.testing.assert_close(clip_pair_loss(a_fixed, b_fixed, fixed_scale), expected)\nassert not torch.isclose(expected, F.cross_entropy(scores, labels))\nprint(\"通过：单位化、配对顺序、非对称双向目标和梯度\")\n",
+      "hints": [
+        "labels 是 torch.arange(B)，而不是所有样本都指向第一个文本。",
+        "对转置分数再次计算 CE；不要对分数提前 Softmax 后再传给 cross_entropy。"
+      ],
+      "explanation": "同时重排图像和文本不会改变配对损失，只重排一路则破坏对应关系。正比例缩放原特征不改变单位化方向，这项测试能发现遗漏归一化。 非对称固定配对让两个方向的损失不同，约为 0.2544 与 0.3785；正确答案必须返回均值约 0.3165，不能只算一个检索方向。"
+    },
+    "knowledgeChecks": [
+      {
+        "question": "一个 Batch 中两张图像都是同一只红杯，文本也都写“红杯”。为什么只把对角线当正例可能有问题？",
+        "answer": [
+          "非对角配对可能同样正确，却被单正例对比目标当作负例。模型会同时收到把语义接近的内容拉近与推远的信号；这不是简单的学习率问题。",
+          "应先核对配对语义与数据重复情况，再决定去重、组织 Batch 或使用多正例目标。不能因为两张图像像素不同就认定它们在当前文本任务中必须互为负例。"
+        ],
+        "codeFocus": "检查 scores 的正例矩阵是否真的等于单位矩阵，尤其关注多相机同场景和重复描述。",
+        "acceptance": [
+          "指出假负例来自标签假设，而不是矩阵维度。",
+          "提出至少一种与数据语义一致的处理方式。"
+        ]
+      },
+      {
+        "question": "把相似度乘以更大的 `exp(logit_scale)` 会怎样？能否因此让冻结特征获得新的几何信息？",
+        "answer": [
+          "尺度增大会改变 Softmax 的尖锐程度以及损失对相似度的梯度。它必须与特征单位化、正负例分布和训练稳定性一起考虑；过尖的分布也可能出现饱和或过度确信。",
+          "仅修改分数尺度不会给冻结特征增加原本没有编码的信息。它可能改善当前配对目标的数值行为，但不能替代下游监督、空间结构或任务能力检验。"
+        ],
+        "codeFocus": "比较 scores、行概率和 logit_scale.grad；同时区分评分校准与表征内容变化。",
+        "acceptance": [
+          "说清尺度是温度倒数方向：越大越尖锐。",
+          "说明分数缩放不等价于增加可读出的几何信息。"
+        ]
+      },
+      {
+        "question": "所有候选余弦分数相同，提高 logit_scale 能让正例更容易被选中吗？如果存在多个正例，只优化它们的总概率是否要求每个正例都得高分？",
+        "answer": [
+          "不能。共同乘正尺度后 logits 仍相同，Softmax 仍均匀，且 \\(\\frac{\\partial L}{\\partial\\alpha}=e^\\alpha\\left(\\sum_jp_jc_j-c_+\\right)=0\\)。要区分候选必须改变表示或候选信息。",
+          "只优化 \\(-\\log\\!\\left(\\sum_{j\\in P}p_j\\right)\\) 不要求正例之间均衡。两个正例的概率为 (0.99,0.01) 或 (0.5,0.5)，总质量都为 1，损失都为 0。平均正例交叉熵则分别约为 2.31 与 0.693，体现不同目标。"
+        ],
+        "codeFocus": "固定余弦矩阵只对 \\(\\alpha\\) 求导，再手算两个多正例归约。",
+        "acceptance": [
+          "说明温度不能增加候选的可区分信息。",
+          "区分“任一正例”与“每个正例”的概率要求。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "传入已经 Softmax 的分数给 cross_entropy",
+        "detail": "该接口需要 logits，重复归一化改变目标。用 2×2 手算矩阵核对交叉熵。"
+      },
+      {
+        "title": "图文独立打乱后仍使用对角标签",
+        "detail": "损失能下降但学习了错误配对。携带原始 ID，核对每一行的正确候选索引。"
+      },
+      {
+        "title": "把所有非对角项都解释为真正负例",
+        "detail": "重复描述与等价场景可能是多正例。检查高损失对并按任务定义处理，避免无意识地制造监督冲突。"
+      },
+      {
+        "title": "Sigmoid 目标的 sum/B 与 mean 随意替换",
+        "detail": "二者相差 Batch 大小倍数，改变 B 时梯度尺度也不同。明确配对数、正负权重与归约口径。"
+      },
+      {
+        "title": "靠增大 logit_scale 修复冻结特征信息不足",
+        "detail": "尺度只改变已有相似度的区分强度。用内容干预和下游验证判断表示是否包含需要的信息。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "CLIP：Learning Transferable Visual Models From Natural Language Supervision（v1, 2021）",
+        "url": "https://arxiv.org/abs/2103.00020v1"
+      },
+      {
+        "title": "Sigmoid Loss for Language Image Pre-Training（v4, 2023）",
+        "url": "https://arxiv.org/abs/2303.15343v4"
+      },
+      {
+        "title": "PaliGemma 官方文档",
+        "url": "https://huggingface.co/docs/transformers/en/model_doc/paligemma"
+      },
+      {
+        "title": "OpenAI CLIP 官方实现：归一化与 logit_scale",
+        "url": "https://github.com/openai/CLIP/blob/main/clip/model.py"
+      },
+      {
+        "title": "PyTorch：CrossEntropyLoss",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html"
+      },
+      {
+        "title": "SigLIP 2：训练配方与模型变体（v1, 2025）",
+        "url": "https://arxiv.org/abs/2502.14786v1"
+      },
+      {
+        "title": "Big Vision：SigLIP 官方训练器",
+        "url": "https://github.com/google-research/big_vision/blob/main/big_vision/trainers/proj/image_text/siglip.py"
+      },
+      {
+        "title": "Big Vision：SigLIP 2 官方模型与使用入口",
+        "url": "https://github.com/google-research/big_vision/blob/main/big_vision/configs/proj/image_text/README_siglip2.md"
+      }
+    ],
+    "keyPoints": [
+      "对比学习先依赖正确配对；对角标签不自动适用于重复或多正例数据。",
+      "单位化控制向量尺度，温度控制分数尖锐度，二者不能增加原表示中缺失的信息。",
+      "CLIP 行列双向 Softmax 与 Sigmoid 逐对目标有不同归一化及负例权重。",
+      "全局匹配能力、下游表示可用性和闭环效果要分别验证。"
+    ],
+    "lead": "视觉与语言起初处于不同的表示空间：像素描述外观，文本表达概念，两者并没有天然可比较的距离。图文对比学习利用配对数据，把这种对应关系转化为可优化的识别任务。本章从相似度矩阵和交叉熵出发，推导特征方向、温度与正负例如何共同决定梯度，再讨论全局匹配表征能够为多模态策略提供什么、又有哪些信息需要下游监督补充。"
+  },
+  {
+    "id": "tokenizer-autoregressive",
+    "number": 37,
+    "module": "vlm",
+    "level": "P0",
+    "title": "分词、自回归与标签对齐",
+    "subtitle": "序列概率、标签移位、Prompt 和有效损失位置。",
+    "minutes": 90,
+    "tags": [
+      "Tokenizer",
+      "Teacher Forcing",
+      "Label Shift",
+      "Ignore Index",
+      "Causal LM"
+    ],
+    "prerequisites": [
+      "probability",
+      "transformer",
+      "embeddings"
+    ],
+    "objectives": [
+      "区分分词、Embedding、Attention Mask 和 Loss Mask。",
+      "构造 prompt 与回答的错位监督，保留真实 EOS。",
+      "检验标签只移位一次，并按有效目标 token 归约。"
+    ],
+    "why": "VLM 指令微调、语言辅助目标和离散动作生成都可能使用自回归监督。错误移位和错误屏蔽通常不会导致维度报错，却会改变模型实际学习的任务。",
+    "sections": [
+      {
+        "title": "分词与离散接口",
+        "body": [
+          "Tokenizer 将文本转换为词表中的整数序列，可能使用 BPE、WordPiece、Unigram 或字节级规则。一个汉字、单词或数字不一定只占一个 token；空格、标点、大小写和特殊模板也会影响切分。训练与推理必须使用匹配的词表和配置，不能因为输入最终都是整数就任意替换。示例中的人工词表仅用于展示标签对齐，不代表真实模型的分词方法。",
+          "特殊 token 定义序列起始、结束、填充或角色边界，聊天模板可能自动插入它们。手工再次添加 BOS/EOS 会造成重复，省略必要边界又可能改变生成任务。扩充词表时还要调整输入嵌入和输出词表维度，并处理新权重初始化。先打印 token 字符串、ID、有效位和标签，再进入神经网络，是定位监督问题最便宜的一步。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "保存 tokenizer 与模板，别只保存模型权重",
+          "explanation": "同一个 ID 的含义取决于词表，角色边界与特殊 token 又影响模型看到的条件。",
+          "check": "对固定输入记录完整编码结果，包括特殊 token，验证训练/推理和重新加载后一致。"
+        },
+        "id": "0",
+        "lead": "序列概率模型首先需要一个明确的符号空间。分词确定模型观察和预测的基本单位，特殊符号则规定样本边界；只有把这些约定固定下来，后面的嵌入和损失才有一致含义。"
+      },
+      {
+        "title": "自回归概率分解",
+        "body": [
+          "对序列 \\(y_1,\\ldots,y_T\\)，链式法则写成 \\(p(y_{1:T})=\\prod_{i=1}^T p(y_i\\mid y_{<i})\\)。训练时最大化给定正确前缀后预测下一个 token 的概率，负对数似然就变成各位置交叉熵之和或适当平均。网络输出 [B,T,V] logits，最后一维 V 对应候选词表，而不是序列位置。Softmax 沿词表轴定义每个位置的预测分布，交叉熵使用目标 token 的整数索引。",
+          "Teacher Forcing 使用真实前缀进行并行训练，依靠因果 Mask 保证每个输出只读合法历史。推理时前缀包含模型自己生成的 token，因此训练分布与自由生成状态可能不同，这并不使训练公式无效，但提醒我们不能仅用 teacher-forced loss 代替生成评价。输出参数化也应区分：离散动作 token 可以采用类似目标，连续动作的回归或 Flow Matching 则使用不同损失。"
+        ],
+        "formula": "-\\log p_\\theta(y_{1:T})=-\\sum_{i=1}^{T}\\log p_\\theta(y_i\\mid y_{<i})",
+        "id": "1",
+        "lead": "离散符号已经确定，下一步是把整段序列的联合概率变成可训练的局部条件概率。概率链式法则给出这一分解，因果注意力负责保证每个条件分布只能使用相应的前缀。"
+      },
+      {
+        "title": "logits 位置与标签移位",
+        "body": [
+          "若输入为 [BOS,A,B,EOS]，位置 0 的隐藏状态看到 BOS，监督目标应是 A；位置 1 看到 BOS,A，监督 B；位置 2 监督 EOS。常见自写 Loss 使用 `logits[:,:-1]` 对 `labels[:,1:]`。某些库的 CausalLM 在内部已经完成这一移位，通常传同长 labels；外部再移位会跳过一个 token。必须读取具体模型与损失接口，不能把某个仓库的调用方式当成所有模型的默认。",
+          "未移位时，当前位置可能直接看到被要求预测的 token，训练变成复制输入，损失很低却不会正确生成。移位两次时，模型可能被要求从不完整前缀预测隔一个位置的目标，任务同样改变。避免只检查 flatten 后的元素数：它可以完全对齐却在语义上错位。用几个可读 token 手工列出“输入前缀→目标”，再把这些行对应到 Tensor 索引。"
+        ],
+        "example": {
+          "title": "BOS、A、B、EOS 的三条监督",
+          "steps": [
+            "输入位置 0：BOS → 目标 A。",
+            "输入位置 1：BOS,A → 目标 B；输入位置 2：BOS,A,B → 目标 EOS。",
+            "最后位置的 logits 没有本序列内下一 token 标签，按本例约定不计入损失。"
+          ],
+          "conclusion": "移位关系来自每个位置看到的前缀，不来自张量恰好能 reshape。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "外部移位加内部移位会错两次",
+          "explanation": "模型可能已经在 forward/loss 内切片。多移一次并不会更因果，而是改变预测目标。",
+          "check": "查看具体 CausalLM 源码或文档，打印参与损失的 logits 位置与目标 token，逐项手算。"
+        },
+        "id": "2",
+        "lead": "概率式中的“预测下一个符号”必须对应到张量中的具体行。通过一条可读的短序列建立这种对应，可以区分模型真正学习生成与仅仅复制输入，也能判断库函数是否已经完成了移位。"
+      },
+      {
+        "title": "Prompt、回答与 EOS",
+        "body": [
+          "条件生成经常只监督回答区，把 Prompt 标签设为 ignore_index，同时仍让回答位置读取 Prompt。关键是按目标 token 的所属区域决定是否监督，之后再应用移位。第一个回答 token 通常由最后一个 Prompt 位置的 logits 预测，如果按 logits 的当前位置直接屏蔽全部 Prompt，可能连这条重要监督也一起删掉。边界处尤其需要逐位置表格。",
+          "EOS 是模型学习何时停止的重要目标；如果一直被屏蔽，模型可能不会在正确时刻结束。PAD 与 EOS 在某些配置中可以共享 ID，这时不能仅靠 `input_ids==pad_id` 推断无效位置，否则真正的 EOS 也会被忽略。有效长度或 attention_mask 应来自样本结构，并与 labels 的屏蔽策略一起检查。文本截断若切掉回答或 EOS，也会改变有效目标数量。"
+        ],
+        "example": {
+          "title": "第一个回答由哪个位置预测",
+          "steps": [
+            "完整序列为 [BOS,提示,回答1,回答2,EOS]，只监督回答与 EOS。",
+            "同长 labels 可写为 [忽略,忽略,回答1,回答2,EOS]；移位后 logits 的位置 1 监督 回答1。",
+            "如果先把所有 Prompt 位置的 logits 删除，再移位，就可能漏掉第一个回答目标。"
+          ],
+          "conclusion": "Loss Mask 以目标归属定义，再与预测位置正确错位配对。"
+        },
+        "id": "3",
+        "lead": "条件文本和待生成回答处于同一序列中，却承担不同角色。监督边界应按目标符号定义，尤其要保留第一个回答和结束符号，否则看似合理的屏蔽会悄悄改变生成任务。"
+      },
+      {
+        "title": "Attention Mask 与 Loss Mask",
+        "body": [
+          "Attention Mask 控制输出能读取哪些输入，ignore_index 控制某个目标是否贡献损失。将某位置 label 设为 −100，并不阻止该 token 的隐藏状态影响其他位置；Prompt 不受直接监督，也可经回答 Loss 的反向路径收到梯度。另一方面，屏蔽 Padding Key 不会自动移除 Padding Query 的损失，需要对 targets 单独处理。两种 Mask 要沿信息与监督两条路径分别推导。",
+          "若把多条样本打包进一条长序列，还要处理样本间的边界：让后一条读取前一条是否属于设计、位置是否重置、EOS 后哪些目标有效，都需要明确。只在拼接处放一个 EOS 不会自动创建 block-diagonal Attention Mask。错误打包可能让模型利用另一条样本的内容，改变训练条件分布。高效训练技巧不能绕过每个预测目标实际看到了什么这一基本问题。"
+        ],
+        "id": "4",
+        "lead": "一个符号可以为后续预测提供条件，同时不承担自己的预测损失。把读取信息的路径与产生监督的路径分开，才能解释 Prompt、Padding 和打包样本中的两类 Mask。"
+      },
+      {
+        "title": "交叉熵的轴、归约与空监督",
+        "body": [
+          "PyTorch 交叉熵的类别维度接口需要核对。对 [B,T,V] logits，可展平成 [B·T,V] 与 [B·T] targets，或按接口转置到相应布局；不要把 T 当作类别数。使用整数类别标签时，ignore_index 排除相应目标；reduction=none 便于显式统计有效 token，再按真正的有效数归约。若采用类权重等选项，默认 mean 的分母还有相应约定，不能套用无权重公式。",
+          "全批没有有效目标时，平均损失无定义，不应通过任意小 \\(\\varepsilon\\) 静默得到零再继续优化；可以按训练协议拒绝或跳过，并记录原因。变长回答按所有 token 等权与先按样本平均再等权是不同目标，日志也应说明口径。perplexity 由所定义的平均负对数似然指数得到，跨不同 tokenizer、数据切分或监督区间直接比较通常没有同一单位。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "Padding 后的序列长度不是有效 token 数",
+          "explanation": "Prompt、Padding、截断和忽略标签共同决定分母。错误平均会改变梯度和指标。",
+          "check": "使用不同回答长度与全忽略边界，显式核对 `targets!=-100` 的数量，并手算少数 token 的平均损失。"
+        },
+        "id": "5",
+        "lead": "完成位置对齐之后，还要决定各个有效目标在总损失中占多大权重。类别轴、有效位和归约分母共同定义实际优化的概率目标，任何一个改变都可能被最终的标量 Loss 掩盖。"
+      },
+      {
+        "title": "Teacher Forcing 与逐步生成",
+        "body": [
+          "训练一次计算所有前缀的预测，推理则先处理已知 Prompt，再选择一个 token 接入前缀，继续预测。贪心、采样、温度和截断候选策略作用于 logits 到 token 的选择，不改变训练时标签应该如何移位。KV Cache 复用历史 K/V 以减少重复计算，但位置偏移、Attention Mask 和有效长度仍须与完整前向一致。缓存错误可能只在第二次或分块生成时显现。",
+          "自由生成评价应检查内容、格式、停止条件和长度，不只是 teacher-forced loss。多模态模型还要保证图像占位 token 与视觉特征注入位置对齐，结构化输出要核对分隔符和数值编码规则。若训练输出很流畅却不遵循条件，先检查 Prompt 是否被正确输入、回答监督是否包含边界、以及数据中条件与答案是否有足够变化，避免只靠更低学习率修补接口错误。"
+        ],
+        "id": "6",
+        "lead": "Teacher Forcing 使所有真实前缀在训练时同时可得，但生成时必须等待上一轮输出。比较这两种数据流可以说明并行训练为何成立，也能解释低验证损失与自由生成质量之间为何仍存在差距。"
+      },
+      {
+        "title": "短序列中的逐项对齐",
+        "body": [
+          "构造两条不同长度的短序列，明确 BOS、Prompt、回答和 EOS，画出每个 logits 所预测的目标，再运行自写 Loss 与官方损失的对照。人工令正确目标 logits 很大，损失应接近零；令高分给前一个或后一个 token，损失应显著增加。测试应覆盖第一个回答、最后 EOS 与 Padding，不能只用没有边界的长随机序列。",
+          "示例代码使用一个小型因果 Transformer，明确只移位一次，并断言五个有效目标；它验证的是监督构造与计算图。换成真实 tokenizer 后，应重新运行同样的可读探针，打印 decode 结果与有效目标区间。训练曲线异常低时尤其要检查目标泄漏与未移位，异常高时检查重复移位、词表/模板不匹配和空监督。先证明在学正确问题，再讨论模型容量。"
+        ],
+        "id": "7",
+        "lead": "完整模型容易掩盖一个位置的偏移，短序列却可以逐项手算。将已知答案写成可控 logits，再覆盖回答边界、结束符号和 Padding，可以先验证监督问题本身，再判断网络是否学会它。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "input_ids / attention_mask",
+        "shape": "[B,T]",
+        "meaning": "ID 与可读取的真实位置。"
+      },
+      {
+        "name": "未移位 labels",
+        "shape": "[B,T]",
+        "meaning": "需要监督的位置保留 ID，其他位置为 −100。"
+      },
+      {
+        "name": "logits",
+        "shape": "[B,T,V]",
+        "meaning": "每个位置输出下一 token 的词表分数。"
+      },
+      {
+        "name": "对齐后的预测 / 目标",
+        "shape": "[B,T−1,V] / [B,T−1]",
+        "meaning": "只在明确没有内部移位时自行构造。"
+      }
+    ],
+    "code": {
+      "title": "构造回答区监督，并核对五个有效目标",
+      "source": "# [1] 人工词表仅用于展示监督对齐，不替代真实模型 Tokenizer\nimport torch\nfrom torch import nn\nfrom torch.nn import functional as F\nfrom torch.nn.utils.rnn import pad_sequence\ntorch.manual_seed(37)\nvocab = {\"<pad>\":0, \"<bos>\":1, \"任务\":2, \"抓取\":3,\n         \"红\":4, \"杯\":5, \"<eos>\":6, \"蓝\":7, \"块\":8}\ntexts = [\"<bos> 任务 抓取 红 杯 <eos>\", \"<bos> 任务 蓝 块 <eos>\"]\nrows = [torch.tensor([vocab[t] for t in text.split()]) for text in texts]\ninput_ids = pad_sequence(rows, batch_first=True, padding_value=0)\nvalid = input_ids != vocab[\"<pad>\"]\nlabels = input_ids.clone()\nlabels[:, :3] = -100  # 本例前 3 个 token 是 prompt\nlabels[~valid] = -100\n\n# [2] 小型因果模型：保持原位置，先产生每个位置的 logits\nB, T = input_ids.shape\nembedding = nn.Embedding(len(vocab), 12, padding_idx=0)\nposition = nn.Embedding(T, 12)\nblock = nn.TransformerEncoderLayer(12, 3, 24, dropout=0.0, batch_first=True)\nhead = nn.Linear(12, len(vocab))\nhidden = embedding(input_ids) + position(torch.arange(T))[None]\nblocked = torch.ones(T, T, dtype=torch.bool).triu(1)\nhidden = block(hidden, src_mask=blocked, src_key_padding_mask=~valid)\nlogits = head(hidden)\n\n# [3] 自写的 loss 明确只移位一次\npredictions = logits[:, :-1].contiguous()\ntargets = labels[:, 1:].contiguous()\ntoken_losses = F.cross_entropy(\n    predictions.reshape(-1, len(vocab)), targets.reshape(-1),\n    ignore_index=-100, reduction=\"none\")\ncount = (targets != -100).sum()\nloss = token_losses.sum() / count\nreference = F.cross_entropy(predictions.reshape(-1, len(vocab)),\n                            targets.reshape(-1), ignore_index=-100)\ntorch.testing.assert_close(loss, reference)\nassert count.item() == 5\nloss.backward()\nassert embedding.weight.grad is not None\nprint(\"移位后目标:\", targets.tolist())\nprint(\"有效目标数:\", count.item(), \"loss:\", round(loss.item(), 4))\nprint(\"prompt / EOS / Padding 与移位检查通过\")\n",
+      "expected": "targets 为 [[-100,-100,4,5,6],[-100,-100,8,6,-100]]，有效目标数为 5；两种归约方法一致。",
+      "explanations": [
+        {
+          "lines": "1–16",
+          "text": "两条序列长度不同，真实 EOS 与 Padding 使用不同 ID；实际模型中也可能相同，此时必须依赖有效长度。"
+        },
+        {
+          "lines": "17–27",
+          "text": "因果 Mask 限制信息访问；prompt 保留在输入中。这个自写模型不自动计算或移位标签。"
+        },
+        {
+          "lines": "28–44",
+          "text": "有效目标分别为三个与两个：第一条红、杯、EOS；第二条块、EOS。按五个目标归约。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "用真实长度区分 EOS 与 Padding",
+      "prompt": "实现 next_token_example(ids,valid_length,prompt_length)。返回 `input_ids=ids[:-1]`、同长度 attention_mask 和 targets。targets 对应原位置 \\(1,\\ldots,T-1\\)；原索引小于 prompt_length 或不在 valid_length 内时为 −100。允许真实 EOS 与 Padding 同为 0。",
+      "runtime": "python",
+      "starter": "def next_token_example(ids, valid_length, prompt_length):\n    # TODO: 用原位置而不是 token 数值决定监督有效性\n    raise NotImplementedError(\"请完成下一 token 对齐\")\n",
+      "solution": "def next_token_example(ids, valid_length, prompt_length):\n    if not 1 <= valid_length <= len(ids):\n        raise ValueError(\"有效长度无效\")\n    if not 0 <= prompt_length <= valid_length:\n        raise ValueError(\"prompt 长度无效\")\n    inputs = list(ids[:-1])\n    attention = [i < valid_length for i in range(len(inputs))]\n    targets = [ids[i] if prompt_length <= i < valid_length else -100\n               for i in range(1, len(ids))]\n    return {\"input_ids\":inputs, \"attention_mask\":attention, \"targets\":targets}\n",
+      "tests": "a = next_token_example([1,2,3,9,0,0], 5, 3)\nassert a[\"targets\"] == [-100,-100,9,0,-100]\nassert a[\"input_ids\"] == [1,2,3,9,0]\nassert a[\"attention_mask\"] == [True]*5\nb = next_token_example([1,2,8,6,0,0], 4, 2)\nassert b[\"targets\"] == [-100,8,6,-100,-100]\nassert b[\"attention_mask\"] == [True,True,True,True,False]\nassert next_token_example([1],1,1)[\"targets\"] == []\nprint(\"通过：首个回答、EOS/PAD 同 ID 与错位边界\")\n",
+      "hints": [
+        "targets 的第 j 项来自 `ids[j+1]`，判断是否为 prompt 时也必须使用原索引 j+1。",
+        "不要写 `token!=0` 来判断有效性；测试中的第一个 0 是真实 EOS。"
+      ],
+      "explanation": "真实 EOS 与补齐可以共享 ID，因此目标有效性必须来自长度或元数据。首个回答的监督落在前一个输入位置所产生的 logit 上。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 shifted_causal_loss(logits,labels)。labels 已按原位置设好 −100，本函数负责唯一一次移位，并用有效目标总数归约；若没有有效目标则抛出 ValueError。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef shifted_causal_loss(logits, labels):\n    # TODO: 对齐预测与目标、有效目标计数、稳定 CE\n    raise NotImplementedError(\"请实现自回归损失\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef shifted_causal_loss(logits, labels):\n    predictions = logits[:, :-1].contiguous()\n    targets = labels[:, 1:].contiguous()\n    count = (targets != -100).sum()\n    if int(count) == 0:\n        raise ValueError(\"没有有效监督目标\")\n    total = F.cross_entropy(predictions.reshape(-1, logits.shape[-1]),\n                            targets.reshape(-1), ignore_index=-100, reduction=\"sum\")\n    return total / count\n",
+      "tests": "torch.manual_seed(37)\nlogits = torch.randn(2,4,6,requires_grad=True)\nlabels = torch.tensor([[1,2,3,4],[1,5,-100,-100]])\nloss = shifted_causal_loss(logits,labels)\nlp = logits.log_softmax(-1)\nexpected = -(lp[0,0,2]+lp[0,1,3]+lp[0,2,4]+lp[1,0,5])/4\ntorch.testing.assert_close(loss, expected)\nloss.backward()\nassert torch.equal(logits.grad[:,-1],torch.zeros_like(logits.grad[:,-1]))\nassert torch.equal(logits.grad[1,1:],torch.zeros_like(logits.grad[1,1:]))\ntry:\n    shifted_causal_loss(logits,torch.full_like(labels,-100))\n    raise AssertionError(\"必须拒绝空监督\")\nexcept ValueError:\n    pass\nprint(\"通过：标签移位、有效分母与被忽略位置的梯度\")\n",
+      "hints": [
+        "logits 去掉末尾位置，labels 去掉开头位置；不要同时再移动 input_ids。",
+        "用 reduction='sum' 的 CE 除以 `targets!=-100` 的数量；这里不是按 Batch 数归约。"
+      ],
+      "explanation": "手写的四项 log-prob 直接列出真实监督位置，能识别重复 shift 和取错时间轴。末位置与被忽略位置的梯度为零，说明没有意外监督这些 token。"
+    },
+    "knowledgeChecks": [
+      {
+        "question": "输入为 [BOS,任务,抓取,红,杯,EOS,PAD]，前三个 token 是 prompt。哪些 logits 预测哪些目标？prompt 不计 loss 是否意味着不能被注意？",
+        "answer": [
+          "原索引 3、4、5 的红、杯、EOS 是有效目标，对应原索引 2、3、4 的 logits。PAD 不计监督，最后一个位置没有序列内的下一个目标。应先在原 labels 上标好有效性，再按照所用实现恰好移位一次。",
+          "prompt 仍然为回答提供条件。Loss Mask 仅决定哪些目标参与优化，Attention Mask 决定哪些输入可读取；不计算 prompt 的预测损失，不等于禁止回答位置读取 prompt。"
+        ],
+        "codeFocus": "把 `labels[:,1:]` 与 `logits[:,:-1]` 并排打印，核对第一个回答和 EOS 边界。",
+        "acceptance": [
+          "正确指出红由原索引 2 的 logit 预测。",
+          "明确区分 Attention Mask 与 Loss Mask。",
+          "保留真实 EOS，排除 Padding。"
+        ]
+      },
+      {
+        "question": "Teacher Forcing 为什么能并行训练，而推理通常逐 token 进行？它是否消除了错误累积？",
+        "answer": [
+          "训练已知整条真实序列，因此所有位置都可以获得各自的真实历史。因果 Mask 保证位置 i 的预测不读取其未来目标，从而可以在一次前向中同时计算多个位置。",
+          "推理时下一个真实 token 尚不可知，模型通常把自己的预测作为后续输入。若预测出错，后续历史会偏离训练中的真实历史，所以 Teacher Forcing 并未自动消除误差累积或训练与推理的分布差别。"
+        ],
+        "codeFocus": "核对训练时输入的历史来源，以及生成循环何时把预测 ID 追加到上下文。",
+        "acceptance": [
+          "说明并行来自已知真实历史与因果 Mask。",
+          "说明推理历史由模型生成，不能把训练低 loss 等同于长序列可靠性。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "直接让 logits 监督当前位置 input_ids",
+        "detail": "当前位置已经看到同一个 token，可能学成复制任务。用 BOS,A,B,EOS 手工核对前缀与目标。"
+      },
+      {
+        "title": "外部移位后交给内部再次移位的模型",
+        "detail": "目标被跳过一位。核对所用 CausalLM 的 loss 接口，保留一处明确的移位。"
+      },
+      {
+        "title": "屏蔽 Prompt logits 时漏掉首个回答",
+        "detail": "应先按目标区域构造 labels，再执行错位配对。逐项检查最后 Prompt 位置预测什么。"
+      },
+      {
+        "title": "PAD 与 EOS 同 ID 时把所有 EOS 忽略",
+        "detail": "有效位不能只按 token 值推断。保留原长度或结构 Mask，明确 EOS 监督。"
+      },
+      {
+        "title": "拿不同 tokenizer 的 perplexity 直接比较",
+        "detail": "分词单位、监督区间和数据切分不同会改变指标单位。只在统一约定下比较，并同时报告生成表现。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Hugging Face：Tokenization algorithms",
+        "url": "https://huggingface.co/docs/transformers/en/tokenizer_summary"
+      },
+      {
+        "title": "Hugging Face：GPT-2 labels 与内部 shift",
+        "url": "https://huggingface.co/docs/transformers/main/model_doc/gpt2"
+      },
+      {
+        "title": "TensorFlow：Transformer 与 Teacher Forcing",
+        "url": "https://www.tensorflow.org/text/tutorials/transformer"
+      },
+      {
+        "title": "PyTorch：CrossEntropyLoss 的 ignore_index 与 reduction",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html"
+      }
+    ],
+    "keyPoints": [
+      "Tokenizer、Embedding、特殊 token 与文本模板共同定义离散接口。",
+      "每个 logits 预测下一个 token，移位必须且只能执行一次。",
+      "Prompt Loss Mask 按目标归属定义，第一个回答由最后 Prompt 位置预测。",
+      "Attention Mask 与 ignore_index 分别控制信息和监督，有效分母不能用补齐长度替代。"
+    ],
+    "lead": "把一段文本交给模型之前，必须先确定它被分成哪些离散符号，以及每个输出位置究竟预测哪个符号。标签错位或可见性错误会改变训练问题，即使损失下降也不能证明模型学会了生成。本章把概率链式法则连接到 Tokenizer、Teacher Forcing 和交叉熵的具体索引，逐步建立从原始序列到有效监督的完整对应，为理解语言模型微调及离散动作生成提供基础。"
+  },
+  {
+    "id": "kv-cache-inference",
+    "number": 38,
+    "module": "vlm",
+    "level": "P0",
+    "title": "KV Cache 与增量计算",
+    "subtitle": "缓存成立条件、全局位置与非方形注意力 Mask。",
+    "minutes": 95,
+    "tags": [
+      "KV Cache",
+      "Prefill",
+      "Decode",
+      "Inference",
+      "Prefix"
+    ],
+    "prerequisites": [
+      "attention",
+      "transformer",
+      "embeddings",
+      "tokenizer-autoregressive"
+    ],
+    "objectives": [
+      "将完整因果前向与分块缓存前向逐项对齐。",
+      "正确构造 [新查询长度,历史加新键长度] 的 Mask。",
+      "判断图像、指令或权重变化后缓存是否仍然有效。"
+    ],
+    "why": "VLA 推理延迟与重复计算直接影响执行频率。缓存是否正确，取决于被缓存的表示在后续计算中是否保持不变；它不只是把某个张量存起来。",
+    "sections": [
+      {
+        "title": "历史表示不变的条件",
+        "body": [
+          "缓存成立的条件是函数依赖不变。因果 Transformer 的第 i 个位置只能读取不晚于 i 的位置，所以后来追加 token 时，旧位置在每一层的隐藏状态及其 K/V 都不会改变。可以对层数作归纳：旧输入和位置相同，第一层读取的集合相同，输出相同；因此下一层也相同。这是缓存正确性的依据，而不是“推理通常可以存中间结果”。",
+          "每一层都要保存自己的 K/V，因为它们来自不同层的输入和投影。只存第一层、把最后一层缓存复制给所有层，都不等价。旧 Q 通常不需要缓存：后续只需计算新位置的输出，新查询读取旧 K/V 即可。缓存也不等于保存 Attention 权重，因为权重还依赖当前新查询。",
+          "这段推理要求权重、位置规则和影响前向的状态保持一致。全序列双向注意力中，旧 token 可以读取新 token，追加内容后旧表示会改变，不能直接套用自回归缓存。训练态 Dropout 的随机性、跨序列统计的归一化或改变了前缀可见性的 Mask，也会破坏朴素复用的条件。"
+        ],
+        "id": "0",
+        "lead": "重复计算能够被删除，前提是删除的部分与完整计算给出相同结果。因果注意力恰好提供了这样的依赖结构：新位置出现后，过去位置不需要读取它，因此可以逐层证明历史表示保持不变。"
+      },
+      {
+        "title": "Prefill 与 Decode",
+        "body": [
+          "Prefill 一次处理已知上下文，生成各层的前缀缓存；Decode 只投影新 token，并将它的 K/V 沿序列轴加入缓存。对于单个新查询，打分形状从完整序列的 [T,T] 变为 [1,T]。旧 token 的 QKV、FFN 和层间计算也无需再做，节省的不仅是一次矩阵乘法。",
+          "缓存没有消除新查询读取历史的成本。标准密集注意力每个新查询仍需访问全部历史 K/V，长度增加时带宽和计算都会增加。连续生成许多 token 的总注意力工作量仍会累积；“单步不再对所有旧 token 重算”和“整段生成变成常数复杂度”是不同命题。",
+          "实际瓶颈还受 Batch、缓存精度、显存布局和内核影响。FlashAttention 类内核减少中间注意力矩阵的存储与访存，但不是让历史信息不占空间；GQA 减少 KV 头数，也不是减少查询头数。测延迟应分别记录 Prefill、首 token 和稳定 Decode，而不只报告整个调用平均耗时。"
+        ],
+        "id": "1",
+        "lead": "证明历史可复用后，推理自然分成处理已有上下文和处理新位置两个阶段。把两阶段的张量形状与工作量分开，才能看清缓存节省了哪些运算，以及哪些读取成本仍随历史增长。"
+      },
+      {
+        "title": "非方形 Mask 与全局位置",
+        "body": [
+          "假设连续历史有 P 个 token，本轮增加 Q 个，则查询轴长 Q、键轴长 P+Q。新查询的局部行号 i 对应绝对位置 \\(P+i\\)，允许条件是 \\(j\\le P+i\\)。把一个 [Q,P+Q] 矩阵直接取普通下三角，会把第一个新查询误当作序列起点；形状完全正确，读到的上下文却被大幅截断。",
+          "单 token Decode 中，当前 token 已加入 K/V 后，该查询通常可以读取所有有效历史和自身；此时长度为一的查询不代表只能读一个键。若使用滑动窗口、跨样本打包或有 padding，还须把因果条件与窗口、样本身份、有效键条件合并。不能拿历史长度推断所有键都有效。",
+          "PyTorch SDPA 的布尔 Mask 用 True 表示允许读取；其非方形 is_causal 行为不能凭“它会理解缓存”来假定。教学实现明确构造绝对位置比较，再传 attn_mask，并令 `is_causal=False`，避免把缓存偏移隐含在另一个标志中。"
+        ],
+        "formula": "M_{ij}=\\mathbf{1}[j\\le P+i],\\quad M\\in\\{0,1\\}^{Q\\times(P+Q)}",
+        "example": {
+          "title": "三个历史位置与两个新增位置",
+          "steps": [
+            "缓存已有位置 \\(0,1,2\\)，本轮查询对应位置 \\(3,4\\)，键对应位置 \\(0,1,2,3,4\\)。",
+            "第一个查询允许读取前四个键，第二个查询允许读取全部五个键，因此允许矩阵为 \\(\\begin{bmatrix}1&1&1&1&0\\\\1&1&1&1&1\\end{bmatrix}\\)。",
+            "直接对 \\(2\\times5\\) 的数组取普通下三角，会得到第一行只读键 0、第二行只读键 0 和 1，丢失了合法历史。"
+          ],
+          "conclusion": "因果关系比较的是全局位置；矩阵局部行号只描述这一次调用。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "把非方形 is_causal 当成带历史偏移的 Mask",
+          "explanation": "因果内核需要遵循具体 API 的对齐定义；缓存长度不会自动成为所有接口的查询位置。错误遮罩仍能输出有限数值，很难从 loss 或 shape 单独发现。",
+          "check": "打印 \\(P=3\\)、\\(Q=2\\) 的 allowed，逐行对照绝对位置；再用完整前向核对分块输出。"
+        },
+        "id": "2",
+        "lead": "新增位置在当前调用中从零编号，却不是整段序列的起点。缓存把局部查询索引和全局时间位置分离开来，因果条件必须在后者上定义，否则合法上下文会被无声屏蔽。"
+      },
+      {
+        "title": "逻辑位置、存储位置与 Padding",
+        "body": [
+          "位置编码必须与完整序列前向一致。可学习绝对位置表的新 token 应从历史对应的位置继续；RoPE 则要给新 Q/K 使用正确位置旋转。若缓存中已经保存旋转后的 K，下一轮不能把旧 K 重新按新位置旋转一次。旋转发生在哪一层、保存的是旋转前还是旋转后张量，都应成为接口约定。",
+          "缓存槽位是物理存储索引，position_ids 是模型位置语义，padding mask 是哪些键可读取。简单无 padding 的连续示例里它们都能用历史长度推导，真实批处理却可能不同。例如两个样本有效长度不同，即使缓存张量宽度相同，下一有效 token 的位置也未必相同；不能把整批宽度直接当成所有样本的语义位置。",
+          "示例代码有意限定从零开始、无 padding、无窗口的连续上下文，并检查 start 等于缓存长度。这是清晰的教学边界，不是通用推理引擎。扩展到左 padding、滑动窗口、beam 重排或多会话时，应分别维护有效位、样本归属和绝对位置，测试后再放宽这个断言。"
+        ],
+        "id": "3",
+        "lead": "连续、无填充的例子中，位置编号与缓存下标恰好一致，这种巧合容易被当成普遍规则。批内长度不同或位置编码参与计算后，需要分别维护语义位置、存储槽位和有效性。"
+      },
+      {
+        "title": "KV 头数与缓存容量",
+        "body": [
+          "普通未压缩缓存同时保存 K 与 V，元素数为 2×层数×Batch×KV 头数×长度×头宽度。查询头数 \\(H_q\\) 与 \\(H_{\\mathrm{kv}}\\) 在 GQA 中可以不同，直接使用 \\(H_q\\) 会高估缓存；低比特缓存还需考虑尺度与元数据，不能只乘一个理想位宽就当作峰值显存。",
+          "动态实现反复 torch.cat 简单直观，但每次追加可能复制旧内容并产生临时分配。预分配缓存按位置写入可以减少复制，代价是管理容量、有效长度和重用生命周期。预分配到最大长度后，尚未写入的槽位必须不可见，缓存张量的容量不能直接作为逻辑历史长度。",
+          "多请求服务中的关键错误常是复用了另一请求的缓存，或 Batch 重排时只重排输入而没重排缓存。缓存应与请求身份、模型版本和条件摘要绑定；这些元数据的检查比单纯检查 shape 更能发现内容串用。"
+        ],
+        "formula": "\\mathrm{bytes}=2LBH_{\\rm kv}Td_{\\rm head}\\,b_{\\rm elem}",
+        "example": {
+          "title": "估算一个普通 BF16 KV Cache",
+          "steps": [
+            "取 \\(L=24\\)、\\(B=2\\)、\\(H_{\\mathrm{kv}}=8\\)、\\(T=2048\\)、每头 64 维，BF16 每元素 2 字节。",
+            "K 与 V 合计 \\(2\\times24\\times2\\times8\\times2048\\times64\\times2=201326592\\) 字节，即 192 MiB。",
+            "若查询头为 32 而 KV 头仍为 8，不能把结果乘四；若 Batch 加倍，普通缓存主体则加倍。"
+          ],
+          "conclusion": "这是缓存主体的精确元素预算，实际峰值还要加上模型、临时张量和分配器开销。"
+        },
+        "id": "4",
+        "lead": "缓存通过保存激活换取较少的重复计算，因此也形成可预测的内存开销。先按层和头数统计需要保存的元素，再讨论预分配和复用，才能避免把逻辑长度、容量与实际峰值混为一谈。"
+      },
+      {
+        "title": "固定前缀与动态动作区",
+        "body": [
+          "条件动作模型可能在一个动作块的多次去噪或流积分中重复使用同一组图像与语言。若前缀内部表示只依赖固定前缀，并且前缀不读取变化中的动作后缀，各层前缀 K/V 可以预先计算。动作查询每轮仍需重新计算，因为动作状态和生成时间改变了它们的输入。",
+          "这里的复用与文本逐 token 追加不同：固定前缀通常保持相同，动作后缀可能每轮整体替换，而不是无限追加到历史。把上一轮动作 K/V 也留在缓存里，会让新一轮读到不属于当前状态的旧动作，甚至不断增长序列。需要明确缓存返回值中哪一段是永久前缀、哪一段只是当前迭代。",
+          "新图像、新指令、预处理方式变化、权重更新、位置或 Mask 规则变化，都应重新判断缓存。尤其是时间调制如果也作用于前缀，即使图像没变，时间变了也可能使前缀表示变化。是否能缓存要沿真实计算图追踪依赖，不能仅按“视觉 token”这个名称决定。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "画出固定条件与每轮变化量的依赖",
+          "explanation": "复用前缀必须保证该前缀在所有层都不依赖变化的动作或时间。只有第一层输入相同并不足够，后续层仍可能通过注意力读取后缀。",
+          "check": "保持图像和语言不变，单独改变动作/生成时间，比较各层待缓存 K/V；再改变图像，确认缓存会被重建。"
+        },
+        "id": "5",
+        "lead": "动作生成中也存在重复条件，但变化的对象往往是整块噪声动作，而非序列末尾的新符号。沿每一层追踪固定条件和动态状态的依赖，才能决定哪些前缀表示仍满足缓存的等价条件。"
+      },
+      {
+        "title": "分块与整段前向的等价性",
+        "body": [
+          "建立一个关闭 Dropout 的完整因果前向作为参考，然后以 3+2+1、1+1+…和整段等不同分块方式计算，拼接输出并逐元素 assert_close。比较连续 logits 或隐藏状态更敏感；只比较 argmax token 可能让数值已经出错但排名暂时没变的问题漏过。",
+          "允许由不同内核和计算顺序引起的小误差，但应先用小模型、float32 或 float64 的教学实现定位逻辑。若第一块正确而第二块开始偏离，优先查位置偏移、非方形 Mask 和拼接轴；若每次调用都随机变，先查 eval、Dropout 与数据增强，而不是扩大容差。",
+          "负向测试同样必要：改变前缀内容后，用旧缓存得到的结果应与重新计算有差异；新会话应清空缓存；相同样本换 Batch 顺序后，缓存也要对应重排。一个通过“正常路径”测试的缓存系统，仍可能在请求生命周期变化时出错。",
+          "从单层 Mask 对照进一步到完整多层语言模型，可复用 [Transformer 的 tiny-causal-lm](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm)：同一参数下比较不同分块的 logits、逐层缓存和梯度。固定视觉语言前缀与变化动作块的区别，则在 [VLA 架构](#/learn/vla-architecture?tab=theory)沿真实两参数组计算链继续展开。"
+        ],
+        "id": "6",
+        "lead": "缓存是一种等价改写，应先有一个完整前向作为参照。改变分块方式而保持输入、参数和可见性不变，可以把位置与拼接错误从模型能力问题中隔离出来。"
+      },
+      {
+        "title": "训练缓存与梯度寿命",
+        "body": [
+          "推理缓存通常在 no_grad 或 inference_mode 中构造，适合不需要反向传播的场景。训练时直接拿上一次调用 detach 后的前缀缓存，会切断当前损失通向前缀编码器的梯度；使用未 detach 的历史计算图又可能延长图的生命周期，并在多次 backward 时遇到释放或版本问题。",
+          "冻结前缀编码器且输入完全固定时，可离线缓存特征，但还要考虑训练态统计、增强、位置编码和后续可训练投影的位置。若投影层需要更新，缓存它之前的固定特征与缓存它之后的过期 K/V 不等价。特征缓存应记录生成配置和模型版本。",
+          "缓存练习验证推理时的函数等价。阅读实际框架时，逐项确认 use_cache 的适用阶段、梯度检查点与缓存是否兼容，以及训练入口是否主动禁用缓存。优化前先证明复用的值在所需前向和反向意义上都没有改变。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "推理正确的缓存不自动适用于微调",
+          "explanation": "过期参数产生的 K/V 会改变当前模型函数，detach 又可能把需要的梯度截断；这两种错误不能靠输出 shape 判断。",
+          "check": "分别列出被冻结和可训练模块，确认缓存位于哪一侧；用不缓存参考核对当前 loss 与可训练参数梯度。"
+        },
+        "id": "7",
+        "lead": "前向数值相同并不足以保证训练等价，因为缓存还携带或切断了计算图。最后把推理复用与训练梯度分开，判断一个保存的表示在参数更新之后是否仍可作为当前计算的一部分。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "新 Q/K/V",
+        "shape": "[B,H,Q,d]",
+        "meaning": "Q 可以大于一，代表本轮新 token 块。"
+      },
+      {
+        "name": "旧缓存",
+        "shape": "[B,H,P,d]",
+        "meaning": "每层分别保存；示例的 Q/K/V 头数相同。"
+      },
+      {
+        "name": "合并 K/V",
+        "shape": "[B,H,P+Q,d]",
+        "meaning": "只追加本轮新键和值。"
+      },
+      {
+        "name": "allowed",
+        "shape": "[Q,P+Q]",
+        "meaning": "以绝对位置判断可见性，True 表示允许。"
+      }
+    ],
+    "code": {
+      "title": "分块缓存与完整前向一致，旧前缀改变后立即失效",
+      "source": "# [1] 单层教学注意力，显式使用绝对位置\nimport math\nimport torch\nfrom torch import nn\ntorch.manual_seed(38)\n\nclass CachedAttention(nn.Module):\n    def __init__(self, dim=8, heads=2):\n        super().__init__()\n        self.dim, self.heads = dim, heads\n        self.position = nn.Embedding(64, dim)\n        self.qkv = nn.Linear(dim, 3*dim, bias=False)\n        self.proj = nn.Linear(dim, dim, bias=False)\n\n    def forward(self, x, past=None, start=0):\n        batch, count, dim = x.shape\n        past_len = 0 if past is None else past[0].shape[-2]\n        if start != past_len:\n            raise ValueError(\"本例位置起点必须等于历史缓存长度\")\n        positions = torch.arange(start, start+count)\n        z = x + self.position(positions)[None]\n        q, k, v = self.qkv(z).chunk(3, dim=-1)\n        split = lambda a: a.reshape(batch,count,self.heads,dim//self.heads).transpose(1,2)\n        q, k, v = map(split, (q,k,v))\n        if past is not None:\n            k, v = torch.cat((past[0],k),-2), torch.cat((past[1],v),-2)\n        allowed = torch.arange(k.shape[-2])[None] <= positions[:,None]\n        scores = (q @ k.transpose(-1,-2))/math.sqrt(q.shape[-1])\n        values = scores.masked_fill(~allowed,float(\"-inf\")).softmax(-1) @ v\n        merged = values.transpose(1,2).reshape(batch,count,dim)\n        return self.proj(merged), (k,v), allowed\n\n# [2] 使用 3、2、1 的分块，检验非方形 Mask\nmodel = CachedAttention().eval()\nx = torch.randn(1,6,8)\nwith torch.no_grad():\n    full, _, _ = model(x)\n    a, prefix_cache, _ = model(x[:,:3])\n    b, cache, mask = model(x[:,3:5], prefix_cache, start=3)\n    c, _, _ = model(x[:,5:], cache, start=5)\n    torch.testing.assert_close(torch.cat((a,b,c),1), full, atol=1e-6, rtol=1e-5)\n    expected_mask = torch.tensor([[1,1,1,1,0],[1,1,1,1,1]],dtype=torch.bool)\n    assert torch.equal(mask,expected_mask)\n\n# [3] 修改前缀后复用旧缓存，会偏离重新计算的结果\n    changed = x.clone()\n    changed[:,0,0] += 4.0\n    fresh, _, _ = model(changed)\n    stale, _, _ = model(changed[:,3:],prefix_cache,start=3)\n    assert not torch.allclose(stale, fresh[:,3:])\nprint(\"增量 Mask:\", mask.tolist())\nprint(\"完整与分块一致；改变前缀后旧缓存失效\")\n",
+      "expected": "非方形 Mask 为 [[True,True,True,True,False],[True,True,True,True,True]]；完整与分块输出一致，前缀改变后旧缓存被证明无效。",
+      "explanations": [
+        {
+          "lines": "1–32",
+          "text": "缓存仅保存 K/V；start 显式控制位置，且与本例连续缓存长度一致。每轮只追加新位置。"
+        },
+        {
+          "lines": "33–44",
+          "text": "第二块的查询位置是 3、4，键位置是 0…4。其允许矩阵不能用无偏移的普通下三角替代。"
+        },
+        {
+          "lines": "45–52",
+          "text": "同样的后缀配上错误的旧前缀缓存会产生不同结果；这验证缓存依赖条件，而不只是依赖长度。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "构造增量注意力的非方形 Mask",
+      "prompt": "实现 incremental_allowed(past_len,new_len)。返回 new_len 行、past_len+new_len 列的布尔矩阵，第 i 个查询位置为 `past_len+i`；负长度和 `new_len=0` 应抛出 ValueError。",
+      "runtime": "python",
+      "starter": "def incremental_allowed(past_len, new_len):\n    # TODO: 使用绝对查询位置决定每行可读的键\n    raise NotImplementedError(\"请完成增量 Mask\")\n",
+      "solution": "def incremental_allowed(past_len, new_len):\n    if past_len < 0 or new_len <= 0:\n        raise ValueError(\"历史长度需非负，新长度需为正\")\n    return [[key <= past_len+query for key in range(past_len+new_len)]\n            for query in range(new_len)]\n",
+      "tests": "assert incremental_allowed(3,2) == [[True,True,True,True,False],[True,True,True,True,True]]\nassert incremental_allowed(0,3) == [[True,False,False],[True,True,False],[True,True,True]]\nassert incremental_allowed(5,1) == [[True]*6]\ntry:\n    incremental_allowed(2,0)\n    raise AssertionError(\"空增量应被拒绝\")\nexcept ValueError:\n    pass\nprint(\"通过：历史偏移、分块和单 token Decode\")\n",
+      "hints": [
+        "不要写 `key<=query`；query 是新块的局部索引，真实位置还要加 past_len。",
+        "当 `new_len=1` 时，新查询应该能读取全部历史以及自身。"
+      ],
+      "explanation": "普通 tril 在 [Q,P+Q] 上沿左上角构造三角形，会忽略历史偏移。这个练习把局部索引与绝对位置明确分开。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 cached_attention。q/k_new/v_new 已经包含正确的上游位置处理；函数追加缓存并构造非方形因果 Mask。position_offset 必须等于本例历史长度。返回 (输出,(合并K,合并V))。",
+      "starter": "import math\nimport torch\n\ndef cached_attention(q, k_new, v_new, past=None, position_offset=0):\n    # TODO: 合并历史，使用绝对位置构造 Mask\n    raise NotImplementedError(\"请实现缓存注意力\")\n",
+      "solution": "import math\nimport torch\n\ndef cached_attention(q, k_new, v_new, past=None, position_offset=0):\n    past_len = 0 if past is None else past[0].shape[-2]\n    if position_offset != past_len:\n        raise ValueError(\"位置偏移与历史长度不一致\")\n    k = k_new if past is None else torch.cat((past[0],k_new),dim=-2)\n    v = v_new if past is None else torch.cat((past[1],v_new),dim=-2)\n    query_positions = position_offset + torch.arange(q.shape[-2],device=q.device)\n    key_positions = torch.arange(k.shape[-2],device=q.device)\n    allowed = key_positions[None] <= query_positions[:,None]\n    scores = (q @ k.transpose(-1,-2))/math.sqrt(q.shape[-1])\n    weights = scores.masked_fill(~allowed,float(\"-inf\")).softmax(-1)\n    return weights @ v, (k,v)\n",
+      "tests": "torch.manual_seed(38)\nq, k, v = [torch.randn(1,2,5,4) for _ in range(3)]\nexpected = torch.nn.functional.scaled_dot_product_attention(q,k,v,is_causal=True)\nfirst, cache = cached_attention(q[:,:,:3],k[:,:,:3],v[:,:,:3])\nsecond, final_cache = cached_attention(q[:,:,3:],k[:,:,3:],v[:,:,3:],cache,3)\ntorch.testing.assert_close(torch.cat((first,second),-2),expected,atol=1e-6,rtol=1e-5)\nassert final_cache[0].shape[-2] == 5\ntry:\n    cached_attention(q[:,:,3:],k[:,:,3:],v[:,:,3:],cache,0)\n    raise AssertionError(\"错误位置偏移应被拒绝\")\nexcept ValueError:\n    pass\nprint(\"通过：缓存追加、非方形因果性、位置检查与完整前向一致性\")\n",
+      "hints": [
+        "缓存沿倒数第二个序列轴拼接，不能沿头轴或通道轴拼接。",
+        "第二块输出使用 \\(Q=2\\)、\\(K=5\\) 的矩阵；先生成绝对位置，再比较 `key<=query`。"
+      ],
+      "explanation": "测试把完整长度五的前向拆成三加二，并核对所有输出。仅测试单 token、无历史或输出 shape，容易漏掉非方形 Mask 和位置重置错误。"
+    },
+    "knowledgeChecks": [
+      {
+        "question": "历史缓存有 3 个 token，本轮处理 2 个新 token，为什么不能直接对一个 2×5 矩阵调用 tril？正确的两行是什么？",
+        "answer": [
+          "新查询的绝对位置是 3 和 4。第一行允许键 0、1、2、3，禁止键 4；第二行允许键 0…4。因此两行为 [真,真,真,真,假] 与 [真,真,真,真,真]。",
+          "无偏移 tril 把新查询当成位置 0、1，只开放左上角，错误屏蔽大部分历史。除了 Mask，新 token 的位置编码也必须与完整序列使用同样的绝对位置，不能只修 Mask 而重置位置。"
+        ],
+        "codeFocus": "检查 allowed.shape==(2,5)，打印 query_positions，并与完整前向作分块对照。",
+        "acceptance": [
+          "写出两行正确可见性。",
+          "同时指出 Mask 偏移与位置编码都要处理。"
+        ]
+      },
+      {
+        "question": "一次动作去噪中可以复用图像/语言前缀缓存，为什么下一次收到新图像后通常不能继续使用它？变化的动作 token 能否一起固定缓存？",
+        "answer": [
+          "前缀缓存是由特定图像、指令、权重和可见性规则计算的中间结果。若一个动作块内部这些条件保持不变，且前缀不读取变化的动作后缀，复用可以保持相同函数；新图像改变了条件，旧结果通常就失效。",
+          "动作噪声状态和生成时间会逐步改变，对应后缀表示也需要更新，不能直接固定复用。缓存生命周期应以真实依赖是否改变为依据，而不是仅根据序列长度、机器人任务名称或张量形状。"
+        ],
+        "codeFocus": "追踪 prefix_embs、past_key_values 与每轮 suffix_embs 的输入依赖；修改前缀后比较 fresh 与 stale。",
+        "acceptance": [
+          "说明固定前缀可复用的独立性条件。",
+          "列出观测或指令变化导致失效。",
+          "明确变化的动作/时间条件不能当固定前缀复用。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "只验证生成 token，不比较 logits",
+        "detail": "argmax 可以在错误数值下仍保持不变。先在 eval 下比较连续输出，再检查完整生成行为；误差从哪个分块开始能帮助定位。"
+      },
+      {
+        "title": "把缓存容量当成有效历史长度",
+        "detail": "预分配的未写入槽位不能被注意力读取。维护逻辑长度和有效位，并用填满异常值的未写入区域做遮罩测试。"
+      },
+      {
+        "title": "每轮重新旋转已缓存的 RoPE K",
+        "detail": "若 K 已按其绝对位置旋转，重复旋转会改变相似度。明确缓存保存的表示，并与完整前向比较每层 K。"
+      },
+      {
+        "title": "动作去噪把旧动作不断追加",
+        "detail": "固定前缀复用不意味着变化后缀也永久保留。每轮重建动作 K/V，并检查缓存长度没有随积分步数无意增长。"
+      },
+      {
+        "title": "微调更新权重后仍用旧缓存",
+        "detail": "缓存由具体参数和条件产生；更新相关权重后旧值不再代表当前模型。冻结特征缓存与训练态 KV 复用需分别设计。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Hugging Face：How caching works",
+        "url": "https://huggingface.co/docs/transformers/main/cache_explanation"
+      },
+      {
+        "title": "OpenPI：PyTorch sample_actions / denoise_step",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models_pytorch/pi0_pytorch.py"
+      },
+      {
+        "title": "PyTorch：scaled_dot_product_attention",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html"
+      }
+    ],
+    "keyPoints": [
+      "缓存来自因果依赖不变性；每层分别保存 K/V，旧 Q 一般无需保存。",
+      "有 P 个历史、Q 个新 token 时，Mask 为 [Q,P+Q]，允许 \\(\\mathrm{key}\\le P+\\mathrm{query}\\)。",
+      "位置语义、有效键、缓存容量与逻辑长度必须分别管理；同长度不代表同缓存。",
+      "固定条件复用需要逐层独立于变化的动作/时间；用多种分块与完整前向核对。"
+    ],
+    "lead": "自回归生成每次只增加少量新内容，却可能反复计算整个历史。缓存的价值在于复用确实不会变化的中间表示，而能否复用必须由计算依赖证明。本章承接因果注意力与位置编码，从完整前向和增量前向的等价性推导逐层 K/V 缓存，再分析位置偏移、批处理与条件变化。目标是理解缓存怎样节省计算，并能用数值对照辨认哪些表示已经失效。"
+  },
+  {
+    "id": "vision-preprocessing",
+    "number": 39,
+    "module": "vlm",
+    "level": "P0",
+    "title": "视觉预处理与坐标变换",
+    "subtitle": "裁剪、缩放、插值与像素位置的一致性。",
+    "minutes": 90,
+    "tags": [
+      "Image Processing",
+      "Letterbox",
+      "RGB",
+      "Keypoints",
+      "Multi-camera"
+    ],
+    "prerequisites": [
+      "tensor",
+      "cnn-receptive-field"
+    ],
+    "objectives": [
+      "明确颜色、通道、dtype 和像素范围的输入约定。",
+      "用实际缩放尺寸推导关键点的正反变换。",
+      "固定多相机映射，并用显式 Mask 表达缺失视角。"
+    ],
+    "why": "冻结视觉骨干依赖与预训练一致的处理流程。重复缩放、颜色通道错位或图像几何变化后标签不同步，都可能使小头训练和真机推理出现难以定位的偏差。",
+    "sections": [
+      {
+        "title": "像素布局与数值含义",
+        "body": [
+          "相同 [H,W,3] 数组可以表示 RGB，也可以表示 BGR；相同 float32 张量可以处于 [0,255]、[0,1] 或标准化后的范围。模型看到的是数字，不知道读取库做过什么。明确输入颜色空间、布局、dtype、范围以及无效值策略，才能判断一次除法、通道交换或归一化是否合理。",
+          "预训练视觉编码器的处理器属于模型接口：尺寸、裁剪方式、插值、抗锯齿、均值和标准差都应与 checkpoint 配套保存。教学示例约定 uint8 RGB，转换为 CHW，再除以 255 并映射到 [-1,1]；这不是所有视觉模型的通用默认值，也不能据此覆盖现成处理器。",
+          "例如，OpenAI 发布的 CLIP 在 `clip.load` 中同时返回模型和配套预处理：先用双三次插值缩放，再中心裁剪、转 RGB，最后按其通道统计量标准化。中心裁剪可能移除画面边缘，不能与本章保留画布的 Letterbox 混为一谈。接入空间预测任务时，应根据实际处理链同步更新标注；更换裁剪方式则属于输入分布的改变，需要重新验证。具体实现见[CLIP 官方处理器](https://github.com/openai/CLIP/blob/main/clip/clip.py)。",
+          "常见双重处理是 Dataset 已 rescale，模型 processor 又 rescale 一次。它不会报 shape 错误，但会把动态范围压缩数百倍。最有效的检查不是只看最终 min/max，而是在解码、变换、归一化三个边界记录数值统计，并用通道不对称的人工图案观察每一步。"
+        ],
+        "example": {
+          "title": "一个红像素如何暴露重复归一化",
+          "steps": [
+            "uint8 RGB 红像素为 [255,0,0]，除以 255 得 [1,0,0]。",
+            "使用 `mean=std=0.5` 逐通道标准化后得到 [1,-1,-1]。如果读取成 BGR，亮通道会落在第三维。",
+            "一个原本为 0.5 的浮点通道若又除以 255，再做上述标准化，会从正确的 0 变成约 -0.996。"
+          ],
+          "conclusion": "dtype 是存储类型，数值范围是约定；必须分开验证。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "用 float32 推断图像已经位于零到一",
+          "explanation": "转换 dtype 只改变表示格式，不会改变物理范围。重复 rescale 仍会输出有限张量，因此梯度和 shape 检查常发现不了。",
+          "check": "输入纯红、纯绿和中灰图，核对每通道预期值；记录 processor 是否已经执行 rescale/normalize。"
+        },
+        "id": "0",
+        "lead": "神经网络接收数值，却无法推断这些数值原来表示哪种颜色或量纲。先明确像素的布局与范围，可以把“图像看起来正常”转化为能逐项核对的输入约定。"
+      },
+      {
+        "title": "换轴、插值与抗锯齿",
+        "body": [
+          "HWC 转 CHW 是轴置换，应使用 permute(2,0,1)，不能用 reshape(3,H,W) 重排解释内存。reshape 保留元素线性次序，可能把相邻像素误当成不同通道。送入 F.interpolate 前还需增加 Batch 轴，输入形状为 [1,C,H,W]；size=(height,width)，不能直接沿用其他图像库常见的宽高顺序。",
+          "双线性插值把周围采样值加权用于连续图像；分割类别 ID 不是连续量，把类别 0 和 2 插成 1 会制造不存在的类别，应使用合适的最近邻规则。深度、有效位与稀疏关键点也不能无差别套用 RGB 的插值方式，尤其应避免无效深度参与普通平均。",
+          "缩小图像时，高频纹理可能混叠为伪纹理，antialias 处理可减轻这种问题。它与 align_corners 是不同开关：前者涉及重采样滤波，后者涉及坐标对齐。参数不一致可能让训练与部署输入略有不同；比较两条处理链时应直接核对输出像素，而不是仅检查最终尺寸。"
+        ],
+        "id": "1",
+        "lead": "改变布局只重新安排索引，改变尺寸则要重新估计采样位置上的值。区分这两类运算后，才能理解插值、抗锯齿和坐标对齐各自解决的问题，以及为什么图像与离散标签不能总用同一处理。"
+      },
+      {
+        "title": "拉伸、裁剪与 Letterbox",
+        "body": [
+          "直接 resize 到目标宽高最简单，但会改变物体纵横比；保持比例后裁剪可以填满画布，却会删除边缘内容；Letterbox 保持主要比例并补边，但有效图像占比会变化。没有一种变换对所有模型都最好，应先满足预训练接口，再根据任务的可见性与标签约定选择。",
+          "Letterbox 先取 \\(r=\\min\\!\\left(\\frac{H_{\\mathrm{out}}}{H_{\\mathrm{in}}},\\frac{W_{\\mathrm{out}}}{W_{\\mathrm{in}}}\\right)\\)，再把缩放后的高宽取整。由于整数舍入，实际 \\(s_x=\\frac{\\mathrm{new\\_width}}{\\mathrm{old\\_width}}\\) 与 \\(s_y=\\frac{\\mathrm{new\\_height}}{\\mathrm{old\\_height}}\\) 可能略有不同。关键点计算必须使用实际尺寸对应的比例，不能把理想 r 当成两个轴完全相同的精确比例。",
+          "居中补边也可能左右或上下相差一个像素：总缺口为奇数时，floor 得到的前侧补边与后侧不同。元数据应保存实际新尺寸、left/top/right/bottom 及变换矩阵。若只存“resize 到 224”这类模糊说明，之后很难把预测映射回原图并诊断系统偏移。"
+        ],
+        "id": "2",
+        "lead": "输入尺寸固定时，原始图像的比例和内容不可能总被原样保留。拉伸、裁剪与补边对几何信息作出不同取舍；先理解这种取舍，再记录实际缩放和偏移，才能恢复预测位置。"
+      },
+      {
+        "title": "像素中心与半像素项",
+        "body": [
+          "本节把整数 u、v 解释为像素中心，图像边界因此位于 -0.5 与 \\(W-0.5\\)。align_corners=False 的常见缩放约定保持像素区域边界一致：先将中心坐标加 0.5 转成相对边界的位置，乘实际比例，再减 0.5 回到中心坐标，最后加补边。这解释了公式中的半像素项。",
+          "若坐标采用连续图像边界为零、或另一个 API 用角点中心对齐，就必须换用相应映射；半像素项不是所有关键点系统必加的修正。align_corners=True 在非退化尺寸下对应角点中心之间的比例，不能只改变插值参数而继续使用另一套标注公式。",
+          "齐次矩阵 A 把缩放和平移统一起来。点的正向变换用 A，反变换用 A 的逆；多个几何变换按执行顺序相乘，注意列向量与行向量约定。正反变换一致是必要检查，但若两边共享同一个错误约定，仍可能都通过，因此还需要明确已知位置的人工图案。"
+        ],
+        "formula": "u^{\\prime}=(u+\\tfrac12)s_x-\\tfrac12+p_x,\\quad v^{\\prime}=(v+\\tfrac12)s_y-\\tfrac12+p_y",
+        "example": {
+          "title": "5×9 图像放入 12×12 画布",
+          "steps": [
+            "理想 \\(r=\\frac{12}{9}\\)，舍入后实际新尺寸为 7×12，所以 \\(s_x=\\frac{12}{9}\\)，\\(s_y=\\frac75\\)。",
+            "上下共补 5，取 `top=2`、`bottom=3`，左右均不补。原图中心点 \\((u,v)=(4,2)\\)。",
+            "\\(u^{\\prime}=(4+0.5)\\frac{12}{9}-0.5=5.5\\)；\\(v^{\\prime}=(2+0.5)\\frac75-0.5+2=5.0\\)。"
+          ],
+          "conclusion": "横纵实际比例和不对称补边都参与映射；最终点不必落在画布的几何中心。"
+        },
+        "focus": {
+          "kind": "常用",
+          "title": "几何增强返回元数据和有效性",
+          "explanation": "单独返回变换后的图像，无法可靠恢复点、框或相机几何。对于被裁掉的目标，还必须判断监督是否仍然可见。",
+          "check": "保存 A 和原始/实际新尺寸；核对几个已知角点、中心点及逆变换，并显示点在新图中的位置。"
+        },
+        "id": "3",
+        "lead": "几何变换不仅取决于缩放比例，还取决于坐标原点放在像素中心还是像素边界。半像素项正来自两种坐标描述之间的转换，应从定义推导，而不是作为经验补偿加入。"
+      },
+      {
+        "title": "图像、相机与物理坐标",
+        "body": [
+          "二维关键点随图像几何变换；矩形框通常需要变换其角点，再按任务约定裁剪到图像范围，并同步更新可见位。分割掩码必须与图像共享同一组随机几何参数，却采用适合离散标签的插值。对图像和标签各自调用一次随机裁剪，即使使用同一种变换类，也可能抽到不同裁剪。",
+          "相机投影满足齐次关系 \\(p\\sim KX_{\\mathrm{camera}}\\)。若对投影像素施加仿射 A，则新的像素投影为 \\(p^{\\prime}\\sim AKX_{\\mathrm{camera}}\\)；在一致坐标约定下，可把对应变换合并到内参表示。实际标定、畸变校正与裁剪顺序还会影响接口，应保存完整流程，而不是只修改一个焦距数字。",
+          "图像裁掉左边十个像素，不会把世界坐标中的物体平移十米或十个像素。三维物理点、相机外参、二维投影有不同的坐标空间。几何图像增强可以改变观测可见性和投影关系，却不自动改变真实场景；物理旋转或更换相机才需要相应的三维坐标变换。"
+        ],
+        "id": "4",
+        "lead": "图像上的位置变化与真实场景中的物体运动属于不同空间。把像素变换接到相机投影模型上，可以推导哪些二维标注和内参需要同步改变，哪些三维量应保持不变。"
+      },
+      {
+        "title": "补边、缺失视角与有效位",
+        "body": [
+          "补零发生在归一化前后，含义不同。在 [0,1] 图像上补 0 是黑色，之后按 `mean=std=0.5` 标准化会得到 -1；在标准化张量上补 0 则对应原空间中灰。两者都可以作为明确设计，但不能训练用一种、部署用另一种；也不能直接将“零张量”解释为无信息。",
+          "一张缺失图像即使全零，视觉编码器仍可能通过偏置、位置编码和归一化输出非零 token。缺失视角应有显式有效位，并在融合和池化中按约定处理。若一个样本全部视角缺失，应选择报错、备用输入或定义好的空条件；把所有键遮成不可见后继续 softmax，可能产生无意义结果或 NaN。",
+          "部分 Letterbox 区域属于填充，是否为这些区域生成有效 token 取决于具体编码器接口。一个 patch 跨越图像与补边时也不是简单全有或全无；教学中可以说明保留整个画布，实际模型则应沿用其训练时约定。不能临时新增 token mask 后宣称与预训练处理完全等价。",
+          "SigLIP 2 的 NaFlex 变体展示了另一种明确设计：根据 Patch 大小和 Token 预算缩放图像，尽量保持原始纵横比，再输出 Patch 序列、空间坐标与补齐 Mask；注意力和汇聚也使用该 Mask。它与固定方形输入的标准变体具有不同的处理协议，并不是给任意 ViT 传入非方形图片即可等价实现。使用时应保留官方处理器产生的坐标和有效位，详见[论文第 2.4.2 节](https://arxiv.org/html/2502.14786v1)与[官方 NaFlex 预处理](https://github.com/google-research/big_vision/blob/main/big_vision/pp/proj/image_text/ops_naflex.py)。"
+        ],
+        "id": "5",
+        "lead": "补边和缺失视角都会产生特殊数值，但特殊数值本身并不能告诉网络哪些信息无效。需要把像素取值与有效性分开建模，再沿编码、融合和池化检查无效输入如何被处理。"
+      },
+      {
+        "title": "多视角与多帧顺序",
+        "body": [
+          "多相机输入要用固定名称表建立位置映射，再逐项读取当前可用图像；不能按字典当前迭代顺序直接 stack。否则少一台相机后，后续视角可能整体换位，位置或相机 embedding 的语义随之改变。明确相机名称、帧时间、外参和有效位，可以让这种错误在进入模型前就被检测。",
+          "多帧任务还需说明时间排序与帧间隔。将未来一帧误放到当前观测，可能让离线误差很好但部署无法复现；复用过期图像也不能仅因为 shape 一样就当成同步输入。时间戳、采样规则和缺帧策略应与其他状态输入的对齐规则一致。",
+          "增强是否在多个视角或时间步共享，要根据物理与监督目标决定。各帧独立亮度扰动与独立随机裁剪的影响不同；后者会引入额外的相对运动。若希望学习真实运动或跨视角几何，应记录并合理共享几何变换，不能把所有张量拉平成一个大 Batch 后盲目施加互不相关的增强。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "用当前字典顺序或缺失黑图表达相机身份",
+          "explanation": "输入顺序变化会把相同 token 位置绑定到不同相机；全零占位也不能阻止编码器产生特征，二者需要分别处理。",
+          "check": "打乱输入字典顺序并删除一个视角，确认固定名称表对应的槽位不变，有效位变化，融合结果不依赖无效占位内容。"
+        },
+        "id": "6",
+        "lead": "多个视角或时间片进入同一序列后，位置本身就承担来源身份。保持相机和时间顺序一致，才能让模型解释各个特征；随机增强也必须服从这种跨视角、跨时间的关系。"
+      },
+      {
+        "title": "预处理与标签的几何对照",
+        "body": [
+          "先用确定性人工输入检查约定：三通道不同常数检验颜色；非方形尺寸检验宽高顺序；棋盘或线条检验缩放；已知关键点检验位置；缺失相机检验有效位。仅凭自然图像的视觉检查，可能遗漏半像素偏差、轻微错位和轴顺序错误。",
+          "接着在同一原始输入上对比训练与推理处理链的最终张量和元数据。允许的差异应能解释，例如训练专用随机增强；验证与部署路径应尽可能确定。保存处理器配置到 checkpoint，避免权重恢复后无意中使用另一套均值、分辨率或裁剪方式。",
+          "示例接口采用 uint8 RGB、双线性 Letterbox、像素中心关键点和显式视角有效位。畸变校正、相机标定或其他骨干所需的颜色与插值配置，应在相应处理器中单独对齐。"
+        ],
+        "id": "7",
+        "lead": "坐标往返一致只能证明两段代码相互匹配，不能排除它们共享同一个错误约定。用已知通道、尺寸和关键点的人工输入作为独立参照，才能把预处理的语义正确性一并检验。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "原始单相机图像",
+        "shape": "[H,W,3]，uint8 RGB",
+        "meaning": "例子的输入约定。"
+      },
+      {
+        "name": "网络单视角输入",
+        "shape": "[3,Ht,Wt]，float32",
+        "meaning": "Letterbox 后按本例归一化到 [−1,1]。"
+      },
+      {
+        "name": "关键点",
+        "shape": "[N,2]",
+        "meaning": "按 (u,v) 排列，整数表示像素中心。"
+      },
+      {
+        "name": "多视角与有效位",
+        "shape": "[V,3,Ht,Wt] / [V]",
+        "meaning": "顺序由相机名称列表定义。"
+      }
+    ],
+    "code": {
+      "title": "Letterbox、关键点回映与缺失相机",
+      "source": "# [1] 只使用 PyTorch；固定 uint8 RGB 与像素中心合同\nimport torch\nfrom torch.nn import functional as F\ntorch.manual_seed(39)\n\ndef preprocess(image, points, out_hw=(12,12)):\n    if image.dtype != torch.uint8 or image.ndim != 3 or image.shape[-1] != 3:\n        raise ValueError(\"需要 HWC uint8 RGB\")\n    h, w = image.shape[:2]\n    oh, ow = out_hw\n    ratio = min(oh/h, ow/w)\n    nh, nw = max(1,int(h*ratio+0.5)), max(1,int(w*ratio+0.5))\n    top, left = (oh-nh)//2, (ow-nw)//2\n    x = image.permute(2,0,1)[None].float()/255.0\n    x = F.interpolate(x,size=(nh,nw),mode=\"bilinear\",align_corners=False,antialias=True)\n    x = F.pad(x,(left,ow-nw-left,top,oh-nh-top),value=0.0)\n    x = (x-0.5)/0.5  # 本例合同；真实模型使用其预训练约定\n    sx, sy = nw/w, nh/h\n    affine = torch.tensor([[sx,0,left+(sx-1)/2],\n                           [0,sy,top+(sy-1)/2],[0,0,1]],dtype=points.dtype)\n    homogeneous = torch.cat((points,torch.ones(len(points),1)),dim=1)\n    mapped = (homogeneous @ affine.T)[:,:2]\n    return x[0], mapped, affine\n\n# [2] 不对称 RGB 图案与关键点，验证几何正反变换\nimage = torch.zeros(5,9,3,dtype=torch.uint8)\nimage[...,0] = 255\nimage[...,1] = torch.arange(9,dtype=torch.uint8)[None,:]*20\npoints = torch.tensor([[0.,0.],[4.,2.],[8.,4.]])\nprocessed, mapped, affine = preprocess(image,points)\nmapped_h = torch.cat((mapped,torch.ones(len(mapped),1)),dim=1)\nrestored = (mapped_h @ torch.linalg.inv(affine).T)[:,:2]\ntorch.testing.assert_close(restored,points,atol=1e-6,rtol=1e-5)\nassert processed.shape == (3,12,12)\nassert processed.min() >= -1 and processed.max() <= 1\n\n# [3] 名称表固定顺序；缺失视角使用占位与显式有效位\ncameras = {\"camera_b\":image.clone(),\"camera_a\":image}\nnames = [\"camera_a\",\"camera_b\",\"camera_c\"]\nviews, valid = [], []\nfor name in names:\n    present = name in cameras\n    views.append(preprocess(cameras[name],points)[0] if present\n                 else torch.full_like(processed,-1.0))\n    valid.append(present)\nstacked = torch.stack(views)\nassert valid == [True,True,False]\nprint(\"变换后关键点:\", mapped.round(decimals=3).tolist())\nprint(\"多视角:\", tuple(stacked.shape),\"有效位:\",valid)\nprint(\"像素合同、几何回映与相机顺序检查通过\")\n",
+      "expected": "输出图像 [3,12,12]；三个视角堆成 [3,3,12,12]，有效位 [True,True,False]；关键点逆变换返回原坐标。",
+      "explanations": [
+        {
+          "lines": "1–24",
+          "text": "缩放尺寸按正数四舍五入确定，再用实际 nh、nw 计算 sx、sy；补边可能左右或上下不完全对称。"
+        },
+        {
+          "lines": "25–36",
+          "text": "仿射变换使用像素中心约定，与示例的插值对齐方式配套；逆变换验证标签同步。"
+        },
+        {
+          "lines": "37–50",
+          "text": "占位图是本例归一化后的黑色 −1，同时将该视角标为无效，后续需把有效位传入模型。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "计算 Letterbox 后的关键点",
+      "prompt": "实现 map_letterbox_point(point,original_hw,target_hw)。使用正数四舍五入 `int(value+0.5)` 确定缩放尺寸，居中补边，像素中心约定与 align_corners=False 对齐。返回 (u',v')。",
+      "runtime": "python",
+      "starter": "def map_letterbox_point(point, original_hw, target_hw):\n    # TODO: 实际缩放尺寸、补边与半像素变换\n    raise NotImplementedError(\"请同步关键点\")\n",
+      "solution": "def map_letterbox_point(point, original_hw, target_hw):\n    h, w = original_hw\n    oh, ow = target_hw\n    if min(h,w,oh,ow) <= 0:\n        raise ValueError(\"尺寸必须为正\")\n    ratio = min(oh/h, ow/w)\n    nh, nw = max(1,int(h*ratio+0.5)), max(1,int(w*ratio+0.5))\n    top, left = (oh-nh)//2, (ow-nw)//2\n    u, v = point\n    return ((u+0.5)*(nw/w)-0.5+left,\n            (v+0.5)*(nh/h)-0.5+top)\n",
+      "tests": "assert map_letterbox_point((2,1),(4,8),(8,8)) == (2.0,3.0)\nassert map_letterbox_point((0,0),(4,4),(8,8)) == (0.5,0.5)\nassert map_letterbox_point((3,2),(5,9),(5,9)) == (3.0,2.0)\nu,v = map_letterbox_point((4,2),(5,9),(12,12))\nassert abs(u-5.5) < 1e-12\nassert abs(v-5.0) < 1e-12\nprint(\"通过：补边、半像素、恒等变换和整数尺寸\")\n",
+      "hints": [
+        "target_hw 是高、宽，point 却是横坐标 u、纵坐标 v，不要交换。",
+        "舍入后分别用 `nw/w` 和 `nh/h`；不能让关键点继续使用舍入前 ratio。"
+      ],
+      "explanation": "在 5×9 到 12×12 的例子中，实际缩放为 7×12，横纵比例略不同。使用真实尺寸和半像素约定才能与图像处理链一致。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 resize_with_keypoints(image,points,out_hw)，约定与演示相同。返回归一化后的 CHW 图像和变换后关键点；只使用 torch，不使用 torchvision、PIL 或 NumPy。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef resize_with_keypoints(image, points, out_hw):\n    # TODO: Letterbox 图像与关键点使用相同的实际几何参数\n    raise NotImplementedError(\"请实现视觉预处理\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef resize_with_keypoints(image, points, out_hw):\n    if image.dtype != torch.uint8 or image.ndim != 3 or image.shape[-1] != 3:\n        raise ValueError(\"需要 HWC uint8 RGB\")\n    h, w = image.shape[:2]\n    oh, ow = out_hw\n    ratio = min(oh/h,ow/w)\n    nh, nw = max(1,int(h*ratio+0.5)), max(1,int(w*ratio+0.5))\n    top, left = (oh-nh)//2,(ow-nw)//2\n    x = image.permute(2,0,1)[None].float()/255\n    x = F.interpolate(x,size=(nh,nw),mode=\"bilinear\",align_corners=False,antialias=True)\n    x = F.pad(x,(left,ow-nw-left,top,oh-nh-top))\n    scale = points.new_tensor([nw/w,nh/h])\n    offset = points.new_tensor([left,top])\n    mapped = (points+0.5)*scale-0.5+offset\n    return ((x-0.5)/0.5)[0],mapped\n",
+      "tests": "image = torch.zeros(2,4,3,dtype=torch.uint8)\nimage[...,0] = 255\nimage[...,1] = torch.tensor([0,85,170,255],dtype=torch.uint8)\npoints = torch.tensor([[0.,0.],[3.,1.]],requires_grad=True)\noutput,mapped = resize_with_keypoints(image,points,(6,6))\nassert output.shape == (3,6,6)\ntorch.testing.assert_close(mapped,torch.tensor([[.25,1.25],[4.75,2.75]]))\ntorch.testing.assert_close(output[0,1:4],torch.ones(3,6))\ntorch.testing.assert_close(output[:,0],torch.full((3,6),-1.))\n# 半像素映射 x_src=(x_out+0.5)/1.5-0.5，边缘取最近像素。\n# 绿色斜坡在源图中依次为 0、1/3、2/3、1；归一化后得到以下采样值。\nexpected_green = torch.tensor([-1.,-2/3,-2/9,2/9,2/3,1.])\ntorch.testing.assert_close(output[1,1],expected_green,atol=1e-6,rtol=1e-6)\nmapped.sum().backward()\ntorch.testing.assert_close(points.grad,torch.full((2,2),1.5))\ntry:\n    resize_with_keypoints(image.float(),points,(6,6))\n    raise AssertionError(\"必须拒绝未声明范围的浮点输入\")\nexcept ValueError:\n    pass\nprint(\"通过：RGB、补边、半像素插值、关键点几何、梯度和输入合同\")\n",
+      "hints": [
+        "先将 HWC 转 CHW，再加 Batch 轴供 interpolate 使用；不要用 reshape 交换颜色与空间轴。",
+        "黑色补边发生在 [0,1] 像素范围，归一化后值为 −1；关键点只用实际 sx、sy 和补边偏移。"
+      ],
+      "explanation": "红色通道检测通道顺序，补边行检测归一化时机；绿色横向斜坡检查真实插值是否遵守 align_corners=False 的像素中心映射，避免图像与关键点各用一套坐标。关键点坐标及梯度同时验证几何比例。拒绝 float 输入是为了避免在未知像素范围下重复缩放。"
+    },
+    "knowledgeChecks": [
+      {
+        "question": "为什么图像正确 resize 后，关键点直接乘同一个理想 ratio 仍可能不对？本节为什么还有 0.5？",
+        "answer": [
+          "输出尺寸必须取整数，实际 \\(s_x=\\frac{\\mathrm{nw}}w\\) 与 \\(s_y=\\frac{\\mathrm{nh}}h\\) 可能略有差别，还要加上 Letterbox 的 left、top。只乘舍入前 ratio 会遗漏真实比例和补边。",
+          "本节把整数点解释为像素中心，并配合 align_corners=False。映射采用 \\((u+0.5)s_x-0.5+\\mathrm{left}\\)；使用边界坐标或不同插值对齐规则时必须重新确定公式，不能把半像素项当作所有坐标系统的固定常数。"
+        ],
+        "codeFocus": "检查实际 resized.shape、sx/sy、补边宽度和关键点正反变换。",
+        "acceptance": [
+          "说明整数尺寸、横纵实际比例和补边三项。",
+          "把半像素项与明确的坐标约定联系起来。"
+        ]
+      },
+      {
+        "question": "某个相机视角缺失时，补一张黑图是否足够？若对图像做裁剪，物理三维位置标签是否也要平移同样的像素数？",
+        "answer": [
+          "黑图只是占位内容，还要有显式有效位，并让后续融合忽略缺失视角。相机顺序应由固定名称表定义，避免缺一个键后其余视角的索引整体变化。",
+          "像素裁剪改变图像坐标和可见性，不会把真实场景中的物理三维位置按像素数平移。二维关键点、相机内参与物理三维标签具有不同含义，需要分别处理；目标被裁掉时还应重新判断监督是否可由当前观测支持。"
+        ],
+        "codeFocus": "跟踪 names、valid、每个视角的仿射元数据，以及标签的坐标系定义。",
+        "acceptance": [
+          "同时提出占位与有效位，保持相机名称映射。",
+          "正确区分像素变换与物理三维坐标变换。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "用 reshape 替代 HWC 到 CHW 的 permute",
+        "detail": "reshape 不交换轴语义，可能把连续像素解释成颜色通道。用红绿蓝分离的人工输入检查各输出通道。"
+      },
+      {
+        "title": "理想缩放比例直接用于所有标注",
+        "detail": "整数尺寸舍入使 sx 与 sy 可能不同，补边又引入平移。基于实际 resize 结果构造 A，并核对已知点。"
+      },
+      {
+        "title": "对分割类别使用双线性插值",
+        "detail": "类别 ID 之间的数值平均没有类别意义。图像和掩码共享几何参数，但掩码需要离散标签适用的插值。"
+      },
+      {
+        "title": "以为黑图不会影响融合",
+        "detail": "偏置和位置编码能把黑图转为非零特征。传递有效位，改变无效占位内容时有效输出应保持一致。"
+      },
+      {
+        "title": "训练与部署各自实现一套处理",
+        "detail": "均值、补边空间、插值或颜色顺序的细小差异可能形成系统偏差。随 checkpoint 保存处理约定，并对相同原始输入逐项对照。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Transformers：Image processor",
+        "url": "https://huggingface.co/docs/transformers/en/main_classes/image_processor"
+      },
+      {
+        "title": "PyTorch：interpolate",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.interpolate.html"
+      },
+      {
+        "title": "OpenPI：PyTorch preprocessing",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models_pytorch/preprocessing_pytorch.py"
+      },
+      {
+        "title": "OpenAI CLIP：随模型返回的官方图像处理链",
+        "url": "https://github.com/openai/CLIP/blob/main/clip/clip.py"
+      },
+      {
+        "title": "SigLIP 2：NaFlex 的分辨率、坐标与补齐 Mask（v1, §2.4.2）",
+        "url": "https://arxiv.org/abs/2502.14786v1"
+      },
+      {
+        "title": "Big Vision：NaFlex 图像预处理",
+        "url": "https://github.com/google-research/big_vision/blob/main/big_vision/pp/proj/image_text/ops_naflex.py"
+      }
+    ],
+    "keyPoints": [
+      "颜色、轴顺序、dtype、范围和归一化是五个独立约定；浮点不等于已缩放。",
+      "Letterbox 用舍入后的真实 sx/sy 与实际补边变换标注；半像素项依赖坐标约定。",
+      "图像增强、二维标签和相机投影需同步，物理三维坐标不能按像素平移。",
+      "固定视角名称表与有效位；用人工图案和训练/推理张量对照定位问题。"
+    ],
+    "lead": "视觉模型的输入并非抽象的图像，而是经过解码、重采样和数值变换的张量。相同尺寸的张量可能对应不同颜色、像素中心或物理位置，这些差异会沿编码器传递到策略。本章从像素与坐标的定义建立预处理链，推导缩放、裁剪和补边怎样同步作用于图像与标注，再用可辨认的人工输入检验训练和部署是否采用了同一套视觉约定。"
+  },
+  {
+    "id": "conditioning-fusion",
+    "number": 40,
+    "module": "vlm",
+    "level": "P0",
+    "title": "条件注入：拼接、FiLM 与 AdaLN",
+    "subtitle": "条件交互、动态调制与零门控的梯度路径。",
+    "minutes": 90,
+    "tags": [
+      "Conditioning",
+      "FiLM",
+      "AdaLN",
+      "Cross-Attention",
+      "Gating"
+    ],
+    "prerequisites": [
+      "normalization",
+      "residual",
+      "attention"
+    ],
+    "objectives": [
+      "区分特征拼接、token 拼接、Cross-Attention 与逐通道调制。",
+      "实现条件生成的缩放和平移，并检查广播轴。",
+      "解释零门控初始化时的梯度现象与语义验证边界。"
+    ],
+    "why": "动作模型拥有视觉和语言输入，不意味着它会有效利用这些条件。理解条件在何处改变计算，是修改动作头、接入时间信息和诊断语言忽略的基础。",
+    "sections": [
+      {
+        "title": "条件依赖与信息路径",
+        "body": [
+          "条件模型写成 \\(f_\\theta(x,c)\\)：x 是当前需要处理的状态或 token，c 是语言、视觉、状态或生成时间等条件。输入字典里出现 c 不代表输出依赖 c；真正的信息路径可能被 Mask 遮住、被 detach 截断，或在训练中被权重忽略。先写出每个条件通过哪条算子路径影响哪个输出，才能讨论融合是否有效。",
+          "不同条件具有不同结构。一个生成时间标量可以编码成向量，一条语言指令含有词序，多张图像包含空间位置。把所有条件都平均成一个向量会降低接口成本，也会丢失局部检索能力；保留全部 token 增加灵活性，同时增加注意力开销。接口选择应对应任务所需信息，而不只是为了拼接时 shape 匹配。",
+          "还要区分条件的时间含义：序列位置描述“第几个 token”，动作时间描述“预测哪个执行时刻”，生成时间描述“当前噪声或流状态”。三者可能同时进入一个模型。把它们统一称为 t 而不注明尺度和来源，容易造成训练和采样使用不同条件的错误。"
+        ],
+        "id": "0",
+        "lead": "条件生成要求输出随指定信息改变，这是一条函数依赖，而不只是输入变量的存在。首先区分各类条件的语义和可用时刻，再判断它们通过哪些计算路径进入预测。"
+      },
+      {
+        "title": "特征拼接与 token 拼接",
+        "body": [
+          "特征拼接将 \\(x\\in\\mathbb R^D\\) 与 \\(c\\in\\mathbb R^C\\) 合成 \\([x;c]\\)，单个线性层给出 \\(W_x x+W_c c+b\\)。对每个 token 复制同一个 c 时，条件相当于样本相关偏置；输入与条件的混合二阶导数为零，条件不能改变该层对 x 的线性斜率。随后加入非线性或更深结构可以产生交互，因此这个限制属于“拼接后只有一个线性层”，不是对所有拼接网络的限制。",
+          "Token 拼接沿序列轴加入条件，通常需要先将宽度投影到共同 D，并补上位置或来源信息。要让动作 token 读取条件，Mask 必须开放相应方向；若条件放在因果序列的未来，较早的动作位置无法看到它们。即使开放了一层，也要检查其他层或池化操作是否保留了这条路径。",
+          "条件 token 与动作 token 一起进行自注意力，可能让条件表示也反向读取动作。这个设计可以有用，但会影响固定前缀缓存是否成立。选择融合方式时，应同时考虑表示能力、可见性、计算量和后续推理复用，而不只比较 API 调用是否简短。"
+        ],
+        "id": "1",
+        "lead": "拼接是最直接的融合方式，但沿特征轴和沿序列轴拼接对应不同计算。先写出最简单的线性情形，可以明确条件仅贡献偏置的边界，再理解非线性或注意力怎样引入交互。"
+      },
+      {
+        "title": "Cross-Attention 与单个条件 token",
+        "body": [
+          "Cross-Attention 用需要更新的 token 生成 Q，用条件序列生成 K/V。每个查询获得不同权重，因此多个动作位置可以关注不同词或图像 patch；输出长度由查询数决定，不由条件长度决定。若条件仅压缩成一个 token，则每个头对唯一有效键的 softmax 权重为一，无法再在多个条件位置之间选择。",
+          "只有一个有效 Key 且无注意力 Dropout 时，\\(\\operatorname{softmax}([s])=[1]\\)，读出就是 V，完全不依赖 Q 或 K。这条注意力分支对 Q/K 的梯度为零；Value、输出投影仍可学习，若外面有残差，整个块仍可依赖查询输入。把整幅图先压成一个 token 后，不能再期待 Cross-Attention 根据不同查询从图内不同位置进行选择。",
+          "条件键的 padding 或缺失视角要被正确遮罩。给每个查询增加相同条件向量，与让每个查询根据内容读取一组条件 token，表达方式不同；后者仍可能忽略条件，因此结构选择不能代替任务验证。可检查交叉注意力输出、条件扰动和最终损失的变化，但不要把漂亮的权重热图直接解释成因果证据。",
+          "条件宽度与动作宽度可以不同，通过各自投影进入同一每头维度即可。多头 attention 的头数、条件序列长度、query 长度也不是同一个概念。阅读代码时先给 Q/K/V 标注 [B,H,Tq,d]、[B,H,Tc,d]，再检查 Mask 在哪条轴上表示有效条件。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "先画可见性，再决定是否能缓存条件",
+          "explanation": "条件 token 是否读取动作会影响它在迭代中是否变化；只要输出 shape 相同，双向与单向信息流都能运行，却有不同语义。",
+          "check": "固定 c、改变 x，比较各层拟缓存条件 K/V；同时验证动作查询确实能读取有效条件，不能读取 padding。"
+        },
+        "id": "2",
+        "lead": "当条件包含多个词或图像区域时，不同动作位置可能需要读取不同部分。交叉注意力用查询决定读取权重，因此保留多少条件位置会直接限制它能够进行的选择。"
+      },
+      {
+        "title": "FiLM 的乘法交互与通道限制",
+        "body": [
+          "FiLM 用一个条件网络生成 \\(\\gamma(c)\\)、\\(\\beta(c)\\)，再做 \\(\\gamma\\odot h+\\beta\\)。它显式引入条件与特征的乘法：条件可以放大、压低或翻转某个通道，平移则改变非线性前的阈值。这里的参数通常是逐通道向量，不是整层共享的一个数；也不能把 \\(\\gamma\\) 固定看作概率，因为它不必位于零到一。",
+          "若 \\(\\gamma(c)=Ac+b\\)，则 \\(y_i=(A_ic+b_i)h_i+\\beta_i(c)\\)，有 \\(\\frac{\\partial^2 y_i}{\\partial h_i\\,\\partial c_j}=A_{ij}\\)。条件直接改变输入通道的局部斜率，这就是它与单层线性拼接的机制差别。不过对固定条件，FiLM 对 h 的矩阵仍是 \\(\\operatorname{diag}(\\gamma(c))\\)，不能单独实现任意通道旋转；前后线性层可以提供通道混合，不应把逐通道门控描述成任意条件线性变换。",
+          "对于 h=[B,T,D]，每样本条件给出 [B,D]，需要变为 [B,1,D] 才能沿时间轴广播。直接相乘时 PyTorch 从右侧对齐维度；若恰好 \\(B=T\\)，错误表达式甚至可能静默把样本条件当作时间条件。用 \\(B\\ne T\\) 和逐样本干预，才能暴露这个错位。",
+          "FiLM 不要求必须先归一化，但应用位置会改变行为：在线性层前后、激活前后调制不是同一函数。若条件本身是逐 token 的，调制也可以是 [B,T,D]，此时无需跨 T 共享。实现时应明确调制粒度，而不是见到两个相同维度就自动加广播。"
+        ],
+        "formula": "\\mathrm{FiLM}(h,c)=\\gamma(c)\\odot h+\\beta(c)",
+        "example": {
+          "title": "两个通道如何被条件分别控制",
+          "steps": [
+            "取一个样本两行特征 \\(h=\\begin{bmatrix}1&2\\\\3&4\\end{bmatrix}\\)，条件生成 \\(\\gamma=[2,0]\\)、\\(\\beta=[-1,5]\\)。",
+            "第一行输出 \\([2\\times1-1,0\\times2+5]=[1,5]\\)，第二行输出 \\([2\\times3-1,0\\times4+5]=[5,5]\\)。",
+            "第二通道不再依赖原特征，因为 \\(\\gamma_2=0\\)；对 h 的局部梯度在该通道也为零，但 \\(\\beta_2\\) 仍可接收梯度。"
+          ],
+          "conclusion": "逐通道缩放同时改变前向信息与反向梯度，零梯度有时来自有意的乘法结构。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "把 [B,D] 直接乘 [B,T,D]",
+          "explanation": "广播按维度位置而非变量名对齐。当 \\(B=T\\) 时，错误代码可能成功运行并产生跨样本条件污染。",
+          "check": "使用 \\(B=2\\)、\\(T=3\\)；显式写 `scale[:,None,:]`。只改变条件第 0 个样本，其他样本输出必须保持不变。"
+        },
+        "id": "3",
+        "lead": "单层线性拼接无法让条件改变输入的线性斜率，乘法调制提供了另一种交互方式。FiLM 让条件控制各通道的增益与偏移；从局部导数可以看清它增加了什么，又仍然缺少哪些通道混合能力。"
+      },
+      {
+        "title": "AdaLN 与条件仿射",
+        "body": [
+          "AdaLN 在 LayerNorm 之后施加条件生成的缩放和平移，常写为 \\((1+s(c))\\odot\\operatorname{LN}(x)+b(c)\\)。加一是参数化选择：\\(s=b=0\\) 时得到 LN(x)，便于把“无调制”作为初始化点。若使用直接 \\(\\gamma\\) 参数化，则无调制对应 \\(\\gamma=1\\)、\\(\\beta=0\\)；不能从一种公式复制零初始化到另一种公式。",
+          "常见实现关闭 LayerNorm 自带的 elementwise_affine，让动态调制负责仿射，避免额外共享 \\(\\gamma\\)、\\(\\beta\\) 混淆解释；保留共享仿射也可以，但那是另一种参数组合。LayerNorm 的统计轴仍是最后的通道 D，条件不应该让不同样本混在一起求均值方差。",
+          "FiLM 与 AdaLN 的关键区别不是名字，而是被调制的特征是否先归一化及如何参数化。LN 去掉部分均值/尺度信息，条件仿射再引入样本相关的变化。若任务需要原始幅度或绝对统计，可以由残差路径或独立条件保留，不能期待归一化后的表示无条件保存所有原信息。"
+        ],
+        "formula": "\\mathrm{AdaLN}(x,c)=(1+s(c))\\odot\\mathrm{LN}(x)+b(c)",
+        "id": "4",
+        "lead": "直接调制原始特征和调制标准化特征并不是同一个函数。AdaLN 将两步组合，使条件作用于较明确的统计尺度，同时也继承归一化对输入信息和梯度方向的影响。"
+      },
+      {
+        "title": "零门控残差与首步梯度",
+        "body": [
+          "在调制分支外再乘 gate，可以得到 \\(y=x+g(c)\\odot F\\!\\left(\\operatorname{AdaLN}(x,c)\\right)\\)。\\(g=0\\) 时整个残差块输出等于 x，尽管内部 F 的输出不为零。这与 \\(s=b=0\\) 只保证 AdaLN 等于 LN(x) 不同：无调制不等于整个块恒等，恒等需要残差分支的总体贡献为零。",
+          "由链式法则，分支内部参数梯度含 g 因子，因此首步 \\(g=0\\) 时通常为零；门控梯度则含 F 的当前输出，可以非零。如果生成所有调制参数的最后线性层权重为零，条件输入的梯度也可能为零，即使门控偏置正在学习。不能把这些预期零值误判为 detach。",
+          "也要避免把所有相关项都同时清零而造成死分支。例如 F 输出和门控都为零时，门控梯度与 F 内部梯度都可能为零，需要检查实际初始化。DiT 的 AdaLN-Zero 是具体的结构与初始化设计，不是“任何层全部设零都会更稳定”的通用规则。"
+        ],
+        "example": {
+          "title": "用标量残差手算零门控的两条梯度",
+          "steps": [
+            "取 \\(y=x+gwx\\)，\\(x=3\\)、\\(w=2\\)、\\(g=0\\)，并令上游 \\(\\frac{\\partial L}{\\partial y}=1\\)，则前向 \\(y=3\\)。",
+            "\\(\\frac{\\partial L}{\\partial w}=gx=0\\)；\\(\\frac{\\partial L}{\\partial g}=wx=6\\)。内部 w 首步不更新，门控却可以离开零点。",
+            "如果再令 \\(w=0\\)，则门控梯度也为零；若 \\(g=ac\\) 且 \\(a=0\\)，条件 c 的梯度同样为零，但 a 的梯度还可能非零。"
+          ],
+          "conclusion": "检查结构预期、门控参数和更新后梯度，比要求所有参数首步非零更准确。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "无调制、恒等块与条件有梯度是三件事",
+          "explanation": "\\(s=b=0\\) 只还原 LN；\\(g=0\\) 才让残差贡献为零。零门控或零调制权重会让部分梯度暂时为零，不能统一视为断图。",
+          "check": "先核对初始输出等于谁，再打印 gate 参数梯度；完成一次有效更新后重新检查分支与条件输入的梯度。"
+        },
+        "id": "5",
+        "lead": "条件调制确定分支怎样计算，残差门控则进一步决定分支向主干贡献多少。把两种参数的零点分别代入前向和反向，可以解释恒等初始化的作用，以及首步出现零梯度何时属于预期行为。"
+      },
+      {
+        "title": "时间编码与多条件组合",
+        "body": [
+          "生成时间可先经多频正弦/余弦映射，再由 MLP 生成调制向量，使网络能够在不同频率上表示随时间变化的规律。训练用 [0,1] 而推理输入 [0,1000]，即使维度一致也会让编码处于不同区域；方向、范围与端点定义需要和噪声或 Flow Matching 的路径约定一致。",
+          "多个条件可以先各自编码到同一宽度后求和，也可以拼接再投影。求和成本低，但两路的尺度和识别方式需要学习；拼接保留显式槽位，增加后续参数。任一种方式都需要考虑缺失条件的表示，不能把“无指令”临时替换为不曾训练过的随机向量。",
+          "若使用条件丢弃训练无条件路径，丢弃粒度与空条件表示应和推理一致。仅在推理时把 c 置零，并不能保证模型学会无条件函数。条件有多个来源时，还应明确丢弃整组还是只丢一部分，避免所谓无条件分支仍通过其他编码或缓存读取同一信息。"
+        ],
+        "id": "6",
+        "lead": "生成时间、语言和状态具有不同量纲，不能未经定义就合并为一个条件向量。先为每一路建立稳定的编码与缺失表示，再比较求和和拼接，才能保持训练与采样的条件含义一致。"
+      },
+      {
+        "title": "条件干预与语义评估",
+        "body": [
+          "第一层验证结构：断言调制参数形状、归一化轴、广播方向和残差初始行为，检查有效条件确实有路径到输出。第二层验证数值：在 eval 下固定输入和随机噪声，只改变一条样本的一个条件，检查对应输出变化以及其他样本不变，并按初始化预期检查梯度。",
+          "第三层验证语义：同一场景配两条要求不同结果的指令，评价输出是否朝正确目标改变，而不只是某个数不同。打乱语言与样本配对、移除条件或替换为无关条件，可以帮助判断模型是否依赖它；这些消融的性能差异还需结合数据相关性解释，不能把任意下降都归为良好语言理解。",
+          "示例在零门控初始化后手动赋予非零参数，用于观察计算路径与样本隔离；语言理解仍需任务指标检验。真实训练中应观察门控分布、条件梯度、行为指标及不同条件组合的泛化。结构教学和能力结论分开，才能避免从一个通过 assert 的小例子推导过大的结论。",
+          "这些局部算子怎样在完整动作模型中组合，见 [VLA 模型架构](#/learn/vla-architecture?tab=theory)：图像、语言与状态如何进入 token，Action Expert 如何读取条件，以及冻结与缓存如何改变梯度。该课分别标明具体 OpenPI 版本和教学实现，避免将单一融合方式视作所有 VLA 的共同结构。"
+        ],
+        "id": "7",
+        "lead": "输出随着条件变化，只说明存在依赖，尚不能说明模型理解了条件的语义。验证需要从形状和梯度推进到受控干预，最终检查输出是否朝任务要求的方向改变。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "动作特征",
+        "shape": "[B,T,D]",
+        "meaning": "每样本多个动作位置。"
+      },
+      {
+        "name": "条件",
+        "shape": "[B,C]",
+        "meaning": "可来自语言、状态、生成时间等编码。"
+      },
+      {
+        "name": "scale / shift / gate",
+        "shape": "[B,D] → [B,1,D]",
+        "meaning": "按通道调制，在同一样本内沿 T 广播。"
+      },
+      {
+        "name": "调制输出",
+        "shape": "[B,T,D]",
+        "meaning": "可进入 FFN、注意力或残差分支。"
+      }
+    ],
+    "code": {
+      "title": "零门控 AdaLN：观察身份映射和条件路径",
+      "source": "# [1] 条件参数在每个样本内广播，B 与 T 特意不同\nimport torch\nfrom torch import nn\ntorch.manual_seed(40)\n\nclass ConditionalBlock(nn.Module):\n    def __init__(self, dim=4, condition_dim=2):\n        super().__init__()\n        self.norm = nn.LayerNorm(dim,elementwise_affine=False)\n        self.modulate = nn.Sequential(nn.SiLU(),nn.Linear(condition_dim,3*dim))\n        self.ffn = nn.Sequential(nn.Linear(dim,8),nn.SiLU(),nn.Linear(8,dim))\n        nn.init.zeros_(self.modulate[-1].weight)\n        nn.init.zeros_(self.modulate[-1].bias)\n\n    def forward(self,x,condition):\n        scale,shift,gate = self.modulate(condition).chunk(3,dim=-1)\n        normalized = self.norm(x)\n        h = normalized*(1+scale[:,None,:])+shift[:,None,:]\n        return x + gate[:,None,:]*self.ffn(h)\n\n# [2] 零门控保持恒等；先检查门控层而不是要求所有梯度非零\nmodel = ConditionalBlock()\nx = torch.randn(2,3,4)\ncondition = torch.randn(2,2,requires_grad=True)\ninitial = model(x,condition)\ntorch.testing.assert_close(initial,x)\ninitial.square().mean().backward()\nassert model.modulate[-1].bias.grad[-4:].norm() > 0\ntorch.testing.assert_close(condition.grad,torch.zeros_like(condition))\nprint(\"初始恒等与门控梯度正确\")\n\n# [3] 打开条件分支后，只改变第一个样本的条件\nwith torch.no_grad():\n    nn.init.normal_(model.modulate[-1].weight,std=0.1)\n    model.modulate[-1].bias[-4:].fill_(0.2)\nchanged = condition.detach().clone()\nchanged[0,0] += 1.0\nbefore,after = model(x,condition),model(x,changed)\ntorch.testing.assert_close(before[1],after[1])\nassert not torch.allclose(before[0],after[0])\nmodel.zero_grad(set_to_none=True)\ncondition.grad = None\nmodel(x,condition).square().mean().backward()\nassert condition.grad is not None and condition.grad.norm() > 0\nprint(\"条件只影响相应样本，打开分支后梯度能够回到条件\")\n",
+      "expected": "初始化输出与 x 一致，门控偏置有梯度；打开分支后仅被修改条件的样本输出改变，条件梯度非零。",
+      "explanations": [
+        {
+          "lines": "1–20",
+          "text": "每个条件生成 3D 个数，分别用作 scale、shift、gate。零初始化用于验证残差起始行为。"
+        },
+        {
+          "lines": "21–31",
+          "text": "`gate=0` 时输出等于 x；门控偏置可以有梯度，但零权重会使条件输入首步梯度为零。"
+        },
+        {
+          "lines": "32–45",
+          "text": "这里手动设置非零参数用于结构演示；不是声称完成训练。逐样本干预能发现广播造成的跨样本污染。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "手写逐样本 FiLM",
+      "prompt": "实现 film_batch(features,gamma,beta)。features 为 [B,T,D] 的嵌套列表，gamma/beta 为 [B,D]；返回逐元素 `gamma[b][d] * features[b][t][d] + beta[b][d]`，不修改输入。",
+      "runtime": "python",
+      "starter": "def film_batch(features, gamma, beta):\n    # TODO: 条件只在同一样本的时间位置之间共享\n    raise NotImplementedError(\"请实现 FiLM\")\n",
+      "solution": "def film_batch(features, gamma, beta):\n    if len(features) != len(gamma) or len(features) != len(beta):\n        raise ValueError(\"Batch 大小不一致\")\n    result = []\n    for batch,row_list in enumerate(features):\n        if len(gamma[batch]) != len(beta[batch]):\n            raise ValueError(\"条件通道不一致\")\n        rows = []\n        for row in row_list:\n            if len(row) != len(gamma[batch]):\n                raise ValueError(\"特征通道不一致\")\n            rows.append([gamma[batch][d]*value+beta[batch][d]\n                         for d,value in enumerate(row)])\n        result.append(rows)\n    return result\n",
+      "tests": "x = [[[1,2],[3,4]],[[5,6],[7,8]]]\ngamma,beta = [[2,1],[1,0]],[[0,-1],[3,4]]\ny = film_batch(x,gamma,beta)\nassert y == [[[2,1],[6,3]],[[8,4],[10,4]]]\nchanged = film_batch(x,[[4,1],[1,0]],beta)\nassert changed[1] == y[1] and changed[0] != y[0]\nassert x == [[[1,2],[3,4]],[[5,6],[7,8]]]\nassert film_batch([[]],[[1,1]],[[0,0]]) == [[]]\nprint(\"通过：逐通道调制、样本隔离和不修改输入\")\n",
+      "hints": [
+        "索引顺序是 batch、time、channel；gamma/beta 没有 time 轴。",
+        "同一 batch 的每行使用同一组条件，但不同 batch 不能混用。"
+      ],
+      "explanation": "第二个样本的第二通道 gamma 为零，所以输出始终等于 beta=4。改变第一个样本的条件不应影响第二个样本。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 adaptive_layer_norm(x,condition,modulator)。x=[B,T,D]，modulator(condition)=[B,2D]，前 D 是 scale，后 D 是 shift。使用无固定仿射的 LayerNorm，再做 `(1 + scale) * LN(x) + shift`。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef adaptive_layer_norm(x, condition, modulator, eps=1e-5):\n    # TODO: 生成逐样本条件，正确广播并调制\n    raise NotImplementedError(\"请实现 AdaLN\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef adaptive_layer_norm(x, condition, modulator, eps=1e-5):\n    scale,shift = modulator(condition).chunk(2,dim=-1)\n    normalized = F.layer_norm(x,(x.shape[-1],),eps=eps)\n    return normalized*(1+scale[:,None,:])+shift[:,None,:]\n",
+      "tests": "torch.manual_seed(40)\nx = torch.randn(2,3,4,requires_grad=True)\ncondition = torch.randn(2,2,requires_grad=True)\nmodulator = torch.nn.Linear(2,8)\ntorch.nn.init.zeros_(modulator.weight)\ntorch.nn.init.zeros_(modulator.bias)\ntorch.testing.assert_close(adaptive_layer_norm(x,condition,modulator),\n                           F.layer_norm(x,(4,),eps=1e-5))\ntorch.nn.init.normal_(modulator.weight,std=0.1)\nbefore = adaptive_layer_norm(x,condition,modulator)\nchanged = condition.detach().clone()\nchanged[0] += 1\nafter = adaptive_layer_norm(x,changed,modulator)\ntorch.testing.assert_close(before[1],after[1])\nassert not torch.allclose(before[0],after[0])\nbefore.square().mean().backward()\nassert condition.grad is not None and torch.isfinite(condition.grad).all()\nassert modulator.weight.grad is not None\nprint(\"通过：零调制、广播隔离与条件梯度\")\n",
+      "hints": [
+        "`scale=0` 时要保留 LN(x)，所以公式使用 `1+scale`。",
+        "对 [B,D] 使用 [:,None,:]，新增的是时间轴；直接乘到 [B,T,D] 会错误或失败。"
+      ],
+      "explanation": "零调制测试识别遗漏加一的问题；\\(B=2\\)、\\(T=3\\) 的测试避免轴大小恰好相等掩盖广播错误。逐样本干预与梯度检查分别验证前向依赖和反向连接。"
+    },
+    "knowledgeChecks": [
+      {
+        "question": "LayerNorm 自带的 gamma/beta 与 FiLM 或 AdaLN 由条件生成的参数有什么区别？为什么 [B,D] 要变成 [B,1,D]？",
+        "answer": [
+          "标准 LayerNorm 的可学习仿射参数通常跨样本和位置共享；FiLM/AdaLN 的调制参数由当前样本的条件产生，因此不同指令、状态或生成时间可以得到不同的缩放与平移。二者在计算中承担不同角色。",
+          "输入是 [B,T,D] 时，在中间增加长度一的轴，让条件只沿该样本的 T 个位置广播。不能用维度碰巧相等来判断正确性，应该选择 B 与 T 不同的例子，并只改变一个样本的条件检查隔离。"
+        ],
+        "codeFocus": "检查 modulator 输出的分块顺序，以及 `scale[:,None,:]` 和 `shift[:,None,:]` 的轴。",
+        "acceptance": [
+          "区分共享的固定参数与样本条件产生的动态参数。",
+          "解释时间轴广播并给出样本隔离检查。"
+        ]
+      },
+      {
+        "question": "残差门控初始化为零时，条件输入或分支内部梯度为零，一定表示代码断图吗？输出随指令改变是否已经证明语言跟随正确？",
+        "answer": [
+          "不一定。`y = x + gate * F(...)` 的乘法结构使 `gate=0` 时部分分支梯度为零，但门控生成层仍可能获得梯度。应检查门控参数的梯度、完成更新后再观察分支，而不是要求首步所有参数都有非零梯度。",
+          "输出随指令变化只证明计算路径对条件敏感。它也可能是无意义的数值变化；需要固定场景和其他条件，使用明确的指令—目标对照评估，检查动作是否按语义改变以及错误率如何变化。"
+        ],
+        "codeFocus": "同时观察 gate 相关参数梯度、更新后的条件梯度，以及任务层面的指令干预结果。",
+        "acceptance": [
+          "能用乘法路径解释首步零梯度。",
+          "明确区分条件敏感性与正确语言跟随。"
+        ]
+      },
+      {
+        "question": "单层“拼接后 Linear”和 FiLM 都输出相同形状，为什么它们对输入—条件交互的表达不同？",
+        "answer": [
+          "拼接后 Linear 为 \\(W_x x+W_c c+b\\)，对 x 的 Jacobian 恒为 \\(W_x\\)，与 c 无关；混合二阶导数为零。条件只能改变偏置项。",
+          "FiLM 为 \\(\\gamma(c)\\odot x+\\beta(c)\\)，对 x 的 Jacobian 是 \\(\\operatorname{diag}(\\gamma(c))\\)，会随条件变化。若 \\(\\gamma(c)=Ac+b\\)，混合二阶导数直接给出 A 的元素。",
+          "FiLM 本身仍仅逐通道缩放，并非任意动态矩阵。带非线性的拼接网络也能学习交互，不能把单层反例推广成拼接永远不如 FiLM。"
+        ],
+        "codeFocus": "固定条件后比较输出对 x 的 Jacobian，再改变条件观察这个 Jacobian 是否变化。",
+        "acceptance": [
+          "给出两种结构的 Jacobian。",
+          "明确结论只针对所讨论的层及其非线性假设。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "有条件输入就认为模型使用了条件",
+        "detail": "Mask、池化、detach 或数据捷径都可能让条件失效。分别检查计算路径、条件干预和任务级语义指标。"
+      },
+      {
+        "title": "直接 γ 与 1+scale 的初始化混用",
+        "detail": "直接 \\(\\gamma=0\\) 会抹掉特征，`1+scale` 在 `scale=0` 时才保留特征。根据公式设置初始化并明确无调制参考。"
+      },
+      {
+        "title": "只用 B=T 的张量测广播",
+        "detail": "相同维度可能让错误轴静默对齐。用不同 Batch 和时间长度，并确认改单个样本条件不会影响其他样本。"
+      },
+      {
+        "title": "将首步零梯度一概归为断图",
+        "detail": "乘法门控与零初始化能够产生预期零梯度。先检查门控梯度及一次更新后的路径，再决定是否存在 detach。"
+      },
+      {
+        "title": "用随机输出变化证明语言理解",
+        "detail": "变化只能说明数值敏感，不能说明方向正确。固定场景和噪声，设计目标明确的指令对照并评价任务结果。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "FiLM：Visual Reasoning with a General Conditioning Layer",
+        "url": "https://arxiv.org/abs/1709.07871"
+      },
+      {
+        "title": "Scalable Diffusion Models with Transformers",
+        "url": "https://arxiv.org/abs/2212.09748"
+      },
+      {
+        "title": "OpenPI：条件注入与动作专家",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models_pytorch/pi0_pytorch.py"
+      },
+      {
+        "title": "PyTorch：LayerNorm 统计与仿射参数",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html"
+      }
+    ],
+    "keyPoints": [
+      "特征拼接、token 拼接、Cross-Attention 与逐通道调制具有不同的信息路径。",
+      "[B,D] 条件作用于 [B,T,D] 时显式变为 [B,1,D]，用 \\(B\\ne T\\) 检查样本隔离。",
+      "AdaLN 的零 scale/shift 还原 LN；残差零 gate 才让整个分支起初不改变输入。",
+      "零门控允许门控学习而内部首步梯度为零；数值依赖不等于正确语言跟随。"
+    ],
+    "lead": "动作生成器需要依据场景、指令和当前状态改变输出，但把条件放入输入字典并不等于建立了有效的信息交互。本章比较拼接、交叉注意力与特征调制，先明确条件在哪一步改变计算，再从局部导数解释加性、乘性和内容检索的区别。通过这些机制，可以判断一个条件接口的表达限制、初始化行为以及它是否与缓存和后训练的梯度路径相容。"
+  }
+]

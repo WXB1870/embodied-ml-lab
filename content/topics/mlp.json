@@ -1,0 +1,707 @@
+{
+  "id": "mlp",
+  "title": "MLP：表达、梯度与优化",
+  "subtitle": "手算前向与梯度，核对张量形状，再完成带归一化和有效池化的训练实验。",
+  "lead": "MLP 是理解神经网络的最小完整模型：线性组合决定特征怎样混合，非线性改变可表示的函数，损失与反向传播把监督转成参数更新。本章用同一个 2→3→2 网络，从三条输入计算隐藏表示、半均方误差、五组梯度及一次 SGD 更新，并与代码逐项核对。建立计算链后，再讨论激活、有限宽度的表示能力、初始化与序列读出，区分函数能否表达、信息是否保留以及优化是否找到合适参数。",
+  "minutes": 180,
+  "prerequisites": [
+    "tensor",
+    "matrix-grad",
+    "probability"
+  ],
+  "relatedLessons": [
+    "mlp",
+    "activation-init",
+    "autograd",
+    "losses",
+    "training-diagnostics",
+    "multimodal"
+  ],
+  "goals": [
+    "能够按 [B,T,D] 追踪 MLP 每层形状并统计参数。",
+    "构造有限宽 ReLU 插值网络并证明误差界，区分可表达性、优化和区间外泛化。",
+    "独立推导两层网络的输入、权重与偏置梯度。",
+    "为回归、单标签和多标签任务选择正确的输出与损失约定。",
+    "实现带 Mask 的读出头，并用反例检查 Padding、数值尺度和训练更新。"
+  ],
+  "quickFacts": [
+    {
+      "label": "核心计算",
+      "value": "仿射 → 非线性 → 仿射",
+      "detail": "连续仿射层可以合并；非线性改变可表达的函数。"
+    },
+    {
+      "label": "权重布局",
+      "value": "[out_features, in_features]",
+      "detail": "PyTorch Linear 对最后一维计算，保留所有前导维。"
+    },
+    {
+      "label": "学习重点",
+      "value": "形状、归约、梯度、信息",
+      "detail": "先检查输入与监督，再分析优化和容量。"
+    }
+  ],
+  "notation": [
+    {
+      "symbol": "\\(B\\) / \\(T\\)",
+      "meaning": "Batch 大小 / token 或时间位置数",
+      "shape": "前导维"
+    },
+    {
+      "symbol": "\\(D\\) / \\(H\\) / \\(O\\)",
+      "meaning": "输入特征、隐藏特征、输出特征数",
+      "shape": "特征维"
+    },
+    {
+      "symbol": "\\(W_1\\) / \\(W_2\\)",
+      "meaning": "两层线性映射权重，采用 PyTorch 朝向",
+      "shape": "[H,D] / [O,H]"
+    },
+    {
+      "symbol": "\\(Z\\) / \\(A\\)",
+      "meaning": "第一层预激活 / 激活后的隐藏矩阵；H 专门表示隐藏宽度",
+      "shape": "[B,H]"
+    },
+    {
+      "symbol": "\\(G\\)",
+      "meaning": "损失对网络预测的上游梯度",
+      "shape": "[B,O]"
+    },
+    {
+      "symbol": "\\(m\\)",
+      "meaning": "有效 token 指示，True 表示计入池化",
+      "shape": "[B,T]"
+    }
+  ],
+  "sections": [
+    {
+      "id": "affine-nonlinearity",
+      "title": "从仿射变换到非线性函数",
+      "body": [
+        "一个全连接层为每个输出特征学习一组输入权重，再加一个偏置。输入不是必须为图像或文本；关节状态、图像 token、融合后的场景表示都可以作为向量。权重决定输入方向如何混合，偏置让输出在输入为零时也能有非零值。带偏置的操作严格说是仿射变换。PyTorch 的 Linear 沿最后一个维度计算，其余维度作为批量位置保留。",
+        "如果把多个 Linear 直接串联，中间没有非线性，它们仍能合并成一个仿射变换。两层的合并权重是两个权重矩阵的乘积，偏置也能相应合并。深度此时改变了参数化和可能的秩约束，却没有得到任意弯曲的函数。激活函数让不同输入进入不同的计算区域。例如 ReLU 对负预激活输出零，整个网络成为连续的分段仿射函数。",
+        "以标量输入为例，两个带偏置线性层满足 \\(w_2(w_1x+b_1)+b_2=(w_2w_1)x+(w_2b_1+b_2)\\)，斜率在整个输入轴上相同。若中间插入 ReLU，\\(w_2\\max(0,w_1x+b_1)+b_2\\) 会在预激活过零处改变斜率。多个隐藏单元可以在不同位置改变斜率，非线性表达由此逐步形成；后面的显式插值构造将把这一观察变成可检验的函数表示。",
+        "首先需要把这个函数写成形状明确的批量运算，并完整计算一次前向与反向。掌握这些机制以后，再分析局部 Jacobian、有限宽度的表示能力，以及相同函数为什么仍可能具有不同优化轨迹。初始化的统计假设见[激活与初始化](#/learn/activation-init)，深层传播的旁路机制见[残差连接](#/learn/residual)。"
+      ],
+      "formula": "h=\\phi(XW_1^\\top+b_1),\\qquad \\hat Y=hW_2^\\top+b_2",
+      "takeaway": "函数相同不保证参数梯度或训练轨迹相同；非线性、秩与参数化要分别分析。",
+      "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
+      "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。",
+      "lead": "已有的矩阵运算可以组合输入特征，但连续叠加线性层是否就能表示更复杂的关系，需要先分清。仿射变换与非线性激活各自改变函数的不同部分。先建立这两个组成单元，才能解释深度为什么可能有用，以及它何时只是换了一种参数化。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "shapes-parameters",
+      "title": "张量形状、参数朝向与参数量",
+      "body": [
+        "采用行向量组成 Batch 的约定：输入 X 为 [B,D]，第一层权重 \\(W_1\\) 为 [H,D]，偏置为 [H]，所以 `X@W1.T` 得到 [B,H]。第二层权重为 [O,H]，输出为 [B,O]。不要凭矩阵名判断乘法方向，应从相邻内维是否相等，以及每个轴代表什么来核对。nn.Linear(D,H).weight 的第一维是输出数，这与某些教材把权重写成 [D,H] 的约定相反。",
+        "两层有偏置的 \\(D\\to H\\to O\\) 网络，参数量是 \\(DH+H+HO+O\\)。\\(6\\to8\\to3\\) 的例子有 \\(48+8+24+3=83\\) 个参数。Batch 大小不进入参数量，因为不同样本共享同一组权重。Batch 和序列长度会改变计算量及中间激活大小。若把 100 个 token 展平成一个大向量再接全连接，输入维度会从 D 变成 100D，参数量及结构假设都会变化。",
+        "输入也可以是 [B,T,D]。Linear(D,H) 会在每个 b,t 位置复用同一个映射，输出 [B,T,H]，不会自动让两个时间步互相通信。把前两个轴临时合为 \\(BT\\) 后计算，再恢复形状，与保留三维输入等价；把 T 和 D 合并则是另一种模型。维度重排需用 transpose/permute，reshape 只改变元素如何分组，不能替代轴交换。",
+        "参数量与训练内存不是一回事。参数需要存储权重，优化器还可能维护一阶、二阶状态；训练反向需要保留中间激活。把序列长度翻倍不增加共享 Linear 的权重，却通常增加激活占用与矩阵乘法工作量。估算时分别列出参数、梯度、优化器状态和激活，并注明 dtype，不能只用一个参数量乘常数覆盖所有训练设置。",
+        "后文固定 \\(B=3,D=2,H=3,O=2\\)，使用代码页已有的 [manual-backprop](#/learn/mlp?tab=code&anchor=demo-manual-backprop) 参数。它有 \\(2\\times3+3+3\\times2+2=17\\) 个可训练数；\\(X\\) 参与求导验证，但不是优化器需要更新的模型参数。这个区别将在一次 SGD 更新中明确体现。"
+      ],
+      "formula": "P=DH+H+HO+O,\\qquad [B,T,D]\\xrightarrow{\\operatorname{Linear}(D,H)}[B,T,H]",
+      "code": "layer = torch.nn.Linear(6, 8)\nx = torch.randn(2, 5, 6)\nassert layer(x).shape == (2, 5, 8)\nassert layer.weight.shape == (8, 6)",
+      "codeExplanation": "保留 B、T，只变换最后一个特征轴；这里 \\(2\\times5\\) 个位置共享 56 个参数。 这是形状片段，先执行 import torch；完整可运行的同网络实现见 manual-backprop。",
+      "example": {
+        "title": "把一个 8→16→4 网络的参数逐项数清楚",
+        "steps": [
+          "输入 x 的形状是 [B,8]。第一层 nn.Linear(8,16) 的 weight 是 [16,8]，bias 是 [16]；计算 x @ weight.T + bias 后得到 [B,16]。",
+          "激活函数逐元素作用，形状仍为 [B,16]。第二层 Linear(16,4) 的 weight 是 [4,16]，bias 是 [4]，最终输出 [B,4]。",
+          "参数总数为 \\(8\\times16+16+16\\times4+4=212\\)。把 B 从 2 改成 128，参数仍为 212；变化的是中间激活和相关计算量。"
+        ],
+        "conclusion": "先按每层权重与偏置求和，再考虑 Batch、序列长度等运行时维度。模型参数不因一个 Batch 内多放了样本而增加。"
+      },
+      "focus": {
+        "kind": "易错",
+        "title": "相同元素个数，不代表相同的轴含义",
+        "explanation": "[B,T,D] 可以直接送进 Linear(D,H)，得到 [B,T,H]；每个时间位置独立复用相同参数。直接 reshape 成 [B,D,T] 并不是交换时间和通道，它只重新解释线性存储顺序，可能得到形状正常、语义已错的输入。",
+        "check": "用 torch.arange 构造每个位置都不同的输入，逐个检查一个指定 b,t 的输出，而不只 assert 最终 shape。"
+      },
+      "lead": "数学上相同的仿射变换，在代码中可能采用不同的权重朝向与批次布局。明确每个轴代表样本、位置还是特征，才能同时核对前向乘法、参数共享和反向归约。下面固定一种约定，为后续手算与实现建立共同语言。",
+      "codeKind": "fragment"
+    },
+    {
+      "id": "forward-by-hand",
+      "title": "完整手算一次前向与损失",
+      "body": [
+        "沿用上一节的 17 参数网络，所有矩阵都采用 PyTorch 的权重朝向。三条输入和目标为 \\[X=\\begin{bmatrix}1&-2\\\\0.5&1\\\\-1&0.25\\end{bmatrix},\\qquad Y=\\begin{bmatrix}0.5&-0.1\\\\0.7&0.4\\\\-0.2&0.8\\end{bmatrix}.\\]第一层 \\(W_1=\\begin{bmatrix}0.7&-0.3\\\\-0.4&0.8\\\\0.5&0.2\\end{bmatrix}\\)、\\(b_1=[0.2,0.1,0.4]\\)；第二层 \\(W_2=\\begin{bmatrix}0.6&-0.2&0.4\\\\-0.3&0.5&0.7\\end{bmatrix}\\)、\\(b_2=[0.1,-0.2]\\)。代码中的 w1、b1、w2、b2 就是这些数，没有在不同页面重新抽取参数。",
+        "先算第一条输入。三个预激活分别为 \\(1(0.7)+(-2)(-0.3)+0.2=1.5\\)、\\(1(-0.4)+(-2)(0.8)+0.1=-1.9\\)、\\(1(0.5)+(-2)(0.2)+0.4=0.5\\)。ReLU 把中间一项置零，得到 \\(A_{1,:}=[1.5,0,0.5]\\)。第一项输出为 \\(1.5(0.6)+0(-0.2)+0.5(0.4)+0.1=1.2\\)，第二项为 \\(1.5(-0.3)+0(0.5)+0.5(0.7)-0.2=-0.3\\)。这里同一条样本的隐藏单元与不同样本的批次轴承担不同作用。",
+        "逐行重复同一计算，得到下表。\\(Z\\) 是激活前的值，\\(A=\\operatorname{ReLU}(Z)\\) 是激活后的矩阵，代码中分别命名 z、h。参数共享意味着三行复用同一组权重，并不意味着三行拥有相同的激活开关；第一行第二单元关闭，而第二、三行的这个单元仍开放。",
+        "本例固定半均方误差 \\(L=\\frac1{2BO}\\sum_{b,o}(\\widehat Y_{bo}-Y_{bo})^2\\)。六个残差依次为 \\(0.7,-0.2,-0.25,0.27,0.16,-0.65\\)，平方和为 \\(1.1135\\)，故 \\(L=1.1135/12=0.092791666\\ldots\\)。除以 12 来自二分之一与六个输出元素，而不是隐藏单元数。下一节用 \\(G=(\\widehat Y-Y)/6\\) 开始反传，避免把损失值本身误当成梯度。",
+        "计算图中的实线表示前向依赖，反向箭头表示同一边对应的向量—Jacobian 乘积。第二层偏置直接影响预测，第一层偏置还须穿过第二层权重和 ReLU；因此两组偏置的梯度形状与数值本来就不同。图中只画一次共享运算，所有批次位置的贡献在参数处累加。"
+      ],
+      "formula": "Z=\\begin{bmatrix}1.5&-1.9&0.5\\\\0.25&0.7&0.85\\\\-0.575&0.7&-0.05\\end{bmatrix},\\quad A=\\max(0,Z),\\quad \\widehat Y=\\begin{bmatrix}1.2&-0.3\\\\0.45&0.67\\\\-0.04&0.15\\end{bmatrix}",
+      "takeaway": "手算时固定一个损失定义；先标中间量，再讨论导数。",
+      "lead": "张量形状规定了运算是否合法，具体数字则能说明每一步实际算了什么。一个两层小网络足以把权重、偏置、激活和标量损失连成完整路径。只改动一个偏置，还可以直接观察非线性如何打开或关闭某条局部梯度路径。",
+      "comparison": {
+        "title": "同一批输入的前向轨迹",
+        "columns": [
+          "样本",
+          "输入 X",
+          "预激活 Z",
+          "隐藏表示 A",
+          "预测 Ŷ / 目标 Y"
+        ],
+        "rows": [
+          [
+            "1",
+            "[1, −2]",
+            "[1.5, −1.9, 0.5]",
+            "[1.5, 0, 0.5]",
+            "[1.2, −0.3] / [0.5, −0.1]"
+          ],
+          [
+            "2",
+            "[0.5, 1]",
+            "[0.25, 0.7, 0.85]",
+            "[0.25, 0.7, 0.85]",
+            "[0.45, 0.67] / [0.7, 0.4]"
+          ],
+          [
+            "3",
+            "[−1, 0.25]",
+            "[−0.575, 0.7, −0.05]",
+            "[0, 0.7, 0]",
+            "[−0.04, 0.15] / [−0.2, 0.8]"
+          ]
+        ]
+      },
+      "figures": [
+        {
+          "src": "/assets/figures/mlp-computation-chain.svg",
+          "alt": "17 参数两层 MLP 的前向张量、参数支路与反向梯度路径",
+          "caption": "原创计算图，与 manual-backprop 的 B=3、D=2、H=3、O=2 完全对应。前向值沿蓝色路径传递；反向从标量损失开始，偏置梯度沿共享批次轴求和。输入梯度用于验证，不参与这次模型参数更新。"
+        }
+      ]
+    },
+    {
+      "id": "backpropagation",
+      "title": "反向传播：每个矩阵梯度从哪里来",
+      "body": [
+        "继续使用刚才的三条输入与同一组参数。第一行上游梯度为 \\(G_{1,:}=[0.7,-0.2]/6=[0.116666\\ldots,-0.033333\\ldots]\\)。传到隐藏层的第一行是 \\(G_{1,:}W_2=[0.08,-0.04,0.023333\\ldots]\\)；第二个预激活为负，乘 ReLU 导数后变成 \\((\\Delta_1)_{1,:}=[0.08,0,0.023333\\ldots]\\)。输入导数因此为 \\((\\Delta_1)_{1,:}W_1=[0.067666\\ldots,-0.019333\\ldots]\\)。注意其中的除以 6 已经来自整个批次损失，不能在聚合参数梯度时再除一次 Batch。",
+        "对 Batch 形式，设输入 \\(X\\in\\mathbb R^{B\\times D}\\)，预激活 \\(Z=XW_1^\\top+\\mathbf1b_1^\\top\\)，激活矩阵 \\(A=\\phi(Z)\\in\\mathbb R^{B\\times H}\\)，预测 \\(\\widehat Y=AW_2^\\top+\\mathbf1b_2^\\top\\in\\mathbb R^{B\\times O}\\)。这里 \\(H\\) 是隐藏宽度，\\(A\\) 才是隐藏激活。若 \\(L=\\frac12\\operatorname{mean}((\\widehat Y-Y)^2)\\)，损失对预测的导数为 \\(G=(\\widehat Y-Y)/(BO)\\)。PyTorch 的默认 MSELoss 不含前面的二分之一，因此使用它时 \\(G\\) 应再乘 2。",
+        "先只改变第二层权重。第 \\((b,o)\\) 个预测的微分为 \\(d\\widehat Y_{bo}=\\sum_h A_{bh}\\,d(W_2)_{oh}\\)，代入 \\(dL=\\sum_{b,o}G_{bo}\\,d\\widehat Y_{bo}\\)，交换有限求和的次序：\\[dL=\\sum_{o,h}\\left(\\sum_bG_{bo}A_{bh}\\right)d(W_2)_{oh}.\\]每个权重微分前的系数就是对应梯度，因此 \\(\\nabla_{W_2}L=G^\\top A\\)，形状为 `[O,H]`。同理，偏置被所有样本共享，\\(\\nabla_{b_2}L=\\sum_bG_{b,:}\\)。",
+        "再只改变隐藏激活，有 \\(d\\widehat Y=dA\\,W_2^\\top\\)，于是 \\(\\nabla_A L=GW_2\\)。激活逐元素作用，链式法则给出 \\(\\Delta_1=(GW_2)\\odot\\phi^{\\prime}(Z)\\)；沿第一层重复同一求和，得到 \\(\\nabla_{W_1}L=\\Delta_1^\\top X\\)、\\(\\nabla_{b_1}L=\\sum_b(\\Delta_1)_{b,:}\\) 和 \\(\\nabla_XL=\\Delta_1W_1\\)。这条计算链使用向量—Jacobian 乘积，无需显式保存所有输出对所有参数的完整 Jacobian。",
+        "检查梯度至少有三种互补证据：形状应与被求导变量相同，手写推导应与 autograd 对照，平滑区域内还可用中心有限差分核验。ReLU 的零点不可导，数值扰动跨过折点时，有限差分与框架选用的导数可能不同；测试应避开折点，不应仅通过放宽容差使测试通过。带 Mask 的任务还要重新推导有效分母，BO 不能无条件作为所有损失的分母。",
+        "一个偏置被 B 个样本共享时，其梯度是这些位置贡献之和；若上游 G 已经包含 mean 的分母，不能再额外除一次 B。广播的反向就是沿被扩展的轴求和。类似地，多个分支共用一组权重时，梯度会相加；最终梯度为零既可能是每条路径都为零，也可能是非零路径互相抵消，单看范数不能区分。",
+        "将三行贡献相加，第二层偏置梯度为 \\([0.101666\\ldots,-0.096666\\ldots]\\)，第一层偏置梯度为 \\([0.0415,-0.028666\\ldots,0.038166\\ldots]\\)。两层权重梯度见下表；例如 \\(\\partial L/\\partial(W_1)_{11}=0.08(1)+(-0.0385)(0.5)+0(-1)=0.06075\\)。某行的 ReLU 关闭不会阻止同一权重接受其他行的贡献。代码以 float64 核对全部五组梯度，并对第一层每个权重作中心有限差分。"
+      ],
+      "formula": "\\begin{aligned}G&=\\frac{\\widehat Y-Y}{BO},&\\nabla_{W_2}L&=G^\\top A,&\\nabla_{b_2}L&=\\sum_bG_{b,:},\\\\\\Delta_1&=(GW_2)\\odot\\phi^{\\prime}(Z),&\\nabla_{W_1}L&=\\Delta_1^\\top X,&\\nabla_XL&=\\Delta_1W_1.\\end{aligned}",
+      "takeaway": "权重梯度聚合所有共享位置；mean 的分母必须进入最初的上游梯度。",
+      "example": {
+        "title": "沿同一计算图完成一次 SGD 更新",
+        "steps": [
+          "固定学习率 \\(\\eta=0.1\\)，对四个参数张量使用 \\(\\theta^+=\\theta-\\eta\\nabla_\\theta L\\)。例如 \\((W_1)_{11}:0.7\\to0.693925\\)，\\((b_2)_1:0.1\\to0.089833333\\ldots\\)。X 与 Y 保持不变。",
+          "四组参数都要由旧参数点的梯度同时更新；不能先修改 W₂，再用新 W₂ 重新计算本应属于同一旧点的第一层梯度。manual-backprop 先计算五组导数，再在 no_grad 下统一 step。",
+          "用更新后的参数重新前向，得到 \\(\\widehat Y^+\\) 第一行约为 \\([1.129594,-0.280068]\\)，整体半均方误差约为 \\(0.082768803\\)。这个固定例子的 loss 降低是实测；换一个学习率或跨过激活边界，不保证每一步都下降。",
+          "代码将手写更新后的全部参数与 nn.Module + SGD 的结果比较，并确认原输入未变化。如何把同样的 VJP 自动组织起来见[自动微分](#/learn/autograd)；动量和 AdamW 如何改变更新规则见[优化器](#/learn/optimization)。"
+        ],
+        "conclusion": "前向、目标、反向和更新属于同一组状态；五组梯度中只有四组模型参数交给优化器。完整计算链可以逐项复算，不能由“loss 下降”单独替代梯度正确性验证。"
+      },
+      "lead": "前向例子已经给出了预测和损失，接下来需要计算每个参数应如何影响这个损失。反向传播沿相同的依赖关系传递局部导数，并在共享参数处累加贡献。先延续单样本手算，再推广到批量矩阵形式，可以明确每个转置和求和从哪里来。",
+      "comparison": {
+        "title": "五组导数：公式、形状与本例数值",
+        "columns": [
+          "变量",
+          "梯度形状",
+          "计算规则",
+          "数值（保留六位）"
+        ],
+        "rows": [
+          [
+            "W₂",
+            "[2,3]",
+            "\\(G^\\top A\\)",
+            "[[0.164583, −0.010500, 0.022917], [−0.038750, −0.044333, 0.021583]]"
+          ],
+          [
+            "b₂",
+            "[2]",
+            "沿 Batch 求和 G",
+            "[0.101667, −0.096667]"
+          ],
+          [
+            "W₁",
+            "[3,2]",
+            "\\(\\Delta_1^\\top X\\)",
+            "[[0.060750, −0.198500], [0.074917, 0.015958], [0.030750, −0.031833]]"
+          ],
+          [
+            "b₁",
+            "[3]",
+            "沿 Batch 求和 Δ₁",
+            "[0.041500, −0.028667, 0.038167]"
+          ],
+          [
+            "X",
+            "[3,2]",
+            "Δ₁W₁",
+            "[[0.067667, −0.019333], [−0.031867, 0.039183], [0.023800, −0.047600]]"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "activations",
+      "title": "ReLU、GELU、SiLU 与饱和",
+      "body": [
+        "\\(\\operatorname{ReLU}(x)=\\max(0,x)\\)，在正半轴导数为 1，在负半轴导数为零。PyTorch 在零点采用零导数。某条样本的一个激活为零是正常稀疏性；一个神经元对几乎所有训练样本都落在负区间，且长期无法更新，才值得怀疑为失活。过大的学习率、偏置变化和输入尺度都可能改变激活分布，因此排查应统计一批数据及多个训练步骤。",
+        "GELU 用 xΦ(x) 平滑调制输入，SiLU 使用 x·sigmoid(x)。它们不像 ReLU 那样把整个负半轴精确截成零，但也不意味着梯度永远足够大或训练一定更好。Sigmoid 与 tanh 在输入绝对值很大时会饱和，导数接近零；这在输出范围约束中可能有意义，在深层隐藏网络里则需要关注尺度。不同激活的值域和导数会影响初始化与优化，不能只把名称换掉。",
+        "在一个不跨越 ReLU 零点的局部区域，激活开关可以写成对角矩阵 \\(D(x)\\)，按列向量约定，输入 Jacobian 为 \\(W_2D(x)W_1\\)，其秩受输入维度、输出维度和有效隐藏单元数共同限制。输入跨过边界时 \\(D(x)\\) 改变，网络换成另一段仿射映射。局部低秩与全局只能线性表达不是一回事；非线性能力来自这些区域的组合。",
+        "输出层通常由目标语义决定。实数回归常使用线性输出；分类输出 logits，概率变换交给稳定的损失函数；若动作确实受已声明的固定上下界约束，可以使用缩放后的 tanh，但接近边界时梯度会变小。对所有输出使用 ReLU 会禁止负数预测，在最后一层使用 Softmax 会引入各维和为一的约束，这些都改变了问题定义。",
+        "在贯穿例中，第一条样本的第二个隐藏单元关闭，而其他样本仍能更新它。可在 manual-backprop 中只修改 b1[1]，重新记录 z 的符号和 Δ₁；统计初始化对批量开关分布的影响见[激活与初始化](#/learn/activation-init)。原有手写梯度练习仍使用不同尺寸测试，检验是否理解一般链式法则，而非仅记住这组数字。"
+      ],
+      "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
+      "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
+      "lead": "反向传播中，激活函数通过自己的局部导数调节传向上一层的信号。不同激活不仅改变输出曲线，也改变负区间、饱和区和折点附近的更新方式。应将这些导数性质与隐藏层的表达需求、输出层的目标语义分别对应。"
+    },
+    {
+      "id": "constructive-approximation",
+      "title": "用有限个 ReLU 构造函数：表示能力的可检验证明",
+      "body": [
+        "“MLP 能逼近非线性函数”需要说明函数类别、误差度量和网络规模。先考虑一个可以完整构造的一维问题：给定紧区间 \\([a,b]\\) 和递增节点 \\(a=t_0<t_1<\\cdots<t_K=b\\)，已知实值函数 f 在这些节点上的值。令 \\(m_j=\\frac{f(t_{j+1})-f(t_j)}{t_{j+1}-t_j}\\)，\\(j=0,\\ldots,K-1\\)，它是第 j 个区间的线性插值斜率。",
+        "从 \\(f(a)+m_0(x-a)\\) 出发，在每个内部节点 \\(t_j\\) 加入 \\((m_j-m_{j-1})\\operatorname{ReLU}(x-t_j)\\)。这个新项在 \\(x\\le t_j\\) 时为零，不改变前面的区间；跨过节点后，导数增加 \\(m_j-m_{j-1}\\)。因此 \\(x\\in(t_i,t_{i+1})\\) 时，斜率逐项相消为 \\(m_0+\\sum_{j=1}^i(m_j-m_{j-1})=m_i\\)。函数连续且从 \\(f(a)\\) 出发，逐段便通过全部给定节点。这个证明同时确定了前向值和区间内部的导数。",
+        "在约定区间内 \\(x-a\\ge0\\)，第一段线性项也可写为 \\(m_0\\operatorname{ReLU}(x-a)\\)。因此一个 \\(1\\to K\\to1\\) 的单隐藏层网络就能精确实现该线性插值：第一层每个权重都为 1，偏置为 \\(-t_0,\\ldots,-t_{K-1}\\)；第二层权重依次为 \\(m_0,m_1-m_0,\\ldots,m_{K-1}-m_{K-2}\\)，输出偏置为 \\(f(a)\\)。这是显式给出参数的存在性证明，不需要先宣称训练成功。",
+        "插值准确到什么程度？进一步假设 f 在 \\([a,b]\\) 上二阶连续可微，并令 \\(M=\\sup_{x\\in[a,b]}|f^{\\prime\\prime}(x)|\\)、\\(h=\\max_j(t_{j+1}-t_j)\\)。固定内部点 \\(x\\in(t_j,t_{j+1})\\)，设该段插值为 s，令 \\(\\lambda=\\frac{f(x)-s(x)}{(x-t_j)(x-t_{j+1})}\\)。函数 \\(g(u)=f(u)-s(u)-\\lambda(u-t_j)(u-t_{j+1})\\) 在 \\(t_j\\)、x、\\(t_{j+1}\\) 三点为零；两次使用 Rolle 定理，可找到 \\(\\xi\\) 使 \\(g^{\\prime\\prime}(\\xi)=f^{\\prime\\prime}(\\xi)-2\\lambda=0\\)。因此误差等于 \\(\\frac12 f^{\\prime\\prime}(\\xi)(x-t_j)(x-t_{j+1})\\)。节点处误差本来就是零。",
+        "长度为 \\(\\Delta\\) 的区间内，\\(|(x-t_j)(x-t_{j+1})|\\) 的最大值为 \\(\\frac{\\Delta^2}{4}\\)，发生在中点，所以区间内的统一误差不超过 \\(\\frac{Mh^2}{8}\\)。对 \\(f(x)=x^2\\)、\\([a,b]=[0,1]\\)、K 个等长区间，\\(M=2\\)，最大误差恰为 \\(\\frac1{4K^2}\\)。代码用节点值、每段中点及避开节点的导数三种证据检验构造，宽度 4、8、16 的最大误差分别为 0.015625、0.00390625、0.0009765625。",
+        "这一结论的范围应与推导一致：它是紧区间上一维 \\(C^2\\) 函数的确定性构造；宽度增加带来的误差界依赖 M。连续但不够光滑的函数需要其他误差控制，多维问题需要处理区域划分和维度带来的规模增长，不能直接沿用这条一维 \\(K^{-2}\\) 公式。网络在区间外仍有某种延拓，但以上证明没有对外推误差作保证。",
+        "还应区分表示、学习和泛化。本构造直接使用指定节点的准确函数值，没有研究 SGD 能否从随机初值找到这些参数，也没有涵盖带噪标签、有限采样或数据分布改变。前面建立的反向传播只提供寻找参数的局部更新方向，是否找到这组构造仍需分析优化过程；链式法则可复习 [矩阵微分](#/learn/matrix-grad)。输入信息被读出步骤丢弃时，再大的网络也无法恢复未提供的信息。"
+      ],
+      "formula": "\\begin{gathered}s(x)=f(a)+m_0\\operatorname{ReLU}(x-a)+\\sum_{j=1}^{K-1}(m_j-m_{j-1})\\operatorname{ReLU}(x-t_j),\\quad x\\in[a,b],\\\\ \\|f-s\\|_{\\infty,[a,b]}\\le\\frac{M h^2}{8},\\qquad M=\\sup_{x\\in[a,b]}|f^{\\prime\\prime}(x)|.\\end{gathered}",
+      "lead": "掌握前向和反向计算后，可以进一步问：有限个隐藏单元究竟能够表示什么函数？一维分段线性插值提供了一个能显式写出权重、并直接验证误差的例子。这个构造建立表示能力的依据，同时将“存在一组参数”与“训练能找到它”分开。"
+    },
+    {
+      "id": "initialization-scaling",
+      "title": "初始化与优化几何",
+      "body": [
+        "初始化需要避免信号经过多层后迅速放大或缩小。Xavier 根据输入与输出连接数设置尺度，Kaiming 常用于 ReLU 类网络，根据激活和 fan_in/fan_out 选择增益。这些推导依赖关于输入、权重和独立性的统计近似，不保证任意网络都稳定。nn.Linear 的默认初始化不能简单等同于手工设置 nonlinearity=\"relu\" 的 Kaiming 初始化；若需要后一种，应显式配置并检查权重朝向。",
+        "以 ReLU 为例，零均值独立权重给出 \\(\\mathbb E[z^2]\\approx\\mathrm{fan\\_in}\\,\\operatorname{Var}(w)\\,\\mathbb E[x^2]\\)；对称预激活经 ReLU 后二阶矩减半，因而取 \\(\\operatorname{Var}(w)=\\frac2{\\mathrm{fan\\_in}}\\)。保持的是初始化统计平均下的二阶矩，不是要求激活零均值，也不保证每个 Jacobian 方向都有合适增益。宽度变化时，保持前向尺度与保持反向尺度所需的 fan 还可能不同。",
+        "把整个网络的权重初始化成同一个常数会使同层神经元保持对称；全零 ReLU 网络还可能完全没有有效梯度。另一方面，在残差分支末端等特定结构中采用零初始化可能有设计目的，不能把“任何参数为零都错误”当作规则。理解初始化应同时看拓扑、激活和希望保持的前向/反向量，而不是机械选择一个函数名。",
+        "“多个 Linear 可以合并”只描述函数，不代表参数优化相同。标量 \\(y=abx\\)、\\(x=1\\)、目标为 0 时，\\(L=\\frac12(ab)^2\\)；\\((a,b)=(1,1)\\) 和 (100,0.01) 初始函数都为 \\(y=1\\)，参数梯度却分别是 (1,1) 和 (0.01,100)。相同 SGD 学习率会造成完全不同的函数变化。ReLU 的正齐次性也允许类似缩放：把一个隐藏单元的入边权重与偏置放大 \\(c>0\\)，再把出边权重除以 c，函数不变，但有限步优化、权重衰减和数值精度并不因此等价。",
+        "输入标准化也影响曲率。对固定特征的线性读出，\\(L=\\frac{\\lVert Xw-y\\rVert_2^2}{2B}\\)，Hessian 为 \\(H=\\frac{X^\\top X}{B}\\)。若某方向曲率 \\(\\lambda\\) 很大，误差更新倍率 \\(1-\\eta\\lambda\\) 就要求较小学习率；较小曲率方向又会学得慢。\\(H=\\operatorname{diag}(1,100)\\) 时，\\(\\eta=0.03\\) 会让第二方向按 −2 倍振荡放大，而 \\(\\eta=0.01\\) 又让第一方向每步仅减少 1%。这个简单二次模型解释了“数值全都有限，训练仍然病态”的情况。",
+        "输入包含不同单位时，应先声明量纲和统计流程。训练集拟合的均值、标准差必须随模型一起保存，并在验证与推理中复用。回归目标做标准化后，原单位下误差较大的维度不再天然主导目标；这等价于按标准差平方的倒数加权原始误差，是一个目标选择。推理时还需逆变换。用验证集拟合统计量会造成泄漏，遗漏逆变换则会让正确的标准化预测变成错误的实际动作。",
+        "逐维标准化能调整坐标尺度，却不会消除特征间的相关性：两列几乎重复的特征标准化后仍几乎重复。它也不同于对输出误差重新加权。输入变换影响参数坐标和优化条件，目标标准化影响所用误差度量；在共享有限参数模型中，两者都会影响最终训练结果，但机制不同。"
+      ],
+      "formula": "H=\\frac{X^\\top X}{B},\\quad e_{t+1}^{(i)}=(1-\\eta\\lambda_i)e_t^{(i)};\\qquad (\\tilde{\\hat y}_j-\\tilde y_j)^2=\\frac{(\\hat y_j-y_j)^2}{s_j^2}",
+      "takeaway": "初始化控制传播尺度，输入标准化调整优化坐标，目标标准化改变误差权重。",
+      "focus": {
+        "kind": "易错",
+        "title": "目标标准化也在改变误差的相对权重",
+        "explanation": "若第 j 维目标使用 \\(z_j=\\frac{y_j-\\mu_j}{\\sigma_j}\\)，归一化 MSE 对原单位平方误差的权重就是 \\(\\frac1{\\sigma_j^2}\\)。它能改善优化尺度，却不等于保持原物理单位下所有维度等权。统计量若用验证数据计算，还会引入数据泄漏。",
+        "check": "只在训练集拟合统计量；同时报告归一化损失和反归一化后的逐维误差，核对最终评估指标使用哪一个空间。"
+      },
+      "lead": "能够写出梯度并不意味着各层会在合适的尺度上学习，随机初值可能让信号很快放大或缩小。初始化分析先控制传播的统计量，输入与目标标准化则进一步改变优化坐标和误差权重。把这些机制分开，才能解释有限数值下仍然缓慢或振荡的训练。"
+    },
+    {
+      "id": "objectives",
+      "title": "回归、单标签分类与多标签分类",
+      "body": [
+        "MSE 适合用平方误差定义的连续目标，默认 mean 会对所有元素取平均；[B,O] 的分母因此为 BO。若 O 个维度代表不同单位，或只有部分动作维度有效，需要显式定义权重、Mask 和分母。L1、Huber 等目标对误差的惩罚方式不同，不能仅因数值更小就判断模型更好。把可见性为假的目标填零后直接当真实零监督，会把缺失信息写进学习目标。",
+        "互斥的 C 类分类通常输出 [B,C] logits，CrossEntropyLoss 接收未归一化 logits 与类别索引，内部完成稳定的 LogSoftmax 与负对数似然计算。先手动 Softmax 再传入，会让 API 把概率误当作新的 logits。二分类或多个可以同时成立的标签可使用 BCEWithLogitsLoss，目标与 logits 形状一致；多标签不要求各标签概率和为一。类别索引和概率目标的含义也需要区分。",
+        "序列分类输出 [B,T,C] 时，可以将 logits 展成 [B×T,C]、标签展成 [B×T]，并用有效位筛选；或按所用 API 把类别维放到指定位置。仅凭 shape 能广播不代表监督正确。例如 [B,1] 的预测减去 [B] 目标会得到 [B,B]，把不同样本互相比较。应在损失前断言预测和回归目标形状相同，并对全无效 Batch 制定明确策略。",
+        "对具有有限二阶矩的连续目标，平方误差的最优确定性预测是给定输入后的条件均值。若同一观测下存在两个相距很远的可行动作，均值未必仍是可行动作。此时增加 MLP 宽度不能消除确定性均值目标的局限，需要检查条件信息是否不足，或考虑分布式、混合分量、扩散或流匹配等生成目标。单峰监督的小回归例子不能代表这类多模态问题。 固定的逐维正权重不会改变不受限制预测函数的每维最优条件均值；有限容量和共享参数下的取舍则会改变。若权重还依赖标签，最优值一般变成 \\(\\mathbb E[wY\\mid x]/\\mathbb E[w\\mid x]\\)，需要重新解释学到的统计量。"
+      ],
+      "formula": "L_{\\rm CE}=-z_y+\\log\\sum_{c=1}^{C}\\exp(z_c)",
+      "code": "assert prediction.shape == target.shape\nregression_loss = (prediction - target).square().mean()\nclassification_loss = torch.nn.functional.cross_entropy(logits, class_index)",
+      "codeExplanation": "两个 loss 对应不同任务；实际使用时选择符合监督语义的一项。 本片段依赖已定义且形状正确的 prediction、target、logits、class_index 与 torch；不单独执行两个不同任务的训练。",
+      "example": {
+        "title": "一次静默广播会怎样改变 MSE",
+        "steps": [
+          "两个样本的预测是 [[1],[3]]，形状 [2,1]；标签应为 [[2],[4]]。正确误差为 [-1,-1]，\\(\\operatorname{MSE}=\\frac{1+1}{2}=1\\)。",
+          "若标签被写成 [2,4]，形状 [2]，相减会广播成 [2,2]：误差矩阵为 [[-1,-3],[1,-1]]，\\(\\operatorname{MSE}=\\frac{1+9+1+1}{4}=3\\)。",
+          "错误目标把每个样本的预测与整个 Batch 的标签比较。正确目标对两个预测的梯度均为 -1，错误目标的梯度却是 [-2,0]。"
+        ],
+        "conclusion": "即使 loss 有限且能下降，训练任务也可能已经变了。回归损失前应显式检查预测与标签的完整形状。"
+      },
+      "focus": {
+        "kind": "常用",
+        "title": "先确定监督的概率含义，再决定输出层",
+        "explanation": "互斥单标签分类通常输出 C 个 logits，再交给 CrossEntropyLoss；多标签分类中每一维是独立的二元目标，常用 BCEWithLogitsLoss；连续回归需要根据目标范围决定最后一层。Softmax 不适用于上述所有任务。",
+        "check": "先写下一个样本的标签：是一个类别索引、多个独立的0/1，还是连续向量；再核对标签 dtype、模型输出和损失输入。"
+      },
+      "comparison": {
+        "title": "输出、标签与损失的常用组合",
+        "columns": [
+          "任务",
+          "模型输出",
+          "标签",
+          "常用损失与检查"
+        ],
+        "rows": [
+          [
+            "连续向量回归",
+            "[B,O] 连续值",
+            "同形连续标签",
+            "MSE / L1；先检查单位、范围和归约轴"
+          ],
+          [
+            "互斥单标签分类",
+            "[B,C] 未归一化 logits",
+            "[B] long 类别索引",
+            "CrossEntropyLoss；标准用法不先做 Softmax"
+          ],
+          [
+            "多标签二元判断",
+            "[B,C] 每类独立 logits",
+            "[B,C] 浮点 0/1",
+            "BCEWithLogitsLoss；各维不要求总和为1"
+          ]
+        ]
+      },
+      "lead": "相同的网络输出可以被解释为实数预测、类别分数或多个独立标签，损失会据此定义不同的学习问题。输出变换、监督形状与归约分母必须共同匹配这个解释。除了 API 是否使用正确，还要判断目标的最优预测是否符合实际需要。",
+      "codeKind": "fragment"
+    },
+    {
+      "id": "training-loop",
+      "title": "把小网络训练成一个可检查的实验",
+      "body": [
+        "一个训练步骤至少包含读取正确的 Batch、前向、按声明的归约计算损失、清除旧梯度、反向和更新。zero_grad 放在 backward 前，optimizer.step 放在 backward 后。训练多个微批次时则有意识地累积梯度，不能一边累积一边清空。参数必须既注册在 Module 中又被优化器管理；需要更新的张量被 detach，或在创建优化器后才新加模块，都可能出现损失有值却没有预期学习的情况。 具体而言，普通 Python 列表不会像 ModuleList 那样注册子模块；在 forward 中每次新建 Linear 会不断生成新参数。检查 named_parameters 和 step 前后的参数位移，可区分结构存在、梯度存在与实际更新这三个条件。",
+        "调试时先固定一小批数据，关闭不必要的随机增强，检查网络能否降低这批数据的损失。同时记录输入/目标范围、预测均值、各层梯度范数和参数更新幅度。训练损失下降只说明这条固定优化链路在工作；验证泛化需要独立数据划分、正确 eval 模式及任务指标。不能用“成功记住一个 Batch”替代性能评估，也不应在完全无法拟合少量干净样本时先堆复杂正则化。",
+        "train()/eval() 控制 Dropout、BatchNorm 等模块行为，no_grad() 控制是否记录求导图，它们解决不同问题。推理通常同时 eval 与 no_grad；训练冻结骨干时，如果骨干前面还有需要学习的输入适配器，不能把整个骨干前向无条件放进 no_grad。第二个完整演示保存了输入/输出统计缓冲区，展示从原始单位到标准化训练再回到原始单位的完整过程，并分别报告训练和留出损失。"
+      ],
+      "takeaway": "通过小批数据、梯度和实际参数位移检查优化链路，再分析大规模训练与泛化。",
+      "lead": "前面的局部计算需要在同一批参数上反复发生，才构成可检查的学习过程。一次更新必须连接正确数据、明确损失、可达梯度和实际参数变化。用固定小数据建立这条闭环，可以把基本实现错误与后续泛化问题分开。"
+    },
+    {
+      "id": "tokens-readout",
+      "title": "非线性与池化的顺序",
+      "body": [
+        "对 [B,T,D] 逐 token 应用同一个 MLP，不会在该 MLP 内交换 token 信息。若输入来自已经混合上下文的 Transformer，单个 token 可能含有全局信息，但那是上游网络的结果。要把 T 个 token 变成一个预测，需声明读出方式：选定汇聚 token、有效平均池化、固定顺序拼接，或用查询注意力读出。这些方式的假设和计算开销不同，不是等价的 shape 操作。",
+        "有效平均池化需要在特征维广播 [B,T] 的 Mask，分母是每条样本的有效 token 数。Padding 值可能不为零；甚至可能包含非有限占位值，因此先用 masked_fill 或 where 替换无效位置更稳妥，单纯乘零不能消除 NaN。全无效样本应拒绝或使用明确定义的缺失分支。把整批有效数作为每条样本的分母，会错误地让样本之间互相影响。",
+        "平均池化对输入 token 的共同重排不变。若上游特征没有编码必要的空间、相机或时间信息，两个不同场景可能得到同一均值，之后再大的 MLP 也无法区分。位置编码可能在特征中保留一部分信息，但均值映射仍不是一般可逆的。具身模型可把本体状态或任务条件与视觉表示拼接后读出，也可使用更结构化的 token；选择应通过信息保留、监督一致性和受控消融来判断。",
+        "池化前后的 MLP 并不等价。比较 \\(\\rho(\\operatorname{mean}h)\\) 与 \\(\\rho(\\operatorname{mean}\\phi(h))\\)：前者只看到原特征均值，后者先把每个 token 映射成可学习的特征，再统计这些特征的均值。集合 \\(\\{-1,1\\}\\) 与 \\(\\{0,0\\}\\) 的原均值同为 0，但取 \\(\\phi=\\operatorname{ReLU}\\) 后，均值分别是 0.5 与 0，后续读出因此可以区分。调整非线性位置改变了被保留的统计信息，并非只改网络宽度。",
+        "先进行非线性映射再汇聚，仍不会自动保留顺序信息；同一个多重集合共同重排后的输出仍相同。平均还会丢失整体重复次数：{a,b} 与 {a,a,b,b} 的平均嵌入相同，若任务依赖数量，需要显式计数、求和或另一种保留数量的表示。Deep Sets 研究的是这种置换不变结构；它不意味着任意平均池化都能表示所有集合任务。上游位置和上下文编码改变了 token 内含的信息，应与当前读出层的作用分开分析。"
+      ],
+      "formula": "\\bar h_b=\\frac{\\sum_{t=1}^{T}m_{bt}h_{bt}}{\\sum_{t=1}^{T}m_{bt}},\\qquad \\hat y_b=f_\\theta([\\bar h_b;s_b])",
+      "takeaway": "非线性在池化前还是池化后，决定读出能看到哪种统计量；排列不变性与数量信息是另外两项结构假设。",
+      "example": {
+        "title": "为什么要先选出有效 token，再求平均",
+        "steps": [
+          "一条序列的有效标量 token 为 2、6，第三个位置是 Padding。有效平均是 \\(\\frac{2+6}{2}=4\\)；填零后直接对长度3取 mean 得到 \\(\\frac83\\)。",
+          "把 Padding 换成1000，若未使用 Mask，均值会变成336。换成 NaN 后，先乘0也不能清除它，因为 NaN×0 仍为 NaN。",
+          "正确做法先用 masked_fill 或等价选择把无效输入替换为0，再以有效数量2归约；若整条序列有效数为0，应按明确约定拒绝或单独处理。"
+        ],
+        "conclusion": "Mask 同时规定参与求和的元素和归约分母。追加任意无效 token 后输出不变，是一个有意义的测试。"
+      },
+      "focus": {
+        "kind": "常用",
+        "title": "通用池化模型的能力边界",
+        "explanation": "对 token 均值做 MLP 可以解决依赖集合统计的分类或回归，但它默认不区分共同重排后的序列。顺序任务需要位置、时序交互或其他保留顺序的机制。此处的合成集合回归任务用于验证有效汇聚与非线性映射。",
+        "check": "将 token 与 Mask 一起重新排列：均值模型的输出应相同；若真实任务要求输出随顺序改变，就需要调整表示或结构。"
+      },
+      "code": "import torch\n\na = torch.tensor([-1., 1.])\nb = torch.tensor([0., 0.])\nassert a.mean() == b.mean()\nassert a.relu().mean().item() == 0.5\nassert b.relu().mean().item() == 0.\ntorch.testing.assert_close(a.relu().mean(), a.repeat(2).relu().mean())\nprint(\"mean before ReLU:\", a.mean().relu().item(), b.mean().relu().item())\nprint(\"ReLU before mean:\", a.relu().mean().item(), b.relu().mean().item())",
+      "codeExplanation": "前两项均值相同，因此池化之后再加多少确定性层都无法区分；先做非线性映射可以保留这一差异。最后一个断言说明平均嵌入仍不能识别整体重复次数。",
+      "lead": "MLP 可以在每个 token 上独立工作，但许多任务最终需要从多个位置产生一个输出。读出步骤决定哪些位置关系或统计量被保留，非线性放在汇聚前后也会改变结果。应先分析读出能区分什么输入，再选择头部宽度和深度。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "diagnosis",
+      "title": "容量、泛化与故障定位的顺序",
+      "body": [
+        "训练损失高时，优先检查目标是否可预测、样本与标签是否对齐、数值范围是否合理、损失分母是否正确，以及参数是否真的更新。检查 grad=None 与数值为零的梯度有助于区分没有参与计算和导数为零，但要结合计算图：并非所有参数都应在每条分支中出现。梯度存在也不代表更新有效，还要看优化器参数列表、学习率、裁剪和精度缩放。",
+        "若小批数据可以拟合，而独立验证集表现差，才继续分析数据覆盖、模型容量、正则化和划分方式。训练/验证来自同一条轨迹的相邻帧可能让结果过于乐观；验证集上反复调参也会影响独立性。增加隐藏宽度能提高某些函数的拟合能力，但可能加剧记忆噪声。Dropout、权重衰减和早停各有作用，不能取代检查标签与输入的因果关系。",
+        "线性读出与非线性 MLP 读出的比较可以帮助判断表示的可用程度，但它不是对“信息是否存在”的绝对检验：有限数据、优化难度和评价指标都会影响结果。头部训练成功不等于冻结骨干学到了新能力；同样，训练失败也不直接证明骨干完全没有信息。报告实验时应说明骨干是否冻结、读出头结构、输入池化、目标标准化、数据划分，以及实际评价的量。",
+        "读出实验还应防止使用未来信息。例如预测当前动作时，输入特征若由整段轨迹包含未来帧的编码器生成，离线拟合可以很好，实际执行却无法获得相同条件。检查特征缓存时应保存其模型版本、处理方式和时间范围，核对训练所需的信息在推理时确实可用。这样的输入可用性检查与选择网络宽度同样重要。"
+      ],
+      "takeaway": "将数据、接口、优化、容量和泛化逐层分开验证，避免用一个损失曲线解释所有问题。",
+      "lead": "小网络也会出现损失不降或验证较差，但这些现象可能来自不同环节。诊断应沿输入信息、计算图、参数更新和数据分布逐步排除假设。只有基础训练链路成立以后，容量或正则化的比较才具有清楚的含义。"
+    }
+  ],
+  "implementations": [
+    {
+      "id": "manual-backprop",
+      "title": "手写前向与反传：对照 autograd 和有限差分",
+      "description": "同一个 17 参数、2→3→2 的网络贯穿三条输入、半均方误差、五组导数与一次 SGD；手算、autograd、有限差分及更新后的参数形成四种互相对应的证据。",
+      "runtime": "torch",
+      "source": "import torch\nfrom torch import nn\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\ndtype = torch.float64\n# 每一行是一条样本；参数形状与 nn.Linear 完全相同。\nx = torch.tensor([[1., -2.], [.5, 1.], [-1., .25]], dtype=dtype)\ny = torch.tensor([[.5, -.1], [.7, .4], [-.2, .8]], dtype=dtype)\nw1 = torch.tensor([[.7, -.3], [-.4, .8], [.5, .2]], dtype=dtype)\nb1 = torch.tensor([.2, .1, .4], dtype=dtype)\nw2 = torch.tensor([[.6, -.2, .4], [-.3, .5, .7]], dtype=dtype)\nb2 = torch.tensor([.1, -.2], dtype=dtype)\n\n# 前向：B×2 -> B×3 -> B×2；平方误差对所有输出元素平均。\ndef forward(x, w1, b1, w2, b2):\n    z = x @ w1.T + b1\n    h = z.clamp_min(0)\n    prediction = h @ w2.T + b2\n    return prediction, z, h\n\nprediction, z, h = forward(x, w1, b1, w2, b2)\nerror = prediction - y\nloss = error.square().mean() / 2\nassert z.abs().min() > 1e-3  # 有限差分不跨过 ReLU 的折点。\n\n# 手写向量—Jacobian 乘积，不构造庞大的完整 Jacobian。\ndprediction = error / error.numel()\ndw2 = dprediction.T @ h\ndb2 = dprediction.sum(0)\ndh = dprediction @ w2\ndz = dh * (z > 0).to(dtype)\ndw1 = dz.T @ x\ndb1 = dz.sum(0)\ndx = dz @ w1\nmanual = [dx, dw1, db1, dw2, db2]\nassert torch.equal(dz[z < 0], torch.zeros_like(dz[z < 0]))\n\n# 独立让 autograd 求导；不要在手写结果上再调用 backward。\nvariables = [v.clone().requires_grad_() for v in (x, w1, b1, w2, b2)]\nxa, wa1, ba1, wa2, ba2 = variables\nreference, _, _ = forward(xa, wa1, ba1, wa2, ba2)\nreference_loss = (reference - y).square().mean() / 2\nautomatic = torch.autograd.grad(reference_loss, variables)\nfor name, actual, expected in zip((\"x\", \"w1\", \"b1\", \"w2\", \"b2\"), manual, automatic):\n    torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-10)\n    print(name, tuple(actual.shape), \"gradient agrees\")\n\n# 第三个证据：对第一层每个权重进行中心有限差分。\nepsilon = 1e-6\nfinite = torch.zeros_like(w1)\nfor row in range(w1.shape[0]):\n    for column in range(w1.shape[1]):\n        plus, minus = w1.clone(), w1.clone()\n        plus[row, column] += epsilon\n        minus[row, column] -= epsilon\n        p_plus = forward(x, plus, b1, w2, b2)[0]\n        p_minus = forward(x, minus, b1, w2, b2)[0]\n        l_plus = (p_plus - y).square().mean() / 2\n        l_minus = (p_minus - y).square().mean() / 2\n        finite[row, column] = (l_plus - l_minus) / (2 * epsilon)\ntorch.testing.assert_close(dw1, finite, rtol=1e-7, atol=1e-8)\n\n# 将同一组参数装进 nn.Module，验证权重朝向和偏置广播。\nmodel = nn.Sequential(nn.Linear(2, 3), nn.ReLU(), nn.Linear(3, 2)).to(dtype)\nwith torch.no_grad():\n    model[0].weight.copy_(w1)\n    model[0].bias.copy_(b1)\n    model[2].weight.copy_(w2)\n    model[2].bias.copy_(b2)\ntorch.testing.assert_close(model(x), prediction)\nassert sum(p.numel() for p in model.parameters()) == 17\nprint(\"loss =\", round(loss.item(), 6))\nprint(\"通过：前向、五组梯度、有限差分和 17 个参数。\")\n\n# 使用刚刚计算的旧参数梯度，同时更新四组参数；输入不由 optimizer 管理。\nlearning_rate = 0.1\nexpected_parameters = [parameter - learning_rate * gradient\n                       for parameter, gradient in zip((w1, b1, w2, b2), (dw1, db1, dw2, db2))]\ninput_before = x.clone()\noptimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)\noptimizer.zero_grad(set_to_none=True)\nmodule_loss = (model(x) - y).square().mean() / 2\nmodule_loss.backward()\noptimizer.step()\nfor actual, expected in zip(model.parameters(), expected_parameters):\n    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)\ntorch.testing.assert_close(x, input_before, rtol=0, atol=0)\nwith torch.no_grad():\n    updated_prediction = model(x)\n    updated_loss = (updated_prediction - y).square().mean() / 2\nassert abs(updated_loss.item() - 0.08276880316466285) < 1e-12\nassert updated_loss < loss\nprint(\"one SGD step:\", loss.item(), \"->\", updated_loss.item())\nprint(\"first updated prediction:\", updated_prediction[0].tolist())\nprint(\"输入保持不变；四组参数的手写更新与 SGD 一致。\")\n",
+      "explanations": [
+        {
+          "lines": "1–13",
+          "text": "建立 float64 小例子，权重布局与 PyTorch 一致，避免方阵掩盖转置错误。"
+        },
+        {
+          "lines": "16–25",
+          "text": "缓存每个中间张量，明确损失是对所有输出元素的半均方误差，并避开 ReLU 折点。"
+        },
+        {
+          "lines": "28–37",
+          "text": "从损失的上游梯度开始，按链式法则计算输入与两层参数梯度。"
+        },
+        {
+          "lines": "40–47",
+          "text": "复制原始变量让 autograd 独立求导，逐张量核对结果。"
+        },
+        {
+          "lines": "50–62",
+          "text": "中心有限差分给第一层梯度提供第三种检查证据。"
+        },
+        {
+          "lines": "65–74",
+          "text": "复制同一组权重验证 nn.Module 前向，并检查参数总数。"
+        },
+        {
+          "lines": "76–96",
+          "text": "四组参数统一使用旧点梯度，比较手动更新与真正 SGD 的结果；输入只用来验证导数，不加入优化器。更新后的 loss 只描述这一组参数与学习率。"
+        }
+      ],
+      "expected": "五组手写梯度与 autograd 一致；第一层梯度与中心有限差分一致；nn.Linear 前向一致，共 17 个参数。 固定学习率 0.1 时半均方误差从约 0.092791667 变为 0.082768803；四组参数与手工更新一致，输入保持不变。"
+    },
+    {
+      "id": "readout-training",
+      "title": "完整合成序列回归：有效池化、标准化、更新和恢复",
+      "description": "构造只依赖有效 token 均值的合成回归任务，以 CPU 训练小 MLP；训练统计随 state_dict 一起保存，留出误差与训练误差分别报告。",
+      "runtime": "torch",
+      "source": "import torch\nfrom torch import nn\n\ntorch.manual_seed(17)\ntorch.set_num_threads(1)\n\n# 合成任务刻意只依赖有效 token 的均值，不能据此推断空间定位能力。\ncount, time, features = 192, 5, 4\nraw = torch.randn(count, time, features) * torch.tensor([1., 10., .1, 3.])\nlengths = torch.randint(1, time + 1, (count,))\nvalid = torch.arange(time)[None, :] < lengths[:, None]\nraw = raw.masked_fill(~valid[..., None], 1000.)\n\ndef masked_mean(tokens, mask):\n    if mask.dtype != torch.bool or mask.shape != tokens.shape[:2]:\n        raise ValueError(\"mask 必须是与 B,T 对齐的 bool 张量\")\n    denominator = mask.sum(1, keepdim=True)\n    if (denominator == 0).any():\n        raise ValueError(\"每条样本至少需要一个有效 token\")\n    clean = tokens.masked_fill(~mask[..., None], 0)\n    return clean.sum(1) / denominator\n\npooled = masked_mean(raw, valid)\nbase = pooled / torch.tensor([1., 10., .1, 3.])\ntarget = torch.stack((.7 * base[:, 0].sin() + .3 * base[:, 1] * base[:, 2],\n                      .5 * base[:, 2] - .4 * base[:, 3].square()), dim=-1)\ntrain_x, test_x = pooled[:144], pooled[144:]\ntrain_y, test_y = target[:144], target[144:]\n# 只使用训练集统计；标准化目标也就明确了各输出维度的损失权重。\nx_mean = train_x.mean(0)\nx_std = train_x.std(0, correction=0).clamp_min(1e-6)\ny_mean = train_y.mean(0)\ny_std = train_y.std(0, correction=0).clamp_min(1e-6)\n\nclass Readout(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.register_buffer(\"x_mean\", x_mean.clone())\n        self.register_buffer(\"x_std\", x_std.clone())\n        self.register_buffer(\"y_mean\", y_mean.clone())\n        self.register_buffer(\"y_std\", y_std.clone())\n        self.network = nn.Sequential(nn.Linear(features, 32), nn.SiLU(), nn.Linear(32, 2))\n        for layer in self.network:\n            if isinstance(layer, nn.Linear):\n                nn.init.xavier_uniform_(layer.weight)\n                nn.init.zeros_(layer.bias)\n\n    def forward(self, x):\n        return self.network((x - self.x_mean) / self.x_std)\n\n    def predict(self, x):\n        return self(x) * self.y_std + self.y_mean\n\nmodel = Readout()\noptimizer = torch.optim.AdamW(model.parameters(), lr=.02, weight_decay=1e-4)\nnormalized_target = (train_y - model.y_mean) / model.y_std\nwith torch.no_grad():\n    initial = (model(train_x) - normalized_target).square().mean().item()\nfirst_weight = model.network[0].weight.detach().clone()\nmodel.train()\nfor step in range(240):\n    optimizer.zero_grad(set_to_none=True)\n    prediction = model(train_x)\n    loss = (prediction - normalized_target).square().mean()\n    loss.backward()\n    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())\n    if step == 0:\n        print(\"initial gradient norm =\", model.network[0].weight.grad.norm().item())\n    optimizer.step()\n\nmodel.eval()\nwith torch.no_grad():\n    final = (model(train_x) - normalized_target).square().mean().item()\n    holdout_mse = (model.predict(test_x) - test_y).square().mean().item()\nassert final < initial * .15  # 只检查这个固定合成任务的优化链路。\nassert not torch.equal(first_weight, model.network[0].weight)\nassert torch.isfinite(torch.tensor(holdout_mse))\n# 将无效内容改成 NaN，仍应得到同一有效均值。\npoisoned = raw.masked_fill(~valid[..., None], float(\"nan\"))\ntorch.testing.assert_close(masked_mean(poisoned, valid), pooled)\n# state_dict 同时包含网络参数和预处理统计。\nrestored = Readout()\nrestored.load_state_dict(model.state_dict())\nwith torch.no_grad():\n    torch.testing.assert_close(restored.predict(test_x), model.predict(test_x))\nprint(f\"train normalized MSE: {initial:.6f} -> {final:.6f}\")\nprint(f\"holdout MSE in original units: {holdout_mse:.6f}\")\nprint(\"通过：有效池化、训练更新、有限验证损失与含统计量的恢复。\")\n",
+      "explanations": [
+        {
+          "lines": "1–12",
+          "text": "生成不同长度、不同输入尺度的 token；无效区域故意填大值。"
+        },
+        {
+          "lines": "14–21",
+          "text": "先清除无效值，使用每条样本自己的有效数；拒绝全无效行。"
+        },
+        {
+          "lines": "23–33",
+          "text": "构造可学习的合成目标，并只使用训练切分拟合统计量。"
+        },
+        {
+          "lines": "35–52",
+          "text": "注册统计缓冲区和 MLP，明确训练输出为标准化值，predict 才恢复原单位。"
+        },
+        {
+          "lines": "54–69",
+          "text": "完整执行清梯度、前向、反向和更新，检查所有参数梯度。"
+        },
+        {
+          "lines": "71–88",
+          "text": "报告留出误差，验证 Padding 不变性、参数确实更新，以及 checkpoint 包含预处理统计。"
+        }
+      ],
+      "expected": "固定合成训练损失显著降低，所有梯度有限；Padding 改成 NaN 不改变池化；恢复后预测一致。留出损失只描述这个合成任务。"
+    },
+    {
+      "id": "constructive-spline",
+      "title": "构造 ReLU 插值网络并核对误差阶与导数",
+      "description": "不用优化器，直接把分段线性插值写成 \\(1\\to K\\to1\\) 网络，分别核对节点、最大误差和分段斜率。",
+      "runtime": "torch",
+      "source": "import torch\nfrom torch import nn\n\ntorch.set_num_threads(1)\ndtype = torch.float64\n\ndef interpolation_mlp(knots, values):\n    \"\"\"仅在 [knots[0], knots[-1]] 上使用；固定参数实现线性插值。\"\"\"\n    if knots.ndim != 1 or values.shape != knots.shape or knots.numel() < 2:\n        raise ValueError(\"需要至少两个一维节点和同形函数值\")\n    if not torch.all(knots[1:] > knots[:-1]):\n        raise ValueError(\"节点必须严格递增\")\n    slopes = (values[1:] - values[:-1]) / (knots[1:] - knots[:-1])\n    changes = torch.cat((slopes[:1], slopes[1:] - slopes[:-1]))\n    net = nn.Sequential(nn.Linear(1, len(slopes)), nn.ReLU(), nn.Linear(len(slopes), 1)).to(dtype)\n    with torch.no_grad():\n        net[0].weight.fill_(1.)\n        net[0].bias.copy_(-knots[:-1])\n        net[2].weight.copy_(changes[None, :])\n        net[2].bias.copy_(values[:1])\n    return net\n\nfor intervals in (4, 8, 16):\n    knots = torch.linspace(0., 1., intervals + 1, dtype=dtype)\n    net = interpolation_mlp(knots, knots.square())\n    torch.testing.assert_close(net(knots[:, None]).squeeze(-1), knots.square())\n    midpoints = (knots[:-1] + knots[1:]) / 2\n    error = net(midpoints[:, None]).squeeze(-1) - midpoints.square()\n    # 对 x²，每一段中点误差恰好是 h²/4，并非从训练曲线拟合的经验率。\n    torch.testing.assert_close(error, torch.full_like(error, 1 / (4 * intervals ** 2)))\n    probe = (knots[:-1] + (knots[1:] - knots[:-1]) / 3).requires_grad_()\n    slope = torch.autograd.grad(net(probe[:, None]).sum(), probe)[0]\n    expected_slope = (knots[1:].square() - knots[:-1].square()) / (knots[1:] - knots[:-1])\n    torch.testing.assert_close(slope, expected_slope)\n    print(f\"width={intervals}, max_error={error.max().item():.8f}, verified slopes\")\n\nprint(\"这是构造性表示实验，没有执行优化；它不保证训练能找到这组参数，也不刻画区间外误差。\")\n",
+      "explanations": [
+        {
+          "lines": "1–6",
+          "text": "使用 float64；这个实验的参数全部由插值节点确定，结果不依赖随机初始化。"
+        },
+        {
+          "lines": "7–22",
+          "text": "斜率的相邻差形成 ReLU 的输出系数，阈值由第一层偏置实现；定义域限定在节点区间内。"
+        },
+        {
+          "lines": "23–37",
+          "text": "分别检验插值节点、\\(x^2\\) 在中点的精确误差，以及避开折点后 Autograd 得到的区间斜率。"
+        }
+      ],
+      "expected": "宽度 4、8、16 时，\\(x^2\\) 的最大插值误差分别是 0.015625、0.00390625、0.0009765625；全部节点值和区间斜率一致。没有执行训练，结果不能解释为优化收敛率。"
+    }
+  ],
+  "labs": [
+    {
+      "id": "affine-from-loops",
+      "level": "入门",
+      "title": "用标准库写出仿射层并数参数",
+      "runtime": "python",
+      "prompt": "实现 affine_batch(x, weight, bias)，x 是 \\(B\\times D\\) 列表，weight 使用 \\(O\\times D\\) 约定，bias 为长度 O 列表；同时实现 parameter_count(widths)，统计全部相邻有偏置 Linear 的参数量。矩阵必须非空、每行长度一致，维度不匹配时抛 ValueError。不得使用第三方库。",
+      "starter": "def affine_batch(x, weight, bias):\n    # TODO: 核对三个对象的形状，逐样本逐输出做内积。\n    raise NotImplementedError(\"实现仿射层\")\n\ndef parameter_count(widths):\n    # TODO: 每层统计权重与偏置；widths 至少包含两个正整数。\n    raise NotImplementedError(\"计算参数量\")\n",
+      "solution": "def affine_batch(x, weight, bias):\n    if not x or not weight or not x[0]:\n        raise ValueError(\"矩阵必须非空\")\n    dimension = len(x[0])\n    if any(len(row) != dimension for row in x + weight):\n        raise ValueError(\"输入和权重的特征维必须相同\")\n    if len(bias) != len(weight):\n        raise ValueError(\"每个输出需要一个偏置\")\n    return [[sum(value * coefficient for value, coefficient in zip(row, w)) + b\n             for w, b in zip(weight, bias)] for row in x]\n\ndef parameter_count(widths):\n    if len(widths) < 2 or any(type(n) is not int or n <= 0 for n in widths):\n        raise ValueError(\"至少需要输入、输出两个正整数维度\")\n    return sum(before * after + after for before, after in zip(widths, widths[1:]))\n",
+      "tests": "x = [[1., 2., -1.], [0., -2., 3.]]\nw = [[2., -1., .5], [-3., 4., 1.]]\nassert affine_batch(x, w, [.5, -1.]) == [[0., 3.], [4., -6.]]\nassert affine_batch([[2.]], [[3.]], [-1.]) == [[5.]]\nassert parameter_count([6, 8, 3]) == 83\nassert parameter_count([2, 3, 2]) == 17\nfor bad_args in [([], w, [0, 0]), ([[1, 2]], w, [0, 0]), (x, w, [0])]:\n    try:\n        affine_batch(*bad_args)\n        raise AssertionError(\"应拒绝无效形状\")\n    except ValueError:\n        pass\nfor widths in [[], [2], [2, 0, 1], [2, 2.5, 1]]:\n    try:\n        parameter_count(widths)\n        raise AssertionError(\"应拒绝无效网络宽度\")\n    except ValueError:\n        pass\nprint(\"通过：非方形权重、Batch 共享、偏置和参数量。\")\n",
+      "hints": [
+        "输出的每个元素对应某一条输入行与某一条权重行的内积。",
+        "偏置个数是输出维度，不随 Batch 大小变化。"
+      ],
+      "explanation": "非方形 2×3 权重可以暴露把 W 当作 \\(D\\times O\\) 的错误；第二条样本确保所有样本复用同一参数。\\(6\\to8\\to3\\) 的参数量为 \\(6\\times8+8+8\\times3+3=83\\)。"
+    },
+    {
+      "id": "manual-gradient",
+      "level": "应用",
+      "title": "手写两层 ReLU 网络的全部梯度",
+      "runtime": "torch",
+      "prompt": "实现 manual_gradients(x,target,w1,b1,w2,b2)，返回 loss 和字典 grads，键为 x、w1、b1、w2、b2。损失固定为 0.5*((prediction-target)**2).mean()。只使用张量计算，函数内不得调用 backward、autograd.grad 或有限差分；ReLU 在零点导数取 0。",
+      "starter": "import torch\n\ndef manual_gradients(x, target, w1, b1, w2, b2):\n    # TODO: 前向缓存，再按链式法则返回五组梯度。\n    raise NotImplementedError(\"推导并实现 MLP 梯度\")\n",
+      "solution": "import torch\n\ndef manual_gradients(x, target, w1, b1, w2, b2):\n    z = x @ w1.T + b1\n    hidden = z.clamp_min(0)\n    prediction = hidden @ w2.T + b2\n    if prediction.shape != target.shape:\n        raise ValueError(\"预测和回归目标必须完全同形\")\n    error = prediction - target\n    loss = error.square().mean() / 2\n    upstream = error / error.numel()\n    dz = (upstream @ w2) * (z > 0).to(z.dtype)\n    grads = {\"x\": dz @ w1, \"w1\": dz.T @ x, \"b1\": dz.sum(0),\n             \"w2\": upstream.T @ hidden, \"b2\": upstream.sum(0)}\n    return loss, grads\n",
+      "tests": "torch.manual_seed(11)\ndtype = torch.float64\nvalues = [torch.randn(4, 3, dtype=dtype), torch.randn(5, 3, dtype=dtype),\n          torch.randn(5, dtype=dtype), torch.randn(2, 5, dtype=dtype),\n          torch.randn(2, dtype=dtype)]\ntarget = torch.randn(4, 2, dtype=dtype)\nloss, result = manual_gradients(values[0], target, *values[1:])\nauto_values = [v.clone().requires_grad_() for v in values]\nx, w1, b1, w2, b2 = auto_values\nprediction = torch.relu(x @ w1.T + b1) @ w2.T + b2\nexpected_loss = (prediction - target).square().mean() / 2\nexpected = torch.autograd.grad(expected_loss, auto_values)\ntorch.testing.assert_close(loss, expected_loss)\nfor key, gradient in zip((\"x\", \"w1\", \"b1\", \"w2\", \"b2\"), expected):\n    torch.testing.assert_close(result[key], gradient, rtol=1e-10, atol=1e-10)\n# 重复整个 Batch 不改变平均损失及参数梯度。\ndouble_loss, double_grads = manual_gradients(values[0].repeat(2, 1), target.repeat(2, 1), *values[1:])\ntorch.testing.assert_close(double_loss, loss)\nfor key in (\"w1\", \"b1\", \"w2\", \"b2\"):\n    torch.testing.assert_close(double_grads[key], result[key])\n# 所有预激活都为负：第一层与第二层权重的梯度均为零，输出偏置仍可学习。\na = torch.ones(2, 3, dtype=dtype)\n_, inactive = manual_gradients(a, torch.ones(2, 2, dtype=dtype),\n    torch.zeros(4, 3, dtype=dtype), -torch.ones(4, dtype=dtype),\n    torch.ones(2, 4, dtype=dtype), torch.zeros(2, dtype=dtype))\nassert all(torch.count_nonzero(inactive[k]) == 0 for k in (\"x\", \"w1\", \"b1\", \"w2\"))\nassert torch.count_nonzero(inactive[\"b2\"]) == 2\nprint(\"通过：全部梯度、平均归约和失活支路。\")\n",
+      "hints": [
+        "由损失定义先写出 `upstream = (prediction - target) / (B * O)`。",
+        "每个偏置在 Batch 上共享，因此偏置梯度沿 Batch 轴求和。",
+        "第一层反向要先乘 W2，再逐元素乘 ReLU 导数。"
+      ],
+      "explanation": "autograd 对照检查方向和链式法则，重复 Batch 检查 mean 的分母，完全负预激活检查局部零导数。这个函数返回的是显式计算出的梯度，PyTorch 不会自动把它们写入参数的 .grad。"
+    },
+    {
+      "id": "masked-readout",
+      "level": "诊断",
+      "title": "实现不受 Padding 污染的序列 MLP",
+      "runtime": "torch",
+      "prompt": "实现 MaskedMeanHead(input_dim,hidden_dim,output_dim)。属性 network 必须为 Linear→GELU→Linear，两层 Linear 均带偏置，GELU 使用默认精确形式；forward(tokens,mask) 接收 [B,T,D] 和 bool [B,T]，先有效平均池化再过 network，返回 [B,O]。拒绝 Mask 形状错误或含全无效样本的 Batch。无效 token 即使含 NaN 也不能污染预测或输入梯度。",
+      "starter": "import torch\nfrom torch import nn\n\nclass MaskedMeanHead(nn.Module):\n    def __init__(self, input_dim, hidden_dim, output_dim):\n        super().__init__()\n        # TODO: 注册 network。\n\n    def forward(self, tokens, mask):\n        # TODO: 检查合同、有效池化、MLP。\n        raise NotImplementedError(\"实现 MaskedMeanHead\")\n",
+      "solution": "import torch\nfrom torch import nn\n\nclass MaskedMeanHead(nn.Module):\n    def __init__(self, input_dim, hidden_dim, output_dim):\n        super().__init__()\n        self.network = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.GELU(),\n                                     nn.Linear(hidden_dim, output_dim))\n\n    def forward(self, tokens, mask):\n        if tokens.ndim != 3 or mask.dtype != torch.bool or mask.shape != tokens.shape[:2]:\n            raise ValueError(\"需要 B,T,D 输入与 bool B,T Mask\")\n        counts = mask.sum(dim=1, keepdim=True)\n        if (counts == 0).any():\n            raise ValueError(\"存在没有有效 token 的样本\")\n        clean = tokens.masked_fill(~mask[..., None], 0)\n        pooled = clean.sum(dim=1) / counts\n        return self.network(pooled)\n",
+      "tests": "torch.manual_seed(5)\nhead = MaskedMeanHead(3, 5, 2).double()\nassert isinstance(head.network, nn.Sequential) and len(head.network) == 3\nassert isinstance(head.network[0], nn.Linear) and isinstance(head.network[1], nn.GELU)\nassert isinstance(head.network[2], nn.Linear)\nassert head.network[0].weight.shape == (5, 3)\nassert head.network[2].weight.shape == (2, 5)\nassert head.network[0].bias is not None and head.network[2].bias is not None\nw1 = torch.tensor([[.6,-.2,.1],[-.3,.4,.5],[.2,.8,-.7],[-.9,.3,.2],[.5,-.4,.6]], dtype=torch.float64)\nb1 = torch.tensor([-.2,.1,.3,-.1,.05], dtype=torch.float64)\nw2 = torch.tensor([[.3,-.4,.2,.5,-.1],[-.6,.1,.4,-.2,.7]], dtype=torch.float64)\nb2 = torch.tensor([.2,-.3], dtype=torch.float64)\nwith torch.no_grad():\n    head.network[0].weight.copy_(w1)\n    head.network[0].bias.copy_(b1)\n    head.network[2].weight.copy_(w2)\n    head.network[2].bias.copy_(b2)\nmask = torch.tensor([[True, False, True], [False, True, False]])\nx = torch.randn(2, 3, 3, dtype=torch.float64)\nx[~mask] = float(\"nan\")\nx.requires_grad_()\ny = head(x, mask)\nexpected_pool = torch.stack((x[0, [0, 2]].mean(0), x[1, 1]))\n# 独立参考：不调用被测 network；用精确 GELU 的 erf 定义计算。\nz = expected_pool @ w1.T + b1\nhidden = .5 * z * (1 + torch.erf(z / (2 ** .5)))\nexpected = hidden @ w2.T + b2\ntorch.testing.assert_close(y, expected, rtol=1e-10, atol=1e-10)\nassert y.shape == (2, 2) and torch.isfinite(y).all()\npermutation = torch.tensor([2, 0, 1])\ntorch.testing.assert_close(head(x[:, permutation], mask[:, permutation]), y)\nextra = torch.full((2, 4, 3), float(\"nan\"), dtype=torch.float64)\nextra_mask = torch.zeros(2, 4, dtype=torch.bool)\ntorch.testing.assert_close(head(torch.cat((x, extra), 1), torch.cat((mask, extra_mask), 1)), y)\ny.square().sum().backward()\nassert torch.isfinite(x.grad).all() and torch.count_nonzero(x.grad[~mask]) == 0\nassert all(p.grad is not None and torch.isfinite(p.grad).all() for p in head.parameters())\ntry:\n    head(x.detach(), torch.zeros_like(mask))\n    raise AssertionError(\"不能静默处理全无效样本\")\nexcept ValueError:\n    pass\nprint(\"通过：指定 MLP、独立 GELU 参考、NaN Padding 隔离、每样本分母与梯度。\")\n",
+      "hints": [
+        "先替换无效值，再相加；NaN×0 仍是 NaN。",
+        "counts 的形状应为 [B,1]；不要对整个 Batch 求一个共同的有效数。",
+        "网络层必须赋给 nn.Module 的属性，才能被 parameters() 和优化器发现。"
+      ],
+      "explanation": "固定两层参数，用 erf 定义独立计算精确 GELU，核对 3→5→2 的网络合同，避免错误的单层头也与自身参考一致。再通过共同重排和追加任意无效 token 检查池化，用 NaN 占位识别“先乘 Mask 再平均”的错误，并检查 Padding 的梯度严格为零。该头刻意是集合均值读出，不提供通用的时间顺序或空间定位能力。"
+    },
+    {
+      "id": "relu-spline",
+      "level": "推导验证",
+      "title": "从节点值构造一层 ReLU 插值网络",
+      "runtime": "torch",
+      "prompt": "实现 relu_interpolator(knots,values)，返回由 Linear(1,K)、ReLU、Linear(K,1) 组成的 nn.Sequential，其中 K=节点数−1。knots 与 values 为同设备、同浮点类型的一维有限张量，节点严格递增；在闭区间内，网络必须精确实现给定节点的分段线性插值。参数直接由节点构造，不执行梯度更新，不调用插值算子；保留输入类型与设备。节点少于两个、形状不符或不严格递增时抛 ValueError。测试避开折点核对导数。",
+      "starter": "import torch\nfrom torch import nn\n\ndef relu_interpolator(knots, values):\n    # 从相邻斜率之差确定每个 ReLU 的系数。\n    raise NotImplementedError(\"请实现 relu_interpolator\")\n",
+      "solution": "import torch\nfrom torch import nn\n\ndef relu_interpolator(knots, values):\n    if knots.ndim != 1 or knots.numel() < 2 or values.shape != knots.shape:\n        raise ValueError(\"节点与函数值必须是一维同形张量，至少含两个节点\")\n    if not torch.all(knots[1:] > knots[:-1]):\n        raise ValueError(\"节点必须严格递增\")\n    slope = (values[1:] - values[:-1]) / (knots[1:] - knots[:-1])\n    coefficients = torch.cat((slope[:1], slope[1:] - slope[:-1]))\n    width = knots.numel() - 1\n    net = nn.Sequential(nn.Linear(1, width), nn.ReLU(), nn.Linear(width, 1))\n    net = net.to(device=knots.device, dtype=knots.dtype)\n    with torch.no_grad():\n        net[0].weight.fill_(1.)\n        net[0].bias.copy_(-knots[:-1])\n        net[2].weight.copy_(coefficients[None, :])\n        net[2].bias.copy_(values[:1])\n    return net\n",
+      "tests": "torch.manual_seed(31)\nknots = torch.tensor([-1., -0.2, 0.5, 2.], dtype=torch.float64)\nvalues = torch.tensor([2., -1., 0.4, 3.], dtype=knots.dtype)\nnet = relu_interpolator(knots, values)\nassert sum(p.numel() for p in net.parameters()) == 3 * (len(knots) - 1) + 1\ntorch.testing.assert_close(net(knots[:, None]).squeeze(-1), values)\nfor fraction in (0.2, 0.5, 0.8):\n    x = (knots[:-1] + fraction * (knots[1:] - knots[:-1])).requires_grad_()\n    y = net(x[:, None]).squeeze(-1)\n    expected = (1 - fraction) * values[:-1] + fraction * values[1:]\n    torch.testing.assert_close(y, expected)\n    actual_slope = torch.autograd.grad(y.sum(), x)[0]\n    torch.testing.assert_close(actual_slope, (values[1:] - values[:-1]) / (knots[1:] - knots[:-1]))\nk = torch.linspace(0., 1., 9, dtype=torch.float64)\nquadratic = relu_interpolator(k, k.square())\nm = (k[:-1] + k[1:]) / 2\ntorch.testing.assert_close(quadratic(m[:, None]).squeeze(-1) - m.square(), torch.full_like(m, 1 / 256))\nfor bad_k, bad_v in ((torch.tensor([0., 0.]), torch.ones(2)),\n                     (torch.tensor([1.]), torch.ones(1)),\n                     (torch.tensor([0., 1.]), torch.ones(3))):\n    try:\n        relu_interpolator(bad_k, bad_v)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"无效节点应抛 ValueError\")\nprint(\"通过：非等距节点、分段前向与梯度、明确参数量、x² 误差界及无效输入\")\n",
+      "hints": [
+        "\\(\\operatorname{ReLU}(x-t_j)\\) 从 \\(t_j\\) 起增加一条恒定斜率；输出权重需要是斜率差。",
+        "在定义域内，第一段的 \\(x-t_0\\) 也等于 \\(\\operatorname{ReLU}(x-t_0)\\)。输出偏置设置起点函数值。"
+      ],
+      "explanation": "非等距节点检验斜率分母，负节点和值检验偏置与符号；Autograd 检验区间内部导数，节点值检验连续连接。宽度 K 的参数量为 \\(K+K+K+1\\)。\\(x^2\\) 的 \\(\\frac{h^2}{4}\\) 误差是解析结论；没有在优化器中搜索参数。"
+    }
+  ],
+  "questions": [
+    {
+      "question": "线性层可以合并，为什么把一个 Linear 拆成两个后，训练结果仍可能不同？",
+      "answer": [
+        "合并关系只说明有效矩阵 \\(W=W_2W_1\\) 表示同一个函数；对 \\(W_1\\)、\\(W_2\\) 求梯度时，分别还要乘另一个矩阵，所以直接更新 W 与更新两个因子后再相乘，不是同一个参数更新。瓶颈还可能限制 W 的秩。",
+        "标量 \\(y=ab\\) 的反例尤其清楚：(1,1) 与 (100,0.01) 都给出 1，但平方损失的梯度是 (1,1) 与 (0.01,100)。同一学习率下，一组小幅改动输出，另一组可能越过目标并增大损失。",
+        "因此“可合并”不能推出相同的优化速度、正则化效果或数值稳定性。判断增加深度是否有价值，需要分别讨论函数约束、参数化和所用优化器。"
+      ]
+    },
+    {
+      "question": "把 [B,T,D] 输入 Linear(D,H)，为什么不会在时间维交换信息？",
+      "answer": [
+        "Linear 在每个前导位置应用同一组 D→H 权重，计算 y[b,t] 时只使用该位置的输入向量。T 是批量位置而非被求和的特征轴。",
+        "如果该 token 已经过 Attention，它可能含上下文，但这来自上游。想让原始 token 在当前模块里交互，需要显式混合 T 轴、卷积、Attention 或声明的汇聚操作。"
+      ]
+    },
+    {
+      "question": "同一批样本为什么得到两组不同形状的偏置梯度？损失值是否可以直接当作梯度？",
+      "answer": [
+        "损失是标量 \\(0.092791666\\ldots\\)，对预测的导数却是六个元素组成的 \\(G=(\\widehat Y-Y)/6\\)。第二层偏置被三条样本共享，所以其梯度是 G 沿 Batch 求和，得到 \\([0.101666\\ldots,-0.096666\\ldots]\\)。",
+        "第一层偏置还要经过 W₂ 与 ReLU 导数，先计算 \\(\\Delta_1=(GW_2)\\odot\\mathbf1\\{Z>0\\}\\)，再沿 Batch 求和，得到三维梯度 \\([0.0415,-0.028666\\ldots,0.038166\\ldots]\\)。这与每层偏置自身的形状一致，不能由 loss 的数值或输出形状猜测。"
+      ]
+    },
+    {
+      "question": "目标标准化为何不能只当成“不改变问题的数值技巧”？",
+      "answer": [
+        "标准化后的平方误差等于原误差除以各维标准差的平方，改变了不同输出维度在总损失中的相对权重。若这是有意的平衡方式，应明确记录。",
+        "还要只用训练集拟合统计量、保存尺度并在推理中逆变换。评价真实误差时回到原单位，避免用标准化后的数值直接解释物理精度。",
+        "这也有成立边界：不受函数族约束时，每维固定正权重不会改变其最优条件均值；共享参数和有限容量会让各维发生取舍。不能把“损失度量改变”与“所有情形下统计最优值都改变”混为一谈。"
+      ]
+    },
+    {
+      "question": "小批次能拟合，是否已经证明这个读出头可用于真实机器人？",
+      "answer": [
+        "只能说明固定样本上的输入、目标和优化链路至少能够让该网络降低损失。它不覆盖分布外观测、闭环误差积累、时间同步或控制约束。",
+        "接下来要使用按轨迹/任务等合理粒度划分的独立数据，核验预处理与动作逆变换，再做与任务相符的闭环评估。训练指标和执行指标应分别报告。"
+      ]
+    },
+    {
+      "question": "先 MLP 后平均，与先平均后 MLP，有哪些差异？",
+      "answer": [
+        "先平均后 MLP 只依赖原始均值。任何两个均值相同的输入集合，对任意确定性下游网络都会给出相同结果；这是一条由输入决定的不可区分性，不是网络不够宽。",
+        "先逐 token 非线性映射再平均，可以统计新的特征。例如 \\(\\{-1,1\\}\\) 和 \\(\\{0,0\\}\\) 均值相同，平均 ReLU 却为 0.5 和 0。训练能改变保留哪种统计量，但共享逐 token MLP 加平均仍对共同重排不变。",
+        "平均嵌入也不区分一个集合和它的完整重复。若目标需要顺序、位置或数量，必须检查这些信息是否已经被上游写入特征，或通过读出结构显式保留；改变隐藏层宽度不能恢复已经丢掉的信息。"
+      ]
+    },
+    {
+      "question": "已经构造出任意精细的 ReLU 插值，为什么还不能说增加宽度一定改善真实任务？",
+      "answer": [
+        "构造证明的是给定节点值后存在一组参数，并在一维 \\(C^2\\) 函数、指定紧区间和最大误差度量下给出精确界。它没有研究训练算法、带噪采样和分布外输入。",
+        "更宽的网络可以包含更好的候选函数，但优化器未必找到它，有限数据也未必足以辨认它。应分别评估表示限制、训练误差、独立验证以及输入信息是否充分。"
+      ]
+    }
+  ],
+  "pitfalls": [
+    {
+      "title": "把 Linear 权重按 [in,out] 使用",
+      "detail": "形状恰好为方阵时，错误转置可能不会报错。",
+      "fix": "用非方形权重和手算输入，与 F.linear 输出对照。"
+    },
+    {
+      "title": "回归目标广播成跨样本矩阵",
+      "detail": "[B,1] 减 [B] 可广播到 [B,B]，损失仍能正常返回标量。",
+      "fix": "损失前断言预测与目标完全同形。"
+    },
+    {
+      "title": "两次归一化分类输出",
+      "detail": "先 Softmax 再 CrossEntropy 会把概率当作 logits，改变优化目标。",
+      "fix": "分类头输出原始 logits，概率仅在需要展示或采样时计算。"
+    },
+    {
+      "title": "无效 token 先乘零再池化",
+      "detail": "NaN×0 仍为 NaN，且固定除以 T 会受 Padding 数影响。",
+      "fix": "先替换无效值，逐样本除以有效数，并处理全无效行。"
+    },
+    {
+      "title": "标准化统计与模型分离",
+      "detail": "推理使用另一套均值、遗漏尺度或逆变换，会改变输入与输出语义。",
+      "fix": "统计量写入 buffer 或有版本的处理器，并做保存恢复对照。"
+    },
+    {
+      "title": "看到 grad 就认为参数在学习",
+      "detail": "优化器可能漏掉参数、学习率可能为零，或更新量远小于数值分辨率。",
+      "fix": "比较参数身份、梯度范数和 optimizer.step 前后的真实位移。"
+    }
+  ],
+  "sources": [
+    {
+      "title": "PyTorch · Linear",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.Linear.html"
+    },
+    {
+      "title": "PyTorch · Parameter initialization",
+      "url": "https://docs.pytorch.org/docs/stable/nn.init.html"
+    },
+    {
+      "title": "Glorot & Bengio · Understanding the difficulty of training deep feedforward neural networks",
+      "url": "https://proceedings.mlr.press/v9/glorot10a.html"
+    },
+    {
+      "title": "PyTorch · ReLU",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.ReLU.html"
+    },
+    {
+      "title": "PyTorch · CrossEntropyLoss",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html"
+    },
+    {
+      "title": "PyTorch · BCEWithLogitsLoss",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html"
+    },
+    {
+      "title": "PyTorch · MSELoss",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.MSELoss.html"
+    },
+    {
+      "title": "Saxe 等：Exact solutions to the nonlinear dynamics of learning in deep linear neural networks",
+      "url": "https://arxiv.org/abs/1312.6120"
+    },
+    {
+      "title": "Zaheer 等：Deep Sets",
+      "url": "https://arxiv.org/abs/1703.06114"
+    },
+    {
+      "title": "Goodfellow、Bengio、Courville：Optimization for Training Deep Models",
+      "url": "https://www.deeplearningbook.org/contents/optimization.html"
+    },
+    {
+      "title": "He 等：Delving Deep into Rectifiers",
+      "url": "https://arxiv.org/abs/1502.01852"
+    },
+    {
+      "title": "Yarotsky：Error bounds for approximations with deep ReLU networks",
+      "url": "https://arxiv.org/abs/1610.01145"
+    }
+  ]
+}

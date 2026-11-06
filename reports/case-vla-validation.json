@@ -1,0 +1,34 @@
+{
+  "schema": "pass",
+  "compiledPythonBlocks": 7,
+  "mainSourceMatchesExperiment": true,
+  "lessonSections": 11,
+  "knowledgeChecks": 6,
+  "exercises": {
+    "exercise": "block mask checks passed",
+    "pytorchTask": "joint attention reference and gradient checks passed"
+  },
+  "checkedInternalLinks": [
+    "#/learn/action-chunk",
+    "#/learn/action-representation",
+    "#/learn/conditioning-fusion",
+    "#/learn/evaluation",
+    "#/learn/finetuning",
+    "#/learn/flow-matching",
+    "#/learn/generative-policy",
+    "#/learn/training-diagnostics",
+    "#/learn/transformer?tab=theory&section=position-and-rope"
+  ],
+  "svgXmlChecks": [
+    "content/figures/vla-system.svg",
+    "content/figures/vla-joint-mask.svg",
+    "content/figures/vla-training-inference.svg"
+  ],
+  "sha256": {
+    "content/vla-architecture.json": "4461af2bc321d7001ec4512cd29a2dcf8bd951f511d1cd8ed8a80e62baea7a04",
+    "content/experiments/vla-joint-attention.py": "154767e762e3863559d2418578fd851b24e55d9f45168413fc2dcf7d11b55e6e",
+    "content/figures/vla-system.svg": "a9895b487c99fed1d651a6bba2ac91089429faf176cf14d39b08ccf49b534ddf",
+    "content/figures/vla-joint-mask.svg": "e9260105bcf9e5f001603b32931a05a65cd0234bca285b803ef74195b3106f35",
+    "content/figures/vla-training-inference.svg": "ad8fad9c8074334ba2c7882da0ce74b5a3e3fff161f7a0e90963827cf25602a1"
+  }
+}

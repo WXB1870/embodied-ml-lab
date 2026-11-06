@@ -1,0 +1,394 @@
+{
+  "environment": {
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "torch_path": "/tmp/embodied-torch",
+    "device": "cpu",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "cases": [
+    {
+      "id": "matrix-grad:section:added-0",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "c5987e40f923519393aa59a84ff96f2ffdb9fb605a77f74dcf54d54144782bb2",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.53,
+      "stdout": "秩为 1 的映射存在输入碰撞；满列秩映射恢复了原输入。\n",
+      "stderr": ""
+    },
+    {
+      "id": "matrix-grad:section:4",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "521e2371d6a5999cc0028b0b4d3e87347bb34259bfae21d94338310061962fec",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.131,
+      "stdout": "JVP: [1.0, -5.0] VJP: [1.0, -10.0]\n",
+      "stderr": "/tmp/embodied-torch/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.\n  warnings.warn(\n"
+    },
+    {
+      "id": "matrix-grad:section:added-1",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "25d4ac1381a39f52e22da9f760a1a085277a15b76cbc3f644ce01c279509dfc9",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.486,
+      "stdout": "条件数: 100.0 Hessian 条件数: 10000.0\n一步后的误差: [0.0, 0.9999] 秩 1 重建误差平方: 0.010000000000000002\n",
+      "stderr": ""
+    },
+    {
+      "id": "probability:section:bayes-conditioning",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "51f24f75c3c230da231bd45d72f302f7728cf34bc4c35a9794a78c04a610e067",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 0.012,
+      "stdout": "posterior under two priors: 0.33333333333333337 0.8181818181818181\n",
+      "stderr": ""
+    },
+    {
+      "id": "probability:section:moments-total-variance",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "069095cc040904162c32a410eb1669d695ea06db32bd08dc958d65a98e53589d",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.498,
+      "stdout": "total, within-condition, between-condition: 6.5 2.5 4.0\n",
+      "stderr": ""
+    },
+    {
+      "id": "probability:section:1",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "4258b6abc050cda3ef046b31e8b5b97e896475c80c688e15c59973e3921a04de",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.551,
+      "stdout": "通过：两个观测模型的 NLL 与预测梯度均符合推导。\n",
+      "stderr": ""
+    },
+    {
+      "id": "probability:section:added-0",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "8450b209178d0ae82a4e86e9a7186f096fdd86d959cb766933e28e2e28df9dcf",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.513,
+      "stdout": "每条样本 NLL: [-0.9528552071446454, 2.6072742469692907] 平均联合 NLL: 0.8272095199123226\n采样形状: (3, 2, 2) 联合 log_prob 形状: (3, 2)\n",
+      "stderr": ""
+    },
+    {
+      "id": "probability:section:gaussian-geometry",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "5d6ab3be4fe94edf7bb2d38081a0797817ff33c11deee788cb3e73df23fc527f",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.532,
+      "stdout": "NLL: [2.6224189819683303, 2.949799934349283] conditional mean/cov: [2.6] [[3.36]]\n",
+      "stderr": ""
+    },
+    {
+      "id": "autograd:section:6",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "91fef963b79b041333ea1bc1927e8a1f59f56cc9a3292fe545ea2de9ce428d74",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.199,
+      "stdout": "first: 12.0 second: 12.0\n",
+      "stderr": ""
+    },
+    {
+      "id": "losses:section:0",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "c7f8a167bbcba3ba750973e4d67c38f11381f4185f6fbaa5d71fc5d6510de98f",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.572,
+      "stdout": "残差: [-3.0, -1.0, -0.25, 0.0, 0.5, 1.0, 3.0]\nHuber 导数: [-1.0, -1.0, -0.25, 0.0, 0.5, 1.0, 1.0]\n",
+      "stderr": ""
+    },
+    {
+      "id": "optimization:section:0",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "f5f81e80e6734b31876ed9f40af53c878b504faed7cb226fc7d1f43478dd220c",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.557,
+      "stdout": "完整梯度: 1.25\n枚举的二样本梯度均值与方差: 1.25 2.8237500000000004\n",
+      "stderr": ""
+    },
+    {
+      "id": "optimization:section:1",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "c6d7f903bdbae45dbf53a7c93b98129b3ce38aa94f92a09bdd969aa3299de673",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.243,
+      "stdout": "归一化动量: [0.3999999999999999, 0.7199999999999999, 0.376] 最终参数: 0.8504\n",
+      "stderr": ""
+    },
+    {
+      "id": "numerical:section:1",
+      "path": "content/foundations.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "a621c966dd9d2f805d9bf168f11d807dc1b3443d91a29ac9c892f0656664e4f5",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.572,
+      "stdout": "标准化后的 Hessian: [[1.0, 0.993689057556347], [0.993689057556347, 1.0]]\n",
+      "stderr": ""
+    },
+    {
+      "id": "normalization:section:2",
+      "path": "content/architecture.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "49b045a2c7ea9faa1d7099b28839edc5bb3e49eb234c79953a8ba7c043f1210f",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.57,
+      "stdout": "Jacobian 最大误差: 5.551115123125783e-17\n尺度方向导数: tensor([-0.0393, -0.0236,  0.0079,  0.0550], dtype=torch.float64)\n",
+      "stderr": ""
+    },
+    {
+      "id": "residual:section:2",
+      "path": "content/architecture.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "4c83d14aaa72f5d2939d5147f7c84021f57770b65ff79b49f65b23f698b18e7e",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.651,
+      "stdout": "Pre-Norm 恒等误差: 0.0\n末层权重梯度范数: 0.8619720339775085\n首层权重梯度范数: 0.0\n残差结构检查通过\n",
+      "stderr": ""
+    },
+    {
+      "id": "attention:section:2",
+      "path": "content/architecture.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "a0d6082d0e4f22785423bac2d4b09e4b910f582a57deeca90a88b6c50277f8f0",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.556,
+      "stdout": "读出 / 分数梯度: 1.5 [-0.375, 0.375]\n相同 Value 的分数梯度: [0.0, 0.0]\n",
+      "stderr": ""
+    },
+    {
+      "id": "training-loop:shared-training-project",
+      "path": "content/architecture.json",
+      "kind": "shared_case",
+      "source_sha256": "1e57b2062eb2908a768f2bce867f7f09857f551fac3ec12ddd1fe9975a8432fc",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.233,
+      "stdout": "{\n  \"mask\": {\n    \"valid_elements\": 40,\n    \"padding_input_gradient\": 0,\n    \"invalid_label_rejected\": true\n  },\n  \"accumulation\": {\n    \"valid_counts\": [\n      10,\n      30\n    ],\n    \"gradient_max_abs_error\": 2.220446049250313e-16,\n    \"parameter_max_abs_error\": 2.7755575615628914e-17,\n    \"wrong_local_mean_gradient_error\": 0.5084387498080645\n  },\n  \"cpu_amp\": {\n    \"fp32_loss\": 2.115730047225952,\n    \"cpu_bf16_loss\": 2.1147878170013428,\n    \"gradient_relative_error\": 0.0022964824456721544,\n    \"parameter_gradient_dtype\": \"float32\",\n    \"autocast_output_dtype\": \"bfloat16\",\n    \"cpu_amp_update_norm\": 0.12418839781374208\n  },\n  \"diagnosis\": {\n    \"bias_has_gradient\": true,\n    \"bias_in_optimizer\": false,\n    \"bias_update_norm\": 0.0,\n    \"diagnosis\": \"optimizer_omits_parameter\"\n  },\n  \"resume\": {\n    \"next_epoch_identical\": true,\n    \"saved_epoch\": 3,\n    \"saved_update_step\": 12,\n    \"next_update_step\": 16\n  },\n  \"training\": {\n    \"initial_validation_normalized_mse\": 1.9309675886824325,\n    \"final_validation_normalized_mse\": 0.00014952807120878147,\n    \"optimizer_updates\": 96,\n    \"valid_training_scalars_per_epoch\": 190\n  },\n  \"scope\": {\n    \"device\": \"cpu\",\n    \"torch\": \"2.15.0+cpu\",\n    \"workers\": 0,\n    \"restore_boundary\": \"epoch_end\",\n    \"cuda_amp\": \"not_run\",\n    \"real_ddp\": \"environment_blocked\"\n  }\n}\n",
+      "stderr": ""
+    },
+    {
+      "id": "checkpoint:section:added-0",
+      "path": "content/architecture.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "a23569d34d2cfef06a344c52e896d566453e292b04c251cb28a1bab412b87449",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.249,
+      "stdout": "EMA 与在线权重独立；保存恢复后两次连续更新及 buffer 完全一致。\n",
+      "stderr": ""
+    },
+    {
+      "id": "mixed-precision:section:5",
+      "path": "content/foundations_p0.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "628c26a1be131b7d0d344bcbe5c22bcab92151ca74fedf1438c713a7c237b811",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.164,
+      "stdout": "before rounding: 0.001000046730041504\nafter BF16 rounding: 0.0\n",
+      "stderr": ""
+    },
+    {
+      "id": "training-diagnostics:section:5",
+      "path": "content/foundations_p0.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "5680922fd643282da76c9b7467821801f7a9737b8424cfc71cf7569bb2e1c762",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.169,
+      "stdout": "可表示目标的 MSE: 3.1217485247708666e-16\n同输入冲突标签的 MSE: 1.0\n",
+      "stderr": ""
+    },
+    {
+      "id": "multitask-gradients:exercise",
+      "path": "content/foundations_p0.json",
+      "kind": "corrected_exercise",
+      "source_sha256": "58111d6aed2228635585f3094ffb74b3c11df8dd577cdc5f303bd9312e48db03",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 0.011,
+      "stdout": "通过：抵消、正交、零范数、大数余弦与输入边界\n",
+      "stderr": ""
+    },
+    {
+      "id": "multitask-gradients:pytorchTask",
+      "path": "content/foundations_p0.json",
+      "kind": "corrected_exercise",
+      "source_sha256": "ec1f05ca5f123923944ac18ccad7f8b72801aa3a4e6e882e655dbd1818a95c2b",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.499,
+      "stdout": "PyTorch 通过：实际求导、未用参数、零范数、大数余弦与总梯度对照\n",
+      "stderr": ""
+    },
+    {
+      "id": "mlp:section:affine-nonlinearity",
+      "path": "content/topics/mlp.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "f09b614a5b097e55544941c7f02c522c60a5b02262ecc7cfe6815d528d720bf6",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.097,
+      "stdout": "same initial output=1; gradients: [1.0, 1.0] [0.01, 100.0]\noutputs after one step: 0.998001 -8.9999991\n",
+      "stderr": ""
+    },
+    {
+      "id": "mlp:section:tokens-readout",
+      "path": "content/topics/mlp.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "19cdfe66f844c731adb9458cfa92dbf28d2a60708530c377ea3f09230df9fa82",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.782,
+      "stdout": "mean before ReLU: 0.0 0.0\nReLU before mean: 0.5 0.0\n",
+      "stderr": ""
+    },
+    {
+      "id": "mlp:manual-backprop",
+      "path": "content/topics/mlp.json",
+      "kind": "expanded_existing_implementation",
+      "source_sha256": "6b30be44ba557b4565dbc901a78cb6a1a196a2abb4d4d46882925b0a5997abf9",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.174,
+      "stdout": "x (3, 2) gradient agrees\nw1 (3, 2) gradient agrees\nb1 (3,) gradient agrees\nw2 (2, 3) gradient agrees\nb2 (2,) gradient agrees\nloss = 0.092792\n通过：前向、五组梯度、有限差分和 17 个参数。\none SGD step: 0.09279166666666665 -> 0.08276880316466285\nfirst updated prediction: [1.129593732638889, -0.2800681768055556]\n输入保持不变；四组参数的手写更新与 SGD 一致。\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:spatial-shape",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "ab36aebd87fc0ea9a440020e466f1845a5919397298783698427c289ecc94910",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.197,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:receptive-field",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "2c6532f570ffaf03aff3766541890723270d451b50ffe17aeb87fd4bf919c3ae",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.648,
+      "stdout": "输入导数: [1.0, 0.0, 2.0, 0.0, 3.0, 0.0, 2.0, 0.0, 1.0]\n可达偏移: [0, 2, 4, 6, 8]\n同形输出的中间采样中心: 2.5 3.5\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:activation-pooling",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "438d3a3c86593ea0b2dc10d0392b9e12afa077ad216df2231583e04334efc6e6",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.612,
+      "stdout": "平均/最大池化的梯度和 GAP 空间反例均通过。\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:equivariance",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "69aceb68c38355e0537c4cb3b265f583f7cb411fa46ab3a5a10cf177afb08c67",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.7,
+      "stdout": "直接采样: [1.0, 1.0, 1.0, 1.0] [-1.0, -1.0, -1.0, -1.0]\n先平均再采样: [0.0, 0.0, 0.0, 0.0]\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:architecture-design",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "0e68b98648fef1abb23a805a4325ce2802d3270c71d8a5f7fd6fee1fca22a021",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.668,
+      "stdout": "通过：904 个参数、空间/通道接口、Linear/1×1 等价、梯度与零投影恒等。\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:patch-embedding",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "e89f28b226b7a12f1f1af03ccd54d3a291ff5893377e22f4613950c287b68c6b",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.667,
+      "stdout": "空间缩小、通道增加: (1, 1, 4, 4) -> (1, 4, 2, 2)\n重建最大误差: 0.0\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:spatial-readout",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "382a91680fa792070d2a94ef572e37cbf026952f9e59ff59276ae3d4d3d06226",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.565,
+      "stdout": "坐标导数: [-0.2257404672165745, -0.03490866496076659, 0.2606491321773411]\n两个并列峰在低温下仍读出中点\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:section:implementation-checks",
+      "path": "content/topics/cnn.json",
+      "kind": "standalone_theory_code",
+      "source_sha256": "a736402b598b5993cfa7e1e048850c868084c770e4d32f08362ecdabaad765d2",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 1.549,
+      "stdout": "卷积后再转置卷积: [5.0, 18.0, 16.0]\n转置的内积恒等式成立，但它不是逆映射\n",
+      "stderr": ""
+    },
+    {
+      "id": "cnn:cnn-training-and-patches",
+      "path": "content/topics/cnn.json",
+      "kind": "expanded_existing_implementation",
+      "source_sha256": "5bc5b8de67a17d8ab7b706be807b102b80edf1e8ffbf256e630689d013c5367b",
+      "status": "passed",
+      "exit_code": 0,
+      "seconds": 2.715,
+      "stdout": "features.0 (4, 8, 12, 12) params 224 MAC/sample 31104 r,j 3 1\nfeatures.1 (4, 8, 12, 12) params 0 MAC/sample 0 r,j 3 1\nfeatures.2 (4, 12, 12, 12) params 876 MAC/sample 124416 r,j 5 1\nfeatures.3 (4, 12, 12, 12) params 0 MAC/sample 0 r,j 5 1\nactivation gradient input shape (4, 3, 12, 12) norm 0.0011663604527711868\nactivation gradient features.0 shape (4, 8, 12, 12) norm 0.002516424050554633\nactivation gradient features.1 shape (4, 8, 12, 12) norm 0.0050918362103402615\nactivation gradient features.2 shape (4, 12, 12, 12) norm 0.011078418232500553\nactivation gradient features.3 shape (4, 12, 12, 12) norm 0.02079293318092823\nparameter gradient features.0.weight (8, 3, 3, 3) 0.008509782142937183\nparameter gradient features.0.bias (8,) 0.0027193380519747734\nparameter gradient features.2.weight (12, 8, 3, 3) 0.0210920087993145\nparameter gradient features.2.bias (12,) 0.02851436287164688\nparameter gradient classifier.weight (2, 12) 0.015211914665997028\nparameter gradient classifier.bias (2,) 0.0766485258936882\nlocal output support within 5x5; total params=1126, MAC/sample=155544\ntrain CE: 0.698557 -> 0.000010\nholdout CE: 0.000010, accuracy: 1.000\n通过：卷积分类训练、独立留出评价、参数量与 patch 线性投影等价。\n此处输入尺寸可变仅是形状性质，不代表对新分辨率的泛化保证。\n",
+      "stderr": ""
+    }
+  ],
+  "summary": {
+    "passed": 34,
+    "failed": 0
+  },
+  "verification_scope": [
+    "All standalone theory snippets in the five owned sources run in independent fresh Python processes.",
+    "Only the three expanded/new end-to-end cases and corrected multitask exercises are rerun here; parent runs the complete site regression suite.",
+    "CUDA hardware, GPU timing, real DDP communication, worker prefetch and arbitrary mid-epoch resume were not verified."
+  ]
+}

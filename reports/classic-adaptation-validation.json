@@ -1,0 +1,15 @@
+{
+  "scope": [
+    "finetuning",
+    "cnn"
+  ],
+  "formulas_checked": 271,
+  "checks": [
+    "Both modified courses: every display/inline formula parses; no unmatched or unmarked TeX",
+    "New QLoRA prose and all four CNN paper links render through the shared article renderer",
+    "All 10 existing finetuning sections preserved verbatim; executable source and coding exercises unchanged",
+    "CNN unchanged except four-row architecture comparison; all previous IDs retained"
+  ],
+  "executable_source_changes": false,
+  "qlora_hardware_benchmark_performed": false
+}

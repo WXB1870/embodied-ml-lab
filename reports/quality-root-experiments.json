@@ -1,0 +1,30 @@
+[
+  {
+    "case": "partial-observability/4",
+    "source_sha256": "c71b9d720ea7520629e00bde0e6aade73131a71e91aee1aa8fdb7d10d7125d3b",
+    "passed": true,
+    "stdout": "通过：GRU 单步前向与输入、历史、参数梯度一致。",
+    "stderr": ""
+  },
+  {
+    "case": "returns-bellman/1",
+    "source_sha256": "b2c5aed60ca1d1b4a09c0956b3aa9b9f5445b3916a121cc0f0100981b0436802",
+    "passed": true,
+    "stdout": "通过：Bellman 联立解、解析几何级数与直接奖励累加一致。",
+    "stderr": ""
+  },
+  {
+    "case": "policy-gradient/0",
+    "source_sha256": "7e17d4247fd8bf28a149f386a3eb378474f274fd12cb703120533b471dbf941d",
+    "passed": true,
+    "stdout": "通过：整轨迹求导与两种 score 估计一致，错误删除当前奖励的版本不一致。",
+    "stderr": ""
+  },
+  {
+    "case": "transformer/visibility-patterns",
+    "source_sha256": "d213511d3c4156b13f6d779bcd97840b2ea6ba656ca6ad420019be1a51f46ae1",
+    "passed": true,
+    "stdout": "通过：相同投影与可见性下，更新后的表示改变了第二层读取权重。",
+    "stderr": ""
+  }
+]

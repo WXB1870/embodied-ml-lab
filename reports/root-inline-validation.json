@@ -1,0 +1,30 @@
+[
+  {
+    "lesson": "probability",
+    "section": "bayes-conditioning",
+    "passed": true,
+    "sha256": "51f24f75c3c230da231bd45d72f302f7728cf34bc4c35a9794a78c04a610e067",
+    "output": "posterior under two priors: 0.33333333333333337 0.8181818181818181\n"
+  },
+  {
+    "lesson": "probability",
+    "section": "moments-total-variance",
+    "passed": true,
+    "sha256": "069095cc040904162c32a410eb1669d695ea06db32bd08dc958d65a98e53589d",
+    "output": "total, within-condition, between-condition: 6.5 2.5 4.0\n"
+  },
+  {
+    "lesson": "probability",
+    "section": "gaussian-geometry",
+    "passed": true,
+    "sha256": "5d6ab3be4fe94edf7bb2d38081a0797817ff33c11deee788cb3e73df23fc527f",
+    "output": "NLL: [2.6224189819683303, 2.949799934349283] conditional mean/cov: [2.6] [[3.36]]\n"
+  },
+  {
+    "lesson": "action-representation",
+    "section": "4",
+    "passed": true,
+    "sha256": "ca82d93fdd84ddd05e2be52b7118213eeaed3d6acbeea60372a23d3cf0098d3b",
+    "output": "raw per-coordinate loss: [0.0001, 8100.0, 1.0]\nnormalized per-coordinate loss: [1.0, 1.0, 1.0]\ngradient w.r.t. the same q: [-0.0002, -16200.0, -2.0] [-2.0, -2.0, -2.0]\ninvalid NaN excluded; valid NaN rejected\n"
+  }
+]

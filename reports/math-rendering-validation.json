@@ -1,0 +1,73 @@
+{
+  "passed": 17,
+  "records": [
+    {
+      "name": "Inline fraction, subscript and superscript survive prose formatting",
+      "passed": true
+    },
+    {
+      "name": "Chinese punctuation stays attached to the preceding inline formula",
+      "passed": true
+    },
+    {
+      "name": "Matrix alignment and escaped HTML have identical static/client markup",
+      "passed": true
+    },
+    {
+      "name": "Mathematical brackets cannot become Markdown links",
+      "passed": true
+    },
+    {
+      "name": "Math asterisks cannot become bold markup",
+      "passed": true
+    },
+    {
+      "name": "Inline code retains math delimiters and Python subscripts literally",
+      "passed": true
+    },
+    {
+      "name": "All four authored delimiters use one rendering path",
+      "passed": true
+    },
+    {
+      "name": "Prose emphasis and internal links remain usable around math",
+      "passed": true
+    },
+    {
+      "name": "Link labels can contain math without leaking an internal placeholder",
+      "passed": true
+    },
+    {
+      "name": "Link labels preserve inline code and keep its HTML escaped",
+      "passed": true
+    },
+    {
+      "name": "Code and math are never recursively interpreted",
+      "passed": true
+    },
+    {
+      "name": "A malformed expression fails the build rather than silently showing red TeX",
+      "passed": true
+    },
+    {
+      "name": "Shape notation renders math while tensor layouts retain code styling",
+      "passed": true
+    },
+    {
+      "name": "Search snippets retain Greek symbols without exposing TeX source",
+      "passed": true
+    },
+    {
+      "name": "Plain search text preserves fractions, scripts, roots and matrix rows",
+      "passed": true
+    },
+    {
+      "name": "Exercise paragraphs preserve the authored input/edge-case separation",
+      "passed": true
+    },
+    {
+      "name": "Display math is keyboard focusable and has a contained scroll box",
+      "passed": true
+    }
+  ]
+}

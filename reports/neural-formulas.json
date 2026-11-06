@@ -1,0 +1,146 @@
+[
+  {
+    "location": "content/revisions/neural.json[0].sections[0].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[0].sections[1].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[0].sections[2].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[0].sections[3].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[0].sections[4].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[1].sections[1].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[1].sections[2].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[1].sections[3].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[1].sections[4].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[2].sections[1].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[2].sections[3].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[2].sections[4].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[2].sections[5].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[3].sections[0].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[4].sections[0].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[4].sections[1].formula",
+    "passed": true
+  },
+  {
+    "location": "content/revisions/neural.json[4].sections[2].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[0].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[1].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[2].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[3].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[4].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[5].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[6].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[7].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/mlp.json.sections[9].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[0].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[1].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[2].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[3].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[4].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[5].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[6].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[7].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[8].formula",
+    "passed": true
+  },
+  {
+    "location": "content/topics/cnn.json.sections[9].formula",
+    "passed": true
+  }
+]

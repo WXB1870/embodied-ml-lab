@@ -1,0 +1,372 @@
+{
+  "checked_at": "2026-11-06T12:55:11Z",
+  "lesson": "finetuning",
+  "case": "section:controlled-transfer",
+  "passed": true,
+  "status": "passed",
+  "source_sha256": "f43bf5cc45b3cc446ec660fcb203112b320e3d13ba200a900f365ef18701155f",
+  "seconds": 2.3571872989996336,
+  "timing_scope": "Python process after import; includes data/model setup, source pretraining, all four target adaptations and checks",
+  "command": "PYTHONPATH=/tmp/embodied-torch python /tmp/transfer_controlled.py --output /tmp/transfer_results.json",
+  "output": "scratch trainable 1185 target 0.008821 source 0.562597\nfrozen trainable 33 target 0.001861 source 0.022338\nlora trainable 131 target 0.003059 source 0.078981\nfull trainable 1185 target 0.003689 source 0.042288\nseconds 2.357 checks passed\n",
+  "formulas": [
+    {
+      "section": "transfer-risk-and-gradients",
+      "passed": true,
+      "formula": "\\begin{aligned}\\widehat R_T^{\\,y}(\\phi)&=\\frac1{n_T}\\sum_{i=1}^{n_T}e_i^2,\\qquad e_i=f_{\\theta_0,\\phi}(x_i)-y_i\\\\\\nabla_w\\widehat R_T^{\\,y}&=\\frac2{n_T}\\sum_i e_i h_\\psi(x_i),\\quad \\nabla_\\psi\\widehat R_T^{\\,y}=\\frac2{n_T}\\sum_i e_i J_{h,\\psi}(x_i)^\\top w\\\\R_S(\\phi+\\Delta\\phi)-R_S(\\phi)&=g_S^\\top\\Delta\\phi+\\frac12\\Delta\\phi^\\top H_S(\\phi+\\xi\\Delta\\phi)\\Delta\\phi,\\quad 0<\\xi<1\\\\\\Delta\\widehat R_S\\ \\text{(fixed features)}&=g_S^\\top\\Delta\\phi+\\frac1m\\lVert\\Phi_S\\Delta\\phi\\rVert_2^2\\end{aligned}",
+      "rendered_bytes": 39176
+    }
+  ],
+  "checks": [
+    "Three pretrained routes start with exactly equal outputs",
+    "All optimizer-managed parameter gradients are present and finite",
+    "All frozen weights and biases remain bitwise equal and have no gradients",
+    "LoRA first A gradient zero, first B nonzero, second A nonzero",
+    "Both LoRA updates have observed numerical rank 1 and nonzero norm",
+    "Trainable parameters change in all routes",
+    "Fixed-feature linear-head source MSE change equals its exact linear plus quadratic terms",
+    "All other lessons and the pre-existing LoRA main implementation preserved",
+    "New formula renders with strict local KaTeX; evaluation cross-reference resolves"
+  ],
+  "experiment": {
+    "seed": 20261106,
+    "torch": "2.15.0+cpu",
+    "device": "cpu",
+    "dtype": "float32",
+    "config": {
+      "source_n": 512,
+      "target_n": 48,
+      "probe_n_each": 2048,
+      "pretrain_steps": 900,
+      "adapt_steps": 600,
+      "optimizer": "Adam; fresh state for every target run",
+      "lr": 0.01,
+      "weight_decay": 0.0,
+      "batching": "full batch",
+      "source_mean": [
+        0.0,
+        0.0
+      ],
+      "source_std": 1.0,
+      "target_mean": [
+        1.5,
+        -1.0
+      ],
+      "target_std": 0.6,
+      "label_noise_std": 0.05,
+      "probe_labels": "clean conditional mean",
+      "rank": 1,
+      "lora_scale": 1.0
+    },
+    "pretrained": {
+      "source_probe_mse": 0.012809274718165398,
+      "target_probe_mse": 0.0015186158707365394,
+      "source_train_noisy_mse": 0.0025462540797889233
+    },
+    "methods": [
+      {
+        "method": "scratch",
+        "trainable_parameters": 1185,
+        "stored_parameters": 1185,
+        "initial_source_mse": 0.890923023223877,
+        "initial_target_mse": 0.5563140511512756,
+        "initial_target_train_noisy_mse": 0.7937406897544861,
+        "final_source_mse": 0.5625966787338257,
+        "final_target_mse": 0.008821256458759308,
+        "target_train_noisy_mse": 0.0017149801133200526,
+        "source_change_from_pretrained": null,
+        "initial_pretrained_output_maxdiff": null,
+        "frozen_parameters_exactly_equal": true,
+        "frozen_parameters_have_no_grad": true,
+        "trainable_parameter_change_norm": 5.0856597738451255,
+        "first_step": {
+          "source_gradient_norm": 1.2792601263431922,
+          "parameter_step_norm": 0.3442369968943275,
+          "linear_source_change": -0.07487849507015198,
+          "actual_source_change": 0.010896503925323486,
+          "taylor_remainder": 0.08577499899547547
+        },
+        "lora_gradients": {},
+        "low_rank_checks": [],
+        "curve": [
+          {
+            "step": 0,
+            "source_mse": 0.890923023223877,
+            "target_mse": 0.5563140511512756,
+            "target_train_noisy_mse": 0.7937406897544861
+          },
+          {
+            "step": 100,
+            "source_mse": 0.4517470896244049,
+            "target_mse": 0.008063863031566143,
+            "target_train_noisy_mse": 0.003919028677046299
+          },
+          {
+            "step": 200,
+            "source_mse": 0.5277070999145508,
+            "target_mse": 0.007607307750731707,
+            "target_train_noisy_mse": 0.0019657141529023647
+          },
+          {
+            "step": 300,
+            "source_mse": 0.5391181111335754,
+            "target_mse": 0.00813615694642067,
+            "target_train_noisy_mse": 0.0018015779787674546
+          },
+          {
+            "step": 400,
+            "source_mse": 0.5440197587013245,
+            "target_mse": 0.00857628881931305,
+            "target_train_noisy_mse": 0.0017817217158153653
+          },
+          {
+            "step": 500,
+            "source_mse": 0.5396249890327454,
+            "target_mse": 0.008647985756397247,
+            "target_train_noisy_mse": 0.0016976076876744628
+          },
+          {
+            "step": 600,
+            "source_mse": 0.5625966787338257,
+            "target_mse": 0.008821256458759308,
+            "target_train_noisy_mse": 0.0017149801133200526
+          }
+        ]
+      },
+      {
+        "method": "frozen",
+        "trainable_parameters": 33,
+        "stored_parameters": 1185,
+        "initial_source_mse": 0.012809274718165398,
+        "initial_target_mse": 0.0015186158707365394,
+        "initial_target_train_noisy_mse": 0.005174055229872465,
+        "final_source_mse": 0.02233787626028061,
+        "final_target_mse": 0.0018610741244629025,
+        "target_train_noisy_mse": 0.003456715727224946,
+        "source_change_from_pretrained": 0.009528601542115211,
+        "initial_pretrained_output_maxdiff": 0.0,
+        "frozen_parameters_exactly_equal": true,
+        "frozen_parameters_have_no_grad": true,
+        "trainable_parameter_change_norm": 0.4117487195384048,
+        "first_step": {
+          "source_gradient_norm": 0.0575088658669723,
+          "parameter_step_norm": 0.05744556038413003,
+          "linear_source_change": -0.0023194012028397992,
+          "actual_source_change": 0.02951689623296261,
+          "taylor_remainder": 0.03183629743580241,
+          "exact_head_quadratic_term": 0.03183630108833313
+        },
+        "lora_gradients": {},
+        "low_rank_checks": [],
+        "curve": [
+          {
+            "step": 0,
+            "source_mse": 0.012809274718165398,
+            "target_mse": 0.0015186158707365394,
+            "target_train_noisy_mse": 0.005174055229872465
+          },
+          {
+            "step": 100,
+            "source_mse": 0.013398757204413414,
+            "target_mse": 0.0019438667222857475,
+            "target_train_noisy_mse": 0.00391332246363163
+          },
+          {
+            "step": 200,
+            "source_mse": 0.014030644670128822,
+            "target_mse": 0.0019348987843841314,
+            "target_train_noisy_mse": 0.0038402406498789787
+          },
+          {
+            "step": 300,
+            "source_mse": 0.015228615142405033,
+            "target_mse": 0.001910621766000986,
+            "target_train_noisy_mse": 0.003752470249310136
+          },
+          {
+            "step": 400,
+            "source_mse": 0.01706806942820549,
+            "target_mse": 0.001889085746370256,
+            "target_train_noisy_mse": 0.0036566415801644325
+          },
+          {
+            "step": 500,
+            "source_mse": 0.019481418654322624,
+            "target_mse": 0.0018723185639828444,
+            "target_train_noisy_mse": 0.003557097166776657
+          },
+          {
+            "step": 600,
+            "source_mse": 0.02233787626028061,
+            "target_mse": 0.0018610741244629025,
+            "target_train_noisy_mse": 0.003456715727224946
+          }
+        ]
+      },
+      {
+        "method": "lora",
+        "trainable_parameters": 131,
+        "stored_parameters": 1283,
+        "initial_source_mse": 0.012809274718165398,
+        "initial_target_mse": 0.0015186158707365394,
+        "initial_target_train_noisy_mse": 0.005174055229872465,
+        "final_source_mse": 0.07898078113794327,
+        "final_target_mse": 0.0030586938373744488,
+        "target_train_noisy_mse": 0.0017700701719149947,
+        "source_change_from_pretrained": 0.06617150641977787,
+        "initial_pretrained_output_maxdiff": 0.0,
+        "frozen_parameters_exactly_equal": true,
+        "frozen_parameters_have_no_grad": true,
+        "trainable_parameter_change_norm": 3.7298924956302706,
+        "first_step": {
+          "source_gradient_norm": 0.057662299576771624,
+          "parameter_step_norm": 0.09847685133875538,
+          "linear_source_change": -0.002426259616186144,
+          "actual_source_change": 0.03251655586063862,
+          "taylor_remainder": 0.03494281547682476
+        },
+        "lora_gradients": {
+          "step_1_A_norm": 0.0,
+          "step_1_B_norm": 0.0029723596733479364,
+          "step_2_A_norm": 0.06825061729653281,
+          "step_2_B_norm": 0.03857630561060686
+        },
+        "low_rank_checks": [
+          {
+            "layer": 0,
+            "shape": [
+              32,
+              2
+            ],
+            "rank": 1,
+            "frobenius_norm": 1.037359356880188
+          },
+          {
+            "layer": 2,
+            "shape": [
+              32,
+              32
+            ],
+            "rank": 1,
+            "frobenius_norm": 1.2129292488098145
+          }
+        ],
+        "curve": [
+          {
+            "step": 0,
+            "source_mse": 0.012809274718165398,
+            "target_mse": 0.0015186158707365394,
+            "target_train_noisy_mse": 0.005174055229872465
+          },
+          {
+            "step": 100,
+            "source_mse": 0.013215877115726471,
+            "target_mse": 0.0014153096126392484,
+            "target_train_noisy_mse": 0.003137396415695548
+          },
+          {
+            "step": 200,
+            "source_mse": 0.04340003430843353,
+            "target_mse": 0.002432173350825906,
+            "target_train_noisy_mse": 0.002026544651016593
+          },
+          {
+            "step": 300,
+            "source_mse": 0.06673543155193329,
+            "target_mse": 0.0027260645292699337,
+            "target_train_noisy_mse": 0.0019098256016150117
+          },
+          {
+            "step": 400,
+            "source_mse": 0.07657460868358612,
+            "target_mse": 0.002855515107512474,
+            "target_train_noisy_mse": 0.0018360335379838943
+          },
+          {
+            "step": 500,
+            "source_mse": 0.0679747462272644,
+            "target_mse": 0.0028364567551761866,
+            "target_train_noisy_mse": 0.001823610975407064
+          },
+          {
+            "step": 600,
+            "source_mse": 0.07898078113794327,
+            "target_mse": 0.0030586938373744488,
+            "target_train_noisy_mse": 0.0017700701719149947
+          }
+        ]
+      },
+      {
+        "method": "full",
+        "trainable_parameters": 1185,
+        "stored_parameters": 1185,
+        "initial_source_mse": 0.012809274718165398,
+        "initial_target_mse": 0.0015186158707365394,
+        "initial_target_train_noisy_mse": 0.005174055229872465,
+        "final_source_mse": 0.04228849709033966,
+        "final_target_mse": 0.00368867302313447,
+        "target_train_noisy_mse": 0.0017719619208946824,
+        "source_change_from_pretrained": 0.029479222372174263,
+        "initial_pretrained_output_maxdiff": 0.0,
+        "frozen_parameters_exactly_equal": true,
+        "frozen_parameters_have_no_grad": true,
+        "trainable_parameter_change_norm": 2.0557581213815115,
+        "first_step": {
+          "source_gradient_norm": 0.09348868185508477,
+          "parameter_step_norm": 0.34419308307142704,
+          "linear_source_change": -0.003042044714675285,
+          "actual_source_change": 0.34257260151207447,
+          "taylor_remainder": 0.34561464622674976
+        },
+        "lora_gradients": {},
+        "low_rank_checks": [],
+        "curve": [
+          {
+            "step": 0,
+            "source_mse": 0.012809274718165398,
+            "target_mse": 0.0015186158707365394,
+            "target_train_noisy_mse": 0.005174055229872465
+          },
+          {
+            "step": 100,
+            "source_mse": 0.0339013896882534,
+            "target_mse": 0.002235234947875142,
+            "target_train_noisy_mse": 0.002899143612012267
+          },
+          {
+            "step": 200,
+            "source_mse": 0.033364150673151016,
+            "target_mse": 0.002764331642538309,
+            "target_train_noisy_mse": 0.002260536188259721
+          },
+          {
+            "step": 300,
+            "source_mse": 0.04200677201151848,
+            "target_mse": 0.0029683243483304977,
+            "target_train_noisy_mse": 0.0021238389890640974
+          },
+          {
+            "step": 400,
+            "source_mse": 0.05559082329273224,
+            "target_mse": 0.003258349373936653,
+            "target_train_noisy_mse": 0.0019335978431627154
+          },
+          {
+            "step": 500,
+            "source_mse": 0.046580493450164795,
+            "target_mse": 0.0035711685195565224,
+            "target_train_noisy_mse": 0.001820341101847589
+          },
+          {
+            "step": 600,
+            "source_mse": 0.04228849709033966,
+            "target_mse": 0.00368867302313447,
+            "target_train_noisy_mse": 0.0017719619208946824
+          }
+        ]
+      }
+    ],
+    "seconds_in_process": 2.3571872989996336,
+    "checks_passed": true
+  }
+}

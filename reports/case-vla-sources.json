@@ -1,0 +1,69 @@
+{
+  "commit": "215abfb217dbac7d5f1273282331b9b1866c0479",
+  "sources": [
+    {
+      "path": "src/openpi/models/pi0.py",
+      "bytes": 12887,
+      "sha256": "24b32d7c6ed5e409459afa8ca5af96a4dae09c2dcdf48e828907e411f4f12342",
+      "url": "https://raw.githubusercontent.com/Physical-Intelligence/openpi/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0.py"
+    },
+    {
+      "path": "src/openpi/models/gemma.py",
+      "bytes": 17146,
+      "sha256": "7e42ada4ae7e9995f0ef3e33a0c224758323c2015e2d9d72ec15726a8a001d2a",
+      "url": "https://raw.githubusercontent.com/Physical-Intelligence/openpi/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/gemma.py"
+    },
+    {
+      "path": "src/openpi/models/pi0_config.py",
+      "bytes": 4435,
+      "sha256": "d321858c30b398126035ea2b6da09e1c422eeeebb5ebf8df631daf9dc77647fa",
+      "url": "https://raw.githubusercontent.com/Physical-Intelligence/openpi/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0_config.py"
+    },
+    {
+      "path": "src/openpi/models/tokenizer.py",
+      "bytes": 17517,
+      "sha256": "965be8b3c393a6811875bbc32da9e01a5d01cc2f87802de801cf7293e049748c",
+      "url": "https://raw.githubusercontent.com/Physical-Intelligence/openpi/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/tokenizer.py"
+    },
+    {
+      "path": "src/openpi/models/pi0_fast.py",
+      "bytes": 13209,
+      "sha256": "627332a555046f2744ef144c45f8bd3361a9820cf68854a4528d0fdbba7e9aa3",
+      "url": "https://raw.githubusercontent.com/Physical-Intelligence/openpi/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0_fast.py"
+    },
+    {
+      "path": "src/openpi/training/config.py",
+      "bytes": 44594,
+      "sha256": "c34231f888dba5dc981d808765b3d98775ab845b04313bf53fcecd567c520b0d",
+      "url": "https://raw.githubusercontent.com/Physical-Intelligence/openpi/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/training/config.py"
+    },
+    {
+      "path": "README.md",
+      "bytes": 23254,
+      "sha256": "567fc57766bd736664f50126cab8145af4071ca16cc5e238f2b11e369169c3b5",
+      "url": "https://raw.githubusercontent.com/Physical-Intelligence/openpi/215abfb217dbac7d5f1273282331b9b1866c0479/README.md"
+    }
+  ],
+  "commit_url": "https://github.com/Physical-Intelligence/openpi/commit/215abfb217dbac7d5f1273282331b9b1866c0479",
+  "commit_date_utc": "2026-08-24T16:27:12Z",
+  "recorded_utc": "2026-11-06T15:49:17.307944+00:00",
+  "method": "Official GitHub commit page and API, then exact-SHA raw source; source bodies inspected locally.",
+  "primary_papers": [
+    {
+      "title": "pi0",
+      "url": "https://www.pi.website/download/pi0.pdf"
+    },
+    {
+      "title": "pi0.5 v1",
+      "url": "https://arxiv.org/html/2504.16054v1"
+    },
+    {
+      "title": "FAST v1",
+      "url": "https://arxiv.org/html/2501.09747v1"
+    },
+    {
+      "title": "Knowledge Insulation",
+      "url": "https://www.pi.website/research/knowledge_insulation"
+    }
+  ]
+}

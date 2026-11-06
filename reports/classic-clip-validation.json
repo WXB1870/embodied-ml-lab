@@ -1,0 +1,67 @@
+{
+  "base_head": "e484e552085dc1610291b10fa5a11bfbc5fa515f",
+  "python": "3.12.14",
+  "torch": "2.15.0+cpu",
+  "scope": "Two courses; no code or exercise changes",
+  "content_sha256": "70df048638e02b65d09174a6d6fbf318a2da5a7bd7e56651ead137b3543bbe50",
+  "preserved": {
+    "all_old_section_ids": true,
+    "all_code_and_reference_answers": true,
+    "other_courses_in_file": true
+  },
+  "executed": [
+    {
+      "course": "contrastive-pretraining",
+      "kind": "code",
+      "sha256": "3abe10c72a48d46518e76b7547703ceae4875197e6100710fb3b2956ba4f58fb",
+      "seconds": 0.404,
+      "status": "passed",
+      "stdout": "匹配 / 错配 CLIP loss: 0.0561 5.2956\n成对 Sigmoid loss: 0.6362\n配对、单位化与梯度检查通过\n"
+    },
+    {
+      "course": "contrastive-pretraining",
+      "kind": "exercise",
+      "sha256": "4247164b2841b87162db80ba09c42613a922c859a74d3f390ca4ead5b8e3925b",
+      "seconds": 0.0006,
+      "status": "passed",
+      "stdout": "通过：双向目标、非对称矩阵与稳定归约\n"
+    },
+    {
+      "course": "contrastive-pretraining",
+      "kind": "pytorchTask",
+      "sha256": "a614a5b0d0e973bd60de819126a0b4eca39b6615041e85e01382a72601f65e3a",
+      "seconds": 0.1429,
+      "status": "passed",
+      "stdout": "通过：单位化、配对顺序、非对称双向目标和梯度\n"
+    },
+    {
+      "course": "vision-preprocessing",
+      "kind": "code",
+      "sha256": "1708c4d401540488f98459b3d8b42884e6e5fdd85548355c6844280bf7afe949",
+      "seconds": 0.0027,
+      "status": "passed",
+      "stdout": "变换后关键点: [[0.16699999570846558, 2.200000047683716], [5.5, 5.0], [10.833000183105469, 7.800000190734863]]\n多视角: (3, 3, 12, 12) 有效位: [True, True, False]\n像素合同、几何回映与相机顺序检查通过\n"
+    },
+    {
+      "course": "vision-preprocessing",
+      "kind": "exercise",
+      "sha256": "d33b1d111ec9fac0adcc5f67c32111f257176a62908abec6318725da38263f0e",
+      "seconds": 0.0003,
+      "status": "passed",
+      "stdout": "通过：补边、半像素、恒等变换和整数尺寸\n"
+    },
+    {
+      "course": "vision-preprocessing",
+      "kind": "pytorchTask",
+      "sha256": "638b5e54f2b960154ab52327a44414cc26c75fa069f58c51c4f1cb8870d6e843",
+      "seconds": 0.0013,
+      "status": "passed",
+      "stdout": "通过：RGB、补边、半像素插值、关键点几何、梯度和输入合同\n"
+    }
+  ],
+  "math_and_links": {
+    "formulas": 62,
+    "internal_links_checked": 2,
+    "errors": []
+  }
+}

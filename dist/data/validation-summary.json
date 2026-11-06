@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-11-06T16:27:09Z",
+  "total": 181,
+  "passed": 180,
+  "failed": 0,
+  "environment_blocked": 1,
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "torch": "2.15.0+cpu",
+  "environment": "CPU; isolated process and temporary directory per executed example; unchanged previously executed sources reuse recorded results",
+  "blocked_cases": [
+    {
+      "lesson": "distributed-training",
+      "case": "demo",
+      "status": "environment_blocked",
+      "reason": "当前执行环境禁止创建 Gloo 所需的本机 TCP 通信 socket；file:// rendezvous 也仍需该通信。"
+    }
+  ],
+  "foundation_total": 152,
+  "topic_total": 29,
+  "foundation_checked_at": "2026-11-06T16:27:09Z",
+  "topic_checked_at": "2026-11-06T16:27:07Z"
+}

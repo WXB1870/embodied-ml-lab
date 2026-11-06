@@ -1,0 +1,8 @@
+{
+  "exit_code": 0,
+  "stdout": "{\"svg\": \"rendered.svg\", \"source_sha256\": \"be763a3adf80417b8a4c93423dbb6f5b35e57dd12178806720d9d44f23317ec2\", \"svg_sha256\": \"236c021aa9954b8d08fe544f34cd918ba3cf59fe4861972edd349fa5ba5f9aee\"}\n",
+  "stderr": "",
+  "svg_created": true,
+  "archive": "embodied-ml-study-pack.zip",
+  "scope": "Plotting from extracted full pack, without repository files"
+}

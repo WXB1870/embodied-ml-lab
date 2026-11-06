@@ -1,0 +1,328 @@
+{
+  "runtime": "Python 3 / PyTorch 2.15.0+cpu, CPU, single thread",
+  "cases": [
+    {
+      "name": "base-residual-demo",
+      "passed": true,
+      "seconds": 3.747,
+      "stdout": "depth scale model | input_VJP first_W_grad last_W_grad feature_RMS | MSE_before MSE_after first_W_update\n2 one plain | 0.66455 1.756 1.1304 0.39814 0.42408 0.058482 1.6667\n2 one residual | 1.2747 2.3979 1.8091 1.0055 1.0948 0.081335 1.6896\n2 sqrt_depth plain | 0.35391 0.94442 0.60326 0.21527 0.33363 0.071423 1.9816\n2 sqrt_depth residual | 1.093 1.5066 1.1886 0.86081 0.86609 0.084204 1.8502\n8 one plain | 0.47787 1.3845 0.75651 0.23932 0.35496 0.094031 1.0573\n8 one residual | 3.8003 6.112 2.5257 2.0821 5.4117 0.13771 0.88917\n8 sqrt_depth plain | 0.0002397 0.00064684 0.00036795 0.00011612 0.3033 0.22732 2.275\n8 sqrt_depth residual | 1.359 0.86029 0.62913 0.90279 1.0876 0.069568 1.5968\n24 one plain | 0.28351 0.7618 0.26987 0.11802 0.32091 0.13677 1.1285\n24 one residual | 10.466 16.455 3.9922 3.5822 15.01 0.12863 0.34613\n24 sqrt_depth plain | 2.2231e-17 4.8439e-17 2.5989e-17 1.0979e-17 0.30331 0.29903 4.7409e-10\n24 sqrt_depth residual | 1.2639 0.48068 0.35048 0.86043 0.97801 0.050977 1.2518\n通过：配对初值、有限训练、抵消反例和 2^12 梯度放大；表内数值仅适用于这个合成实验。\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-residual-exercise",
+      "passed": true,
+      "seconds": 0.01,
+      "stdout": "通过：残差导数、恒等路径和可能的梯度抵消\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-residual-pytorchTask",
+      "passed": true,
+      "seconds": 1.581,
+      "stdout": "通过：两种结构、非原地操作与恒等梯度\n通过：非零分支的 Pre-Norm / Post-Norm 完整 Jacobian\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-normalization-demo",
+      "passed": true,
+      "seconds": 1.589,
+      "stdout": "通过：LN 三组梯度、RMS VJP、常量行 Jacobian、BN 两种方差和批次依赖。\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-normalization-exercise",
+      "passed": true,
+      "seconds": 0.011,
+      "stdout": "通过：统计维度、平移不变性、常量行和空行检查\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-normalization-pytorchTask",
+      "passed": true,
+      "seconds": 1.605,
+      "stdout": "通过：普通/小方差/常量行、三组梯度、平移方向与批次独立性\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-activation-init-demo",
+      "passed": true,
+      "seconds": 1.725,
+      "stdout": "ReLU derivative: [0.0, 0.0, 0.0, 1.0, 1.0]\nSiLU derivative: [-0.08810410601516962, 0.07232948812851325, 0.5, 0.9276705118714869, 1.0881041060151693]\nGELU derivative: [-0.01194564720418392, -0.08331547058768635, 0.5, 1.0833154705876864, 1.011945647204184]\nper layer (mean, second_moment, std)\ntiny: [(0.0031911151083580886, 3.215229709345511e-05, 0.004687118673413449), (1.8048202344965243e-05, 1.0320991563988847e-09, 2.657746316927415e-05), (1.0361496550781735e-07, 3.2770939527855303e-14, 1.4844149841156278e-07)]\nHe-scale: [(0.5641147831667124, 1.004759284170472, 0.8285733495491772), (0.5640063232801638, 1.0079093324207862, 0.8305457240398512), (0.5723972245545929, 1.0000897072709753, 0.820031172939846)]\n通过：三种激活导数和匹配方向的尺度关系；二阶矩保持是初始化统计近似。\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-activation-init-exercise",
+      "passed": true,
+      "seconds": 0.015,
+      "stdout": "通过：前向、零点约定与链式法则。\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-activation-init-pytorchTask",
+      "passed": true,
+      "seconds": 1.154,
+      "stdout": "PyTorch 测试通过：尺度、偏置及参数身份正确。\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-mlp-demo",
+      "passed": true,
+      "seconds": 2.147,
+      "stdout": "parameters: 354\ntraining MSE: 0.7379 -> 0.00347\ntwo function outputs: tensor([[-0.8016,  0.7189],\n        [ 0.9816, -0.9782]])\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-mlp-exercise",
+      "passed": true,
+      "seconds": 0.01,
+      "stdout": "通过：隐藏非线性正确，输出允许负值。\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-mlp-pytorchTask",
+      "passed": true,
+      "seconds": 1.524,
+      "stdout": "通过：固定权重数值、时间池化、模块注册、梯度与 logits 约定\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-cnn-receptive-field-demo",
+      "passed": true,
+      "seconds": 1.521,
+      "stdout": "单层输出形状: (1, 1, 3, 3)\n中间 / 最终形状: (1, 1, 5, 5) (1, 1, 3, 3)\n理论感受野: 7 非零梯度像素: 49\n卷积与感受野检查通过\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-cnn-receptive-field-exercise",
+      "passed": true,
+      "seconds": 0.011,
+      "stdout": "通过：尺寸、Dilation、累计步长与感受野\n",
+      "stderr": ""
+    },
+    {
+      "name": "base-cnn-receptive-field-pytorchTask",
+      "passed": true,
+      "seconds": 1.525,
+      "stdout": "通过：多通道、非方形核、偏置、步长与梯度\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-mlp-manual-backprop",
+      "passed": true,
+      "seconds": 1.51,
+      "stdout": "x (3, 2) gradient agrees\nw1 (3, 2) gradient agrees\nb1 (3,) gradient agrees\nw2 (2, 3) gradient agrees\nb2 (2,) gradient agrees\nloss = 0.092792\n通过：前向、五组梯度、有限差分和 17 个参数。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-mlp-readout-training",
+      "passed": true,
+      "seconds": 2.164,
+      "stdout": "initial gradient norm = 0.6892086267471313\ntrain normalized MSE: 0.945299 -> 0.001044\nholdout MSE in original units: 0.003075\n通过：有效池化、训练更新、有限验证损失与含统计量的恢复。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-mlp-constructive-spline",
+      "passed": true,
+      "seconds": 1.488,
+      "stdout": "width=4, max_error=0.01562500, verified slopes\nwidth=8, max_error=0.00390625, verified slopes\nwidth=16, max_error=0.00097656, verified slopes\n这是构造性表示实验，没有执行优化；它不保证训练能找到这组参数，也不刻画区间外误差。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-mlp-lab-affine-from-loops",
+      "passed": true,
+      "seconds": 0.011,
+      "stdout": "通过：非方形权重、Batch 共享、偏置和参数量。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-mlp-lab-manual-gradient",
+      "passed": true,
+      "seconds": 1.539,
+      "stdout": "通过：全部梯度、平均归约和失活支路。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-mlp-lab-masked-readout",
+      "passed": true,
+      "seconds": 1.63,
+      "stdout": "通过：指定 MLP、独立 GELU 参考、NaN Padding 隔离、每样本分母与梯度。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-mlp-lab-relu-spline",
+      "passed": true,
+      "seconds": 1.613,
+      "stdout": "通过：非等距节点、分段前向与梯度、明确参数量、x² 误差界及无效输入\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-cnn-unfold-convolution",
+      "passed": true,
+      "seconds": 1.678,
+      "stdout": "groups = 1 shape = (2, 5, 3, 8) forward and gradients agree\ngroups = 2 shape = (2, 6, 3, 8) forward and gradients agree\ngroups = 4 shape = (2, 8, 3, 8) forward and gradients agree\nunfold/input element ratio = 9.0\n通过：互相关、通道分组、非方形几何、输入/权重/偏置梯度。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-cnn-cnn-training-and-patches",
+      "passed": true,
+      "seconds": 2.544,
+      "stdout": "train CE: 0.698557 -> 0.000010\nholdout CE: 0.000010, accuracy: 1.000\n通过：卷积分类训练、独立留出评价、参数量与 patch 线性投影等价。\n此处输入尺寸可变仅是形状性质，不代表对新分辨率的泛化保证。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-cnn-lab-geometry-and-receptive-field",
+      "passed": true,
+      "seconds": 0.014,
+      "stdout": "通过：非方形尺寸、向下取整、dilation 与感受野递推。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-cnn-lab-grouped-convolution",
+      "passed": true,
+      "seconds": 1.524,
+      "stdout": "通过：普通、分组、depthwise、无偏置与三组梯度。\n",
+      "stderr": ""
+    },
+    {
+      "name": "topic-cnn-lab-spatial-expectation",
+      "passed": true,
+      "seconds": 1.589,
+      "stdout": "通过：空间归约、非方形 xy 顺序、中心坐标和可微期望。\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-residual-2",
+      "passed": true,
+      "seconds": 1.47,
+      "stdout": "Pre-Norm 恒等误差: 0.0\n末层权重梯度范数: 0.8619720339775085\n首层权重梯度范数: 0.0\n残差结构检查通过\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-normalization-2",
+      "passed": true,
+      "seconds": 1.523,
+      "stdout": "Jacobian 最大误差: 5.551115123125783e-17\n尺度方向导数: tensor([-0.0393, -0.0236,  0.0079,  0.0550], dtype=torch.float64)\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-mlp-affine-nonlinearity",
+      "passed": true,
+      "seconds": 1.144,
+      "stdout": "same initial output=1; gradients: [1.0, 1.0] [0.01, 100.0]\noutputs after one step: 0.998001 -8.9999991\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-cnn-spatial-shape",
+      "passed": true,
+      "seconds": 1.121,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "name": "section-cnn-receptive-field",
+      "passed": true,
+      "seconds": 1.526,
+      "stdout": "输入导数: [1.0, 0.0, 2.0, 0.0, 3.0, 0.0, 2.0, 0.0, 1.0]\n可达偏移: [0, 2, 4, 6, 8]\n同形输出的中间采样中心: 2.5 3.5\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-cnn-equivariance",
+      "passed": true,
+      "seconds": 1.594,
+      "stdout": "直接采样: [1.0, 1.0, 1.0, 1.0] [-1.0, -1.0, -1.0, -1.0]\n先平均再采样: [0.0, 0.0, 0.0, 0.0]\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-cnn-architecture-design",
+      "passed": true,
+      "seconds": 1.557,
+      "stdout": "通过：904 个参数、空间/通道接口、Linear/1×1 等价、梯度与零投影恒等。\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-cnn-patch-embedding",
+      "passed": true,
+      "seconds": 1.546,
+      "stdout": "空间缩小、通道增加: (1, 1, 4, 4) -> (1, 4, 2, 2)\n重建最大误差: 0.0\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-cnn-spatial-readout",
+      "passed": true,
+      "seconds": 1.562,
+      "stdout": "坐标导数: [-0.2257404672165745, -0.03490866496076659, 0.2606491321773411]\n两个并列峰在低温下仍读出中点\n",
+      "stderr": ""
+    },
+    {
+      "name": "section-cnn-implementation-checks",
+      "passed": true,
+      "seconds": 1.549,
+      "stdout": "卷积后再转置卷积: [5.0, 18.0, 16.0]\n转置的内积恒等式成立，但它不是逆映射\n",
+      "stderr": ""
+    }
+  ],
+  "annotations": [
+    {
+      "article": "residual",
+      "title": "同初值普通网络与残差网络：梯度、尺度和优化对照",
+      "lines": 94,
+      "annotations": 6
+    },
+    {
+      "article": "normalization",
+      "title": "归一化前向、手推 VJP 与训练状态的独立对照",
+      "lines": 69,
+      "annotations": 6
+    },
+    {
+      "article": "activation-init",
+      "title": "解析导数、共享随机方向与初始化的尺度关系",
+      "lines": 42,
+      "annotations": 4
+    },
+    {
+      "article": "mlp",
+      "title": "训练一个二维非线性函数近似器",
+      "lines": 34,
+      "annotations": 3
+    },
+    {
+      "article": "cnn-receptive-field",
+      "title": "从单核互相关到七乘七感受野",
+      "lines": 37,
+      "annotations": 3
+    },
+    {
+      "article": "mlp",
+      "title": "手写前向与反传：对照 autograd 和有限差分",
+      "lines": 74,
+      "annotations": 6
+    },
+    {
+      "article": "mlp",
+      "title": "完整合成序列回归：有效池化、标准化、更新和恢复",
+      "lines": 88,
+      "annotations": 6
+    },
+    {
+      "article": "mlp",
+      "title": "构造 ReLU 插值网络并核对误差阶与导数",
+      "lines": 37,
+      "annotations": 3
+    },
+    {
+      "article": "cnn",
+      "title": "用 Unfold 手写分组卷积并比较三组梯度",
+      "lines": 67,
+      "annotations": 5
+    },
+    {
+      "article": "cnn",
+      "title": "完整小 CNN 训练与 Patch 投影等价验证",
+      "lines": 77,
+      "annotations": 5
+    }
+  ],
+  "passed": 37,
+  "total": 37
+}

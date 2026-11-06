@@ -1,0 +1,995 @@
+{
+  "id": "transformer",
+  "title": "Transformer：注意力、残差与序列建模",
+  "subtitle": "从注意力梯度与信息路径，理解表示变换、因果训练和缓存。",
+  "lead": "MLP 在每个位置重组特征，卷积通过局部窗口交流信息，而语言、多视角观测与动作序列还需要根据内容选择远处的信息。Transformer 将这种选择写成可学习的注意力，并与逐位置非线性、残差和归一化组成深层网络。本章从一次可手算的读取开始建立完整 Block，再沿位置与可见性分析多层交互，最后连接自回归训练、缓存和 VLA 条件编码，使公式、张量与生成过程具有一致解释。",
+  "minutes": 240,
+  "prerequisites": [
+    "tensor",
+    "matrix-grad",
+    "probability",
+    "mlp",
+    "normalization",
+    "residual"
+  ],
+  "relatedLessons": [
+    "attention",
+    "transformer",
+    "embeddings",
+    "multimodal",
+    "tokenizer-autoregressive",
+    "conditioning-fusion",
+    "kv-cache-inference",
+    "generative-policy"
+  ],
+  "goals": [
+    "按 \\(B,T,D,H,d_h\\) 标注前向张量，并解释每次变形是否改变了轴的含义。",
+    "推导缩放点积注意力，手算小例子，验证手写与官方实现的输出和梯度。",
+    "根据任务画出信息可见性，并正确转换 SDPA、MultiheadAttention 的布尔 Mask。",
+    "说明多层残差、归一化与 FFN 如何协作，以及位置编码如何进入 Q/K。",
+    "独立检查标签移位、有效损失分母、推理 Dropout 和 KV Cache 的等价性。",
+    "通过因果性、批次隔离、Padding 扰动和非方形缓存测试定位实现错误。"
+  ],
+  "quickFacts": [
+    {
+      "label": "基本输入",
+      "value": "\\(X\\in\\mathbb{R}^{B\\times T\\times D}\\)",
+      "detail": "Batch、token 位置、通道是不同的轴；Linear 默认作用于最后一维。"
+    },
+    {
+      "label": "每头维度",
+      "value": "\\(d_h=D/H\\)",
+      "detail": "标准 MHA 的 Q/K/V 头数相同；GQA/MQA 的 KV 头数可以不同。"
+    },
+    {
+      "label": "注意力权重",
+      "value": "\\(A\\in\\mathbb{R}^{B\\times H\\times L\\times S}\\)",
+      "detail": "每个 Query 位置沿 Key 位置 S 归一化，输出保留 Query 的长度 L。"
+    },
+    {
+      "label": "布尔 Mask",
+      "value": "手写实现：True = 可见",
+      "detail": "与 SDPA 一致；`nn.MultiheadAttention` 的布尔 `attn_mask` / `key_padding_mask` 使用 True = 禁止。"
+    },
+    {
+      "label": "完整 Block",
+      "value": "Attention + FFN + residual + norm",
+      "detail": "注意力负责跨位置混合；标准 FFN 在各 token 上复用同一组非线性变换。"
+    },
+    {
+      "label": "缓存前提",
+      "value": "历史 K/V 保持不变",
+      "detail": "模型权重、输入、位置、可见性和条件路径都必须允许历史状态复用。"
+    }
+  ],
+  "notation": [
+    {
+      "symbol": "\\(B\\)",
+      "meaning": "独立样本数，不应被注意力当作序列位置混合",
+      "shape": "标量"
+    },
+    {
+      "symbol": "\\(L,\\ S\\)",
+      "meaning": "Query 长度 / Key-Value 长度；交叉注意力与缓存时通常不同",
+      "shape": "标量"
+    },
+    {
+      "symbol": "\\(D,\\ H,\\ d_h\\)",
+      "meaning": "模型宽度 / 注意力头数 / 每头 QK 维度；标准 MHA 满足 \\(D=Hd_h\\)",
+      "shape": "标量"
+    },
+    {
+      "symbol": "\\(X,\\ C\\)",
+      "meaning": "Query 来源 / 可供读取的上下文",
+      "shape": "[B,L,D] / [B,S,D_context]"
+    },
+    {
+      "symbol": "\\(Q,\\ K,\\ V\\)",
+      "meaning": "按头拆分后的查询、键、值",
+      "shape": "[B,H,L,d_h] / [B,H,S,d_h] / [B,H,S,d_v]"
+    },
+    {
+      "symbol": "`allowed` / \\(M\\)",
+      "meaning": "允许连接的布尔矩阵 / 加到分数上的 0 或 \\(-\\infty\\) 偏置",
+      "shape": "可广播到 [B,H,L,S]"
+    },
+    {
+      "symbol": "\\(A,\\ Z\\)",
+      "meaning": "注意力权重 / 每头汇总后的内容",
+      "shape": "[B,H,L,S] / [B,H,L,d_v]"
+    },
+    {
+      "symbol": "\\(D_{\\mathrm{ff}}\\)",
+      "meaning": "逐 Token FFN 中间宽度；例如 \\(4D\\)，并非固定要求",
+      "shape": "标量"
+    }
+  ],
+  "sections": [
+    {
+      "id": "tokens-and-axes",
+      "title": "Batch、Token 与 Channel",
+      "body": [
+        "一个 token 是某个位置上的特征向量，不必是一个词。语言模型把离散 ID 查表为向量；视觉模型可把图像 Patch 投影为向量；状态编码器可把关节位置、速度等投影为向量。序列的来源可以不同，但进入同一注意力模块后，各轴的含义必须明确。设输入 \\(X\\in\\mathbb{R}^{B\\times T\\times D}\\)：\\(B\\) 是互不相干的样本，\\(T\\) 是同一样本中的位置，\\(D\\) 是该位置携带的特征。",
+        "本章沿一个两层因果语言模型展开：两条样本、每条四个输入位置、表示宽度八，记为 \\(B=2,T=4,D=8\\)；两头注意力给出 \\(H=2,d_h=4\\)，层数另记 \\(N_{\\rm layer}=2\\)，避免与 Query 长度 \\(L\\) 混淆。词表有七个符号，输入 ID 为 `[[0,1,2,3],[3,4,5,6]]`，Embedding 查表得到 `[2,4,8]`。`Linear(8,24)` 在每个位置独立产生二十四个通道，并不混合四个位置；下一节才将这些通道拆成 Q/K/V。",
+        "阅读真实模型时，先记录每一段 token 对应什么：相机、图像格子、文本、状态、噪声动作、历史帧或特殊标记。再记录拼接顺序、长度、有效位和位置编号。来自同一时间的多相机 token、沿时间排列的动作 token，不应因为都在 T 轴上就被当成同一种顺序。一个良好的输入约定要能把输出位置映射回它的物理或语义来源。",
+        "`nn.Linear` 总是映射最后一维；`nn.MultiheadAttention` 默认 `batch_first=False`，使用 `[B,T,D]` 时需要明确设置 `batch_first=True`。约定应在模块边界统一，不能依靠 B 与 T 恰好相等的输入通过形状检查。",
+        "这组尺寸贯穿下面的注意力、残差、FFN、输出头和缓存讨论。[两层模型完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 中，`TinyLM.forward` 是入口，`Block.forward` 连接两条残差，`CausalAttention.forward` 展开注意力，`apply_rope` 处理位置。主案例采用 decoder-only、Pre-LN、GELU 和 RoPE；它用于理解共同机制，不冒充原论文的 Encoder–Decoder 架构。原论文结构在后文单独对照。"
+      ],
+      "formula": "X\\in\\mathbb{R}^{B\\times T\\times D},\\qquad \\operatorname{Linear}(X)=XW^\\top+b",
+      "code": "import torch\n\ntorch.manual_seed(19)\nx = torch.randn(2, 4, 8)\nprojection = torch.nn.Linear(8, 24)\ny = projection(x)\nassert y.shape == (2, 4, 24)\n",
+      "codeExplanation": "这里使用 PyTorch 的权重存储约定 `W:[out_features,in_features]`，所以前向写成 \\(XW^\\top\\)。",
+      "takeaway": "先确定每个轴表示什么，再判断 reshape、transpose 和 matmul 是否合理。",
+      "lead": "在讨论信息怎样交流之前，需要先确定一次交流发生在哪些对象之间。Token 是携带特征的位置，Batch 则区分独立样本；明确这两个层次，才能判断后续投影和注意力有没有跨错维度。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "qkv-projections",
+      "title": "Q/K/V 投影与学习到的匹配函数",
+      "body": [
+        "自注意力中的 Q、K、V 通常都由同一层输入产生，却使用不同的可学习投影。Q 决定当前位置如何发起读取，K 决定每个候选位置如何参与匹配，V 携带被汇总的内容。这些是计算角色，不应预设某一头对应“物体”或“语言”。模型能否学到有用的分工取决于数据、目标和参数。",
+        "对单条序列，令输入为 \\(X\\in\\mathbb R^{T\\times D}\\)，并取 \\(W_Q,W_K\\in\\mathbb R^{d_h\\times D}\\)、\\(W_V\\in\\mathbb R^{d_v\\times D}\\)。点积 \\(q_i^\\top k_j=\\sum_{r=1}^{d_h}q_{ir}k_{jr}\\) 汇总各匹配通道的共同响应；学习投影决定哪些响应有用。独立的 Value 投影允许模型用用于匹配的属性选择位置，同时读取别的内容。Q/K/V 也可以共享部分参数，但这会约束函数族，并不是同一结构的无条件简化。",
+        "忽略偏置与位置编码，单头分数可写成 \\(S=XW_Q^\\top W_KX^\\top/\\sqrt{d_h}\\)。Q/K 学习的是一个双线性匹配函数，\\(W_Q\\text{ 与 }W_K\\) 不同，因此 S 通常不对称；不能把它默认当作对称距离或正定核。\\(\\exp(S_{ij})\\) 经行归一化后类似按输入动态选择邻居的核加权平均，但匹配关系本身会随这一层表示变化。",
+        "对于标准多头注意力，把 `[B,T,D]` 投影成三组 `[B,T,D]`，再先 reshape 为 `[B,T,H,d_h]`，最后 transpose 为 `[B,H,T,d_h]`。不能直接从 `[B,T,D]` reshape 到 `[B,H,T,d_h]`：元素数量虽然相同，原来相邻的通道和位置会被错误解释。打包 QKV 的 Linear(D,3D) 只是同时计算三个线性映射，拆分顺序必须与权重布局一致。",
+        "例如 \\(D=8,\\ H=2\\)，则 \\(d_h=4\\)。第一头和第二头分别处理四维投影特征，各自形成一张注意力矩阵。头维度不是从原图中固定切两块，也不是将 Batch 分成两组。先用小整数连续填充张量，再核对一个 token 的通道拆分，是定位轴错误的有效办法；只断言最终 shape 难以发现这类问题。",
+        "主案例在每个 Block 中先计算 `n1=norm1(x)`，再由 `packed=self.qkv(n1)` 得到 `[2,4,24]`。`chunk(3,-1)` 按 Q、K、V 拆成三个 `[2,4,8]`，随后每个张量先变成 `[2,4,2,4]`，再交换中间两轴，得到 `[2,2,4,4]`。这里第二轴是头、第三轴是位置；两层各有自己的 `qkv` 参数。RoPE 随后只作用于 Q/K 的最后一维通道对，不会改变这些尺寸。"
+      ],
+      "formula": "Q=XW_Q^\\top,\\ K=XW_K^\\top,\\ V=XW_V^\\top,\\qquad [B,T,D]\\rightarrow[B,T,H,d_h]\\rightarrow[B,H,T,d_h]",
+      "code": "q = q_proj(x).reshape(B, T, H, D // H).transpose(1, 2)\nk = k_proj(x).reshape(B, T, H, D // H).transpose(1, 2)\nv = v_proj(x).reshape(B, T, H, D // H).transpose(1, 2)",
+      "takeaway": "投影产生计算角色，reshape 拆分通道，transpose 才交换头轴和位置轴。",
+      "lead": "不同位置可能需要根据一种特征寻找对象，却读取另一种特征作为内容。将匹配与读出分别参数化，便得到 Query、Key 和 Value；这些投影提供可学习的选择方式，并非给每个向量预先指定语义。",
+      "codeKind": "fragment",
+      "codeExplanation": "这是三个独立投影的局部写法，依赖已定义的 torch、x、B/T/H/D 与三个 Linear。完整模型使用等价的打包 `qkv`，可在[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `CausalAttention.forward` 中运行。",
+      "figures": [
+        {
+          "src": "/assets/figures/transformer-attention-flow.svg",
+          "title": "Attention 投影、头轴与读出形状",
+          "alt": "QKV 从 [2,4,24] 拆分并转为 [2,2,4,4]，Q/K 旋转后计算 Mask 和 Softmax，再读取 V、合头并投影回 [2,4,8]。",
+          "caption": "本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
+          "afterParagraph": 6
+        }
+      ]
+    },
+    {
+      "id": "scaled-attention",
+      "title": "从缩放点积到注意力的前向与反向",
+      "body": [
+        "对某一个 Query 向量 \\(q_i\\)，与所有 Key 向量 \\(k_j\\) 做点积，得到它对各位置的匹配分数。除以 \\(\\sqrt{d_h}\\) 后，沿 Key 轴做 Softmax，得到非负、和为一的权重，再加权求和 \\(V\\)。Query 长度 \\(L\\) 与 Key 长度 \\(S\\) 可以不同；结果的长度仍是 \\(L\\)，因为每个 Query 得到一个读出向量。\\(V\\) 的最后一维也可以与 Q/K 不同。",
+        "手算一例：\\(q=(1,0)\\)、\\(k_1=(1,0)\\)、\\(k_2=(0,1)\\)，则缩放分数为 \\((1/\\sqrt{2},0)\\)，权重约为 \\((0.670,0.330)\\)。若 \\(v_1=(2,0)\\)、\\(v_2=(0,4)\\)，输出约为 \\((1.340,1.321)\\)。将第二个 Key 禁止后，第一项权重应变为一，输出为 \\((2,0)\\)。这个例子同时检查缩放、Softmax 轴、Mask 和 \\(V\\) 的加权方向。",
+        "缩放因子可以从二阶矩推导，但必须写明假设。令 \\(q,k\\in\\mathbb{R}^{d_h}\\) 是相互独立、零均值的随机向量，协方差分别为 \\(\\Sigma_q,\\Sigma_k\\)。此时 \\(\\mathbb{E}[q^\\top k]=0\\)，方差等于二阶矩。展开 \\((q^\\top k)^2\\) 后，独立性使 \\(\\mathbb{E}[q_iq_jk_ik_j]=\\mathbb{E}[q_iq_j]\\mathbb{E}[k_ik_j]\\)，于是 \\(\\operatorname{Var}(q^\\top k)=\\sum_{i,j}(\\Sigma_q)_{ij}(\\Sigma_k)_{ij}=\\operatorname{tr}(\\Sigma_q\\Sigma_k)\\)。当两者协方差均为 \\(I\\) 时，方差为 \\(d_h\\)；除以 \\(\\sqrt{d_h}\\) 后为 1。各维方差分别为 \\(\\sigma_q^2,\\sigma_k^2\\) 且无相关时，缩放后的方差则为 \\(\\sigma_q^2\\sigma_k^2\\)，不必等于 1。",
+        "真实 Self-Attention 的 \\(q,k\\) 可能由同一输入投影而来，因而未必相互独立；训练也会改变其均值、协方差与范数。上述结论解释标准初始化附近的典型 Logit 尺度，不能当作任意 Q/K 的恒等式。缩放使用每头 Q/K 宽度 \\(d_h\\)，而非总模型宽度或序列长度。分数差过大时，Softmax 可能接近 one-hot；分数尺度很小又会接近均匀分布。缩放控制这项变化，不保证模型一定学到合适的选择性。",
+        "将[注意力一章推得的 Softmax 导数](#/learn/attention?section=2)写成矩阵前，先记一行缩放分数为 \\((s_1,\\ldots,s_S)\\)、归一化分母为 \\(Z=\\sum_j e^{s_j}\\)，\\(\\delta_{ij}\\) 表示 i=j 时为 1、否则为 0。其 Jacobian 为：\\(J=\\operatorname{diag}(a)-aa^\\top\\)，其中 \\(a\\) 是一个 Query 对所有 Key 的概率列向量。由 \\(J\\mathbf1=0\\)，可知共同平移分数不会改变概率；由 \\(\\operatorname{tr}(J)=1-\\sum_i a_i^2\\)，可见该局部敏感度在 one-hot 极限趋于零。把它接入完整多头计算图时，需要继续区分分数路径与 Value 路径，不能把此极限当成整层所有梯度消失的证明。",
+        "读出 \\(o=\\sum_j a_jv_j\\) 满足 \\(\\partial o/\\partial s_j=a_j(v_j-o)\\)。当所有 Value 相同，分数怎样变化都不改变 \\(o\\)，因此 Q/K 梯度为零；Value 仍能收到梯度。这一局部关系将在下面变成批量矩阵公式，逐项对应代码中的 Q、K、V 反向传播。",
+        "矩阵形式更适合核对代码。设上游输出梯度为 \\(G=\\partial\\mathcal{L}/\\partial O\\)，并将任意中间量 \\(U\\) 的损失梯度简记为 \\(dU=\\partial\\mathcal{L}/\\partial U\\)。先有 \\(dV=A^\\top G\\) 与 \\(dA=GV^\\top\\)；Softmax 回传为 \\(dS=A\\odot[dA-\\operatorname{rowsum}(A\\odot dA)]\\)，其中按行求和后保留一列并广播。最后 \\(dQ=dSK/\\sqrt{d_h}\\)、\\(dK=dS^\\top Q/\\sqrt{d_h}\\)。这些式子暂不含 Dropout。固定禁止连接的分数在图中是常量，对应 \\(dS\\) 应为零；全遮蔽行则要按实现约定单独处理。",
+        "无 Dropout 且该行至少有一个可见 Key 时，每头输出是该头 Value 的凸组合，但这个结论只在 \\(AV\\) 处成立。Value 本身经过投影，后面还有输出投影、残差与非线性，不能据此说整个 Transformer 的输出必定位于原始 token 的凸包内。",
+        "回到同一个两层模型：完整前向中，Q/K/V 都是 `[2,2,4,4]`，`scores=q @ keys.transpose(-2,-1) / 2` 的后两轴才是 Query × Key。`allowed:[2,1,4,4]` 沿头轴广播，先遮蔽再 `softmax(-1)`，每个有效 Query 分别在四个候选 Key 中归一化。`weights @ values` 仍是 `[2,2,4,4]`，但最后一轴的含义已由 Key 位置变为 Value 通道；两个张量尺寸恰好相同，必须靠轴的含义区分。完整代码的 `inspect=True` 会保留这些中间量以核对数据流。"
+      ],
+      "formula": "\\begin{aligned}\\operatorname{Var}(q^\\top k)&=\\sum_{i,j}\\mathbb E[q_iq_j]\\mathbb E[k_ik_j]=\\operatorname{tr}(\\Sigma_q\\Sigma_k)\\\\ \\frac{\\partial a_i}{\\partial s_j}&=\\frac{\\delta_{ij}e^{s_i}}{Z}-\\frac{e^{s_i}e^{s_j}}{Z^2}=a_i(\\delta_{ij}-a_j)\\\\ A&=\\operatorname{softmax}_{\\rm row}(QK^\\top/\\sqrt{d_h}),\\quad O=AV\\\\ dV&=A^\\top G,\\quad dA=GV^\\top\\\\ dS&=A\\odot\\bigl(dA-\\operatorname{rowsum}(A\\odot dA)\\bigr)\\\\ dQ&=dSK/\\sqrt{d_h},\\quad dK=dS^\\top Q/\\sqrt{d_h}\\end{aligned}",
+      "code": "import math\nimport torch\n\ntorch.manual_seed(3)\ndtype = torch.float64\nq = torch.randn(2, 3, dtype=dtype, requires_grad=True)\nk = torch.randn(4, 3, dtype=dtype, requires_grad=True)\nv = torch.randn(4, 2, dtype=dtype, requires_grad=True)\ng = torch.randn(2, 2, dtype=dtype)  # 任意上游梯度\nscale = math.sqrt(q.shape[-1])\na = (q @ k.T / scale).softmax(-1)\nout = a @ v\nactual = torch.autograd.grad((out * g).sum(), (q, k, v))\nwith torch.no_grad():\n    da = g @ v.T\n    ds = a * (da - (a * da).sum(-1, keepdim=True))\n    manual = (ds @ k / scale, ds.T @ q / scale, a.T @ g)\nfor got, expected in zip(actual, manual):\n    torch.testing.assert_close(got, expected)\nprint(\"Q/K/V 梯度最大误差:\", [(x-y).abs().max().item() for x, y in zip(actual, manual)])\n",
+      "takeaway": "最后一维 Softmax 回答的是“这个 Query 应该从哪些 Key 位置读取”。",
+      "example": {
+        "title": "两个 Key 的注意力可以直接手算",
+        "steps": [
+          "假设缩放后的两个分数为 \\((0,\\ln3)\\)。指数为 \\((1,3)\\)，Softmax 权重为 \\((1/4,3/4)\\)。",
+          "两个 Value 分别是 \\((2,0)\\) 和 \\((0,4)\\)。加权和为 \\(\\tfrac14(2,0)+\\tfrac34(0,4)=(0.5,3)\\)，输出维度来自 Value。",
+          "如果第二个 Key 被屏蔽，Softmax 应在有效位置重新归一化，得到 \\((1,0)\\)，输出变成 \\((2,0)\\)。先算完整 Softmax 再把第二项置零而不重新归一化，只会得到 \\((0.5,0)\\)。"
+        ],
+        "conclusion": "Mask 改变的是有效归一化集合，不能把它简单理解为最终输出乘一个零。"
+      },
+      "focus": {
+        "kind": "常用",
+        "title": "Attention 权重不是任务因果贡献的直接证明",
+        "explanation": "某个位置得到高权重，只说明在这一层、这一头、当前值投影与归一化下参与了加权汇总。后续残差、输出投影和其他头都会影响最终结果。不能仅凭热力图声称模型依赖了某个真实物体或因果线索。",
+        "check": "除看权重外，再固定其他输入，对相关信息做有控制的替换或遮挡，比较输出变化，并检查扰动是否产生了分布外输入。"
+      },
+      "codeExplanation": "Query 长度 2、Key 长度 4、Q/K 宽度 3、Value 宽度 2 刻意不同，避免方形张量掩盖转置错误。随机 g 对应一个明确标量目标；逐项比较三条反向路径，不能只检查总梯度范数。",
+      "lead": "投影得到匹配特征之后，还需要把一组分数变成稳定的内容读取。先计算一个小例子的归一化权重和输出，再解释缩放如何影响分布，最后沿计算图推导三条反向路径。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "heads-and-output",
+      "title": "多头合并与输出投影",
+      "body": [
+        "每一头得到 `[B,H,L,d_v]` 的结果后，先把头轴换回位置后面，再合并为 `[B,L,H×d_v]`，最后经过输出投影 \\(W_O\\)。输出投影能够混合不同头的结果；多头注意力通常不是简单把各头平均。若使用标准设置 \\(d_v=d_h,\\ Hd_h=D\\)，则输出仍是 `[B,L,D]`，可以与输入残差相加。",
+        "transpose 可能产生非连续视图。随后使用 reshape 会在必要时复制；使用 view 通常需要先 contiguous。应当先明确轴排列，再选择是否需要复制，不能以消除报错为目的随意 reshape。第一份演示把整个多头前向拆开，并把 Q、K、V、\\(W_O\\) 对应输入和参数的梯度逐一与 SDPA 路径比较。",
+        "在输入输出宽度均为 D、所有头宽度合计 D 的标准 MHA 中，四个无偏置投影约有 \\(4D^2\\) 个参数；若每个投影有偏置，则再加 \\(4D\\)。序列越长，注意力计算和中间激活越大，但这些投影的参数量不会乘 T。交叉注意力的上下文宽度不同、或 GQA 使用较少 KV 头时，需要重新按真实矩阵尺寸计算，不能继续套用这一参数式。",
+        "多头增加的关键是多个输入相关的读取矩阵，而不只是把一个宽向量拆开。忽略偏置、以行向量表示单条样本中的 Token，令 \\(A_h\\in\\mathbb{R}^{T\\times T}\\) 为第 \\(h\\) 头的注意力矩阵，\\(W_V^{(h)}\\in\\mathbb{R}^{d_v\\times D}\\)，输出投影对应这一头的分块 \\(W_O^{(h)}\\in\\mathbb{R}^{D_{\\mathrm{out}}\\times d_v}\\)，则 \\(Y=\\sum_h A_hXB_h\\)，其中 \\(B_h=(W_V^{(h)})^\\top(W_O^{(h)})^\\top\\)。各头先按不同 \\(A_h\\) 汇集位置，再由 \\(B_h\\) 选择和重组通道。此式对每个给定输入成立，但 \\(A_h\\) 自身仍依赖 \\(X\\)，不能据此把整层当作固定线性映射。",
+        "如果所有头恰好学到相同 A，那么 \\(Y=AX\\bigl(\\sum_h B_h\\bigr)\\)，位置混合可以合并为一套共享权重；不同 \\(A_h\\) 则允许不同通道子空间采用不同的位置混合。这解释了多头设计提供的选择空间，而不是证明训练后每个头必然承担独立语义。某些头可能冗余，头的编号也没有预先指定的物理含义。",
+        "固定总宽度 \\(D\\) 时，增加头数同时减小每头 \\(d_h\\)。未归一化的 \\(QK^\\top\\) 秩至多 \\(d_h\\)，但逐行 Softmax 不是保秩操作：例如 \\(q=k=(0,1,2)^\\top\\)，打分矩阵秩为 1，归一化后却是满秩的 \\(3\\times3\\) 矩阵。头宽限制了打分的双线性因子分解，不等于给最终注意力矩阵施加同一个秩上界。头数增加在读取模式数量、每头匹配维度和实现开销之间作交换；效果不保证单调提升，应结合固定宽度与参数预算判断。",
+        "主案例中的 `per_head:[2,2,4,4]` 先转为 `[2,4,2,4]`，再合并为 `[2,4,8]`；`self.out` 仍输出 `[2,4,8]`，因此才能加回残差输入。代码打印的 `merged` 与 `attention_output` 对应这两步。即使每头最后一维与 Token 数都恰好是 4，也应按明确的 transpose 顺序合头，不能依赖尺寸巧合。"
+      ],
+      "formula": "\\begin{aligned}Y&=\\operatorname{Concat}(Z_1,\\ldots,Z_H)W_O^\\top=\\sum_{h=1}^H A_hXB_h\\\\ B_h&=(W_V^{(h)})^\\top(W_O^{(h)})^\\top\\\\ A_1=\\cdots=A_H=A&\\ \\Longrightarrow\\ Y=AX\\sum_h B_h\\\\ N_{\\rm param}&=4D^2+4D\\quad\\text{(standard MHA with biases)}\\end{aligned}",
+      "code": "merged = per_head.transpose(1, 2).reshape(B, L, H * d_v)\ny = out_proj(merged)",
+      "takeaway": "每头独立读取，输出投影负责重新组合，残差接口要求输出宽度匹配。",
+      "example": {
+        "title": "按数值索引检查拆头和合头",
+        "steps": [
+          "沿用主案例 `[B=2,T=4,D=8]`，使用 \\(H=2\\) 个头、每头 \\(d_h=4\\)。先 reshape 得到 `[2,4,2,4]`，再 transpose(1,2) 得到 `[2,2,4,4]`。",
+          "对样本 0、token 1，第一个头来自投影后通道 0..3，第二个头来自通道 4..7。检查这八个数，才能分辨两个尺寸均为 4 的轴。",
+          "按相反顺序交换轴、合并通道，得到 `[2,4,8]`；输出投影混合各头内容，再进入第一条残差。"
+        ],
+        "conclusion": "拆头是在每个token内部切分通道，不能让时间位置混进head维度。"
+      },
+      "lead": "单个注意力矩阵让同一位置的所有 Value 通道共享一组读取权重。多头允许不同子空间采用不同的读取方式，但需要正确拆分、重组和投影，才能把这种自由度接回固定宽度的表示。",
+      "codeKind": "fragment",
+      "codeExplanation": "局部片段依赖 `per_head`、B/L/H/d_v 和输出投影。对应[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 中 `CausalAttention.forward` 的最后三步；其中自注意力使用 L=T=4、d_v=4。"
+    },
+    {
+      "id": "ffn-and-gating",
+      "title": "从逐位置 MLP 到门控前馈网络",
+      "body": [
+        "标准 FFN 把每个 token 从 D 维升到 \\(D_{\\mathrm{ff}}\\)，经过非线性，再投影回 D。不同 token 共享同一组权重，但各自计算；它本身不读取其他位置。跨 token 信息来自之前的注意力，FFN 则对每个位置已经获得的上下文进行非线性重组。因此 Transformer 不是“只有 Attention”，一个完整 Block 的容量和计算量很大一部分也来自 FFN。",
+        "主案例先采用便于核对的两层 GELU FFN：`up:8→32`、GELU、`down:32→8`，中间张量为 `[2,4,32]`。`Block.forward` 对已完成注意力残差的 `h` 做 `norm2(h)`，随后逐位置计算 FFN；它没有在 Token 轴求和。门控变体是下面的进阶对照，不在同一个最小模型里叠加另一套结构，使读者能先追踪完整的标准分支，再比较表达方式与参数预算。",
+        "对列向量 \\(x\\)，ReLU FFN 在激活模式固定、没有单元恰好为零的局部区域中，Jacobian 为 \\(W_2\\operatorname{diag}(m)W_1\\)，其中 \\(m\\) 标记打开的隐藏单元。它是若干输出方向与输入检测方向的外积之和，秩至多等于打开的单元数和 \\(D\\) 中的较小者。输入跨过激活边界就换一组方向，因而整体函数不是一个固定低秩矩阵；残差 \\(I+J\\) 还可能满秩。GELU、SiLU 则平滑地改变各个方向的权重。",
+        "GELU 或 SiLU 改变非线性形状；SwiGLU 进一步用两条上投影分支，一条经过 SiLU 后与另一条逐元素相乘，再由下投影返回 D。这里的 gate 通常是连续数值，不是硬开关，也不是对 token 做 Softmax。检查代码时要辨认上投影、门控投影和下投影的顺序，不能把乘法误写为相加。",
+        "普通两层 FFN 忽略偏置约有 \\(2DD_{\\mathrm{ff}}\\) 个参数；三投影 SwiGLU 约有 \\(3DD_{\\mathrm{ff}}\\)。若保持近似参数预算，普通 FFN 用 \\(4D\\) 中间宽度时，SwiGLU 可从约 \\(8D/3\\) 起算，再按硬件对齐取整。实际模型可以选择不同宽度。中间维度、激活函数、是否带偏置以及权重绑定，都应从配置和源码确认，不应仅凭模型名称推断。",
+        "SwiGLU 的乘法产生两条梯度路径。令 \\(g=W_gx\\)、\\(u=W_ux\\)，\\(f=W_d[\\operatorname{SiLU}(g)\\odot u]\\)，则 \\(J=W_d[\\operatorname{diag}(u\\odot\\operatorname{SiLU}^{\\prime}(g))W_g+\\operatorname{diag}(\\operatorname{SiLU}(g))W_u]\\)。一项来自门控改变，另一项来自被调制内容改变；漏掉任意一条就不是同一个函数的导数。\\(\\operatorname{SiLU}(g)\\) 可以为负，也不受 \\([0,1]\\) 限制，所以这里的 gate 不是概率分配。"
+      ],
+      "formula": "J_{\\rm SwiGLU}=W_d\\left[\\operatorname{diag}\\!\\left(u\\odot\\operatorname{SiLU}^{\\prime}(g)\\right)W_g+\\operatorname{diag}\\!\\left(\\operatorname{SiLU}(g)\\right)W_u\\right]",
+      "takeaway": "Attention 混合位置，FFN 混合每个位置上的通道；两个阶段共同构成表示变换。",
+      "code": "import torch\nimport torch.nn.functional as F\n\ntorch.manual_seed(4)\ndtype = torch.float64\nx = torch.randn(3, dtype=dtype)\nWg, Wu = (torch.randn(5, 3, dtype=dtype) for _ in range(2))\nWd = torch.randn(3, 5, dtype=dtype)\ndef f(v):\n    return Wd @ (F.silu(Wg @ v) * (Wu @ v))\ng, u = Wg @ x, Wu @ x\nsigmoid = g.sigmoid()\nsilu_derivative = sigmoid + g * sigmoid * (1 - sigmoid)\nmanual = Wd @ (torch.diag(u * silu_derivative) @ Wg\n               + torch.diag(F.silu(g)) @ Wu)\nactual = torch.autograd.functional.jacobian(f, x)\ntorch.testing.assert_close(actual, manual)\nprint(\"SwiGLU Jacobian 最大误差:\", (actual - manual).abs().max().item())\n",
+      "codeExplanation": "为对应公式，这段使用列向量和 `W@x`；模型处理一批行向量时通常写 `x@W.T`。两项分别计算门控与内容支路的导数，合起来才与 autograd 一致。无偏置只为简化记号，不改变乘积求导的两条路径。",
+      "lead": "注意力已经把其他位置的信息汇入当前表示，接下来需要对这些内容进行非线性处理。逐位置 FFN 承接 MLP 的机制，再通过门控扩展特征交互；它与跨位置读取承担不同作用。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "block-and-normalization",
+      "title": "Transformer Block：残差、归一化与逐层组合",
+      "body": [
+        "一个常见 Pre-LN Block 先归一化输入，再做注意力并加回残差，然后再次归一化，进入 FFN 并加回残差。残差让一条恒等路径与可学习变换并存；层数增加时，下一层操作的是上一层已经整合上下文后的表示。每层通常有自己的 Q/K/V 和 FFN 参数，不是反复应用同一张固定注意力图。 两个子层依次执行：FFN 接收的是已经加过注意力残差的新表示，而不是再次读取原始 x；把两条分支都从同一个旧 x 计算会得到不同的网络。",
+        "以 \\(X\\in\\mathbb R^{B\\times T\\times D}\\) 为一个 Block 的输入，记两套独立参数的归一化为 \\(N_1,N_2\\)，注意力为 \\(A\\)，逐位置网络为 \\(F\\)。Pre-LN 的前向是\\[H=X+A(N_1(X)),\\qquad Y=H+F(N_2(H)).\\]其中 \\(F(U)=\\phi(UW_1^\\top+b_1)W_2^\\top+b_2\\)，\\(W_1\\in\\mathbb R^{D_{\\rm ff}\\times D}\\)、\\(W_2\\in\\mathbb R^{D\\times D_{\\rm ff}}\\)，偏置沿样本与位置广播。两条分支都返回宽度 \\(D\\)，因此相加有定义；下一层读取完整的 \\(Y\\)，并重新计算匹配与非线性。",
+        "在主案例中，`blocks[0]` 和 `blocks[1]` 都保持 `[2,4,8]`，但参数独立。第一层输出作为第二层的新输入，因而后者重新生成 Q/K/V、注意力权重与 FFN 激活；这不是把第一层的权重矩阵再乘一次。两层结束后才使用 `TinyLM.norm` 和 `readout:8→7`，得到 `[2,4,7]` 的类别 Logit。图中展开一层的两个残差相加点，外框说明重复次数；最终 LayerNorm 属于整网读出前处理，并非把每个 Pre-LN Block 改成 Post-LN。",
+        "Post-LN 把归一化放在残差相加之后，Pre-LN 把它放在分支内部。二者改变梯度路径和激活尺度，不能在加载已有权重时随意交换。Pre-LN 常用于改善深层优化，但这不意味着任意模型都无需 warm-up，也不证明它在所有设置下更优。比较实现时，还应核对最后是否有一次独立的归一化以及 epsilon 的数值。",
+        "标准 LayerNorm 对每个 token 的通道求均值和方差，再使用可学习的缩放与偏移；它通常不会把其他 token 或其他 Batch 混进去。RMSNorm 使用通道均方根进行缩放，省去均值中心化，标准形式只含缩放参数。两者不是可直接互换的函数。把 `normalized_shape` 错设为包含 T 的维度，会改变归一化范围，也可能破坏因果性：较早位置的统计量可能受到未来 token 影响。",
+        "设 Norm 的 Jacobian 为 \\(J_N\\)、分支为 \\(J_F\\)。Pre-Norm 局部 Jacobian 是 \\(J_{\\mathrm{pre}}=I+J_FJ_N\\)，Post-Norm 是 \\(J_{\\mathrm{post}}=J_N(I+J_F)\\)，各项在对应的输入位置求值。前者的恒等旁路没有穿过 \\(J_N\\)；后者的全部梯度都经过它。将分支 \\(F\\) 置零时，Pre-Norm 是恒等映射，Post-Norm 仍是 \\(\\operatorname{Norm}(x)\\)，所以两者应使用不同的零分支测试。",
+        "归一化影响哪些方向，已在[LayerNorm 的 Jacobian 推导](#/learn/normalization?section=2)中建立。这里使用其中的结果：标准化会删除共同平移方向，并压缩整体尺度方向。因此是否让恒等旁路穿过归一化，是实际的函数与梯度差别；若包含学习仿射参数，还需将它的逐通道缩放纳入 \\(J_N\\)，不能直接沿用纯标准化的矩阵。",
+        "恒等项也不能保证梯度范数下界：分支导数可能与它抵消。残差流的尺度还取决于 \\(\\operatorname{Cov}(x,F(x))\\)，不能只用“每层加一点”判断多层累积。Pre-Norm 保留了可用路径，但稳定训练仍依赖初始化、深度、分支尺度和优化设置。"
+      ],
+      "formula": "J_{\\rm pre}=I+J_FJ_N,\\qquad J_{\\rm post}=J_N(I+J_F)",
+      "code": "x = x + dropout(attention(norm1(x), allowed))\nx = x + dropout(ffn(norm2(x)))",
+      "takeaway": "残差、归一化范围与顺序都是模型计算的一部分，不只是训练技巧。",
+      "lead": "注意力与 FFN 还需要组成一个可以堆叠的完整计算单元。先按前向顺序写出两次残差更新，再把归一化放入对应分支，才能解释 Pre-Norm 和 Post-Norm 为何具有不同的梯度路径。",
+      "codeKind": "fragment",
+      "codeExplanation": "这是 Block 的两行核心计算，依赖 attention、两个 norm、ffn 和 dropout。[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `Block.forward` 额外展开 FFN 维度、无效 Query 清零和缓存返回；训练态 Dropout 为 0.1，数值对照在 eval 下关闭。",
+      "figures": [
+        {
+          "src": "/assets/figures/transformer-preln-case.svg",
+          "title": "两层教学模型与单层 Pre-LN 数据流",
+          "alt": "同一 B=2,T=4,D=8,H=2 的 decoder-only 模型，从 Embedding 经过两层 Block 到词表头与 CE；右侧展开两条残差、逐位置 FFN 和每层 K/V。",
+          "caption": "本章原创结构图。图中的位置、形状与代码页 TinyLM 一致；为保持可读性省略 Dropout 和 Padding 清零，源码保留二者。Pre-LN 的归一化位置参照 [Xiong et al.](https://proceedings.mlr.press/v119/xiong20b.html)，不是原论文 Encoder–Decoder 的复刻。",
+          "afterParagraph": 3
+        }
+      ]
+    },
+    {
+      "id": "position-and-rope",
+      "title": "位置编码与 RoPE",
+      "body": [
+        "在没有位置编码、且所有位置可见性对称时，自注意力对 Token 的共同置换具有等变性：输入一起重排，输出也相应重排。序列任务需要区分位置或相对关系，因此可加入位置向量、正弦编码、相对偏置或 RoPE。因果 Mask 还提供读取顺序，但它不等同于预训练模型采用的位置机制。主案例不额外把绝对位置向量加到 Embedding，而是在每层 Q/K 投影之后使用 RoPE。",
+        "先研究两个通道。对列向量 \\(z=(z_0,z_1)^\\top\\)，位置 \\(m\\) 的角度是 \\(m\\omega\\)，其中 \\(\\omega\\) 为该通道对的固定频率。二维旋转把它变成 \\(R(m\\omega)z=(z_0\\cos m\\omega-z_1\\sin m\\omega,\\ z_0\\sin m\\omega+z_1\\cos m\\omega)^\\top\\)。记旋转结果为 \\(\\widetilde q_m=R(m\\omega)q\\)、\\(\\widetilde k_n=R(n\\omega)k\\)。三角恒等式给出 \\(R(\\alpha)^\\top R(\\beta)=R(\\beta-\\alpha)\\)，于是两个不同位置的点积可以写成 \\((R(m\\omega)q)^\\top R(n\\omega)k=q^\\top R((n-m)\\omega)k\\)。位置以相对差进入匹配，而 Q/K 的内容仍参与点积。",
+        "可手算的例子取 \\(q=k=(1,0)^\\top\\)、\\(\\omega=\\pi/6\\)、\\(m=1,n=3\\)。旋转后分别为 \\((\\sqrt3/2,1/2)\\) 和 \\((0,1)\\)，点积为 \\(1/2=\\cos(2\\pi/6)\\)。将两个位置一起平移 2，角度变为 \\(\\pi/2\\) 与 \\(5\\pi/6\\)，点积仍为 1/2。图上的两组向量直接展示“共同平移不改变这对固定内容的相对匹配”，而不是说实际模型的上下文表示在任意平移后都不变。",
+        "扩展到偶数头宽时，把最后一维切成相邻的二维对。主案例 \\(d_h=4\\) 包含通道 (0,1) 与 (2,3)，使用 \\(\\omega_r=10000^{-2r/d_h}\\)、\\(r=0,1\\)，所以两组频率分别是 1 与 0.01。`apply_rope` 中 `positions:[T]` 与 `inv_freq:[d_h/2]` 外积产生 `[T,d_h/2]` 的角度，再广播到 Batch 和 Head；两对旋转后重组回 `[B,H,T,d_h]`。上面的 \\(\\pi/6\\) 只为使图形与手算清晰，不是代码模型使用的频率。",
+        "正交性给出 \\(\\|R(m\\omega)z\\|_2=\\|z\\|_2\\)，所以这一步保留每个向量的范数，却会改变不同位置向量的夹角和点积。它也不保证每个点积随距离单调减小：上述单位向量在距离 0、2、6、12 时，点积依次为 1、1/2、−1、1。多频率及内容决定最终分数，不能把距离衰减的总体分析解释成所有样本的逐点单调定理。",
+        "缓存时使用的是旋转后的 Key。若已有 \\(P\\) 个 Token，新片段的位置是 \\(P,P+1,\\ldots\\)，不能重置为零，也不能把历史 Key 再旋转一遍。`CausalAttention.forward` 先由 `past_len` 计算 `positions`，仅旋转新 Q/K，随后把新 K 与旧 K 拼接。因果 Mask 也使用同一组全局位置；两者只有一个正确，完整前向与缓存仍不会等价。",
+        "不同实现可以使用相邻通道配对或前后半维配对，也可以只旋转部分通道。布局、频率基数、缩放规则和预训练权重必须配套。图像网格、相机、机器人执行时间与生成时间还可能有独立位置机制；本例的一维整数位置不代表它们都能直接使用相同编号。[RoFormer 原论文](https://arxiv.org/abs/2104.09864)给出二维与多维构造，练习中的手写 RoPE 再以显式旋转矩阵检验前向与梯度。"
+      ],
+      "formula": "\\begin{aligned}R(\\phi)&=\\begin{bmatrix}\\cos\\phi&-\\sin\\phi\\\\\\sin\\phi&\\cos\\phi\\end{bmatrix}\\\\\\widetilde q_m^\\top\\widetilde k_n&=q^\\top R(m\\omega)^\\top R(n\\omega)k=q^\\top R((n-m)\\omega)k\\\\\\omega_r&=10000^{-2r/d_h},\\quad r=0,\\ldots,d_h/2-1\\end{aligned}",
+      "takeaway": "位置机制、索引和配对布局必须一起匹配；shape 相同并不能保证缓存等价。",
+      "lead": "内容匹配本身没有规定哪些位置相邻，也没有区分同一组内容的不同排列。位置机制把这些关系引入计算；从无位置时的对称性出发，可以明确绝对编码和旋转位置编码各自改变了什么。",
+      "code": "import math\nimport torch\n\ndtype = torch.float64\ndef rotate(z, angle):\n    c, s = math.cos(angle), math.sin(angle)\n    return torch.tensor([[c, -s], [s, c]], dtype=z.dtype) @ z\n\nq = k = torch.tensor([1., 0.], dtype=dtype)\nomega, m, n = math.pi / 6, 1, 3\nqm, kn = rotate(q, m * omega), rotate(k, n * omega)\ndot = qm @ kn\nrelative = q @ rotate(k, (n - m) * omega)\nshifted = rotate(q, (m + 2) * omega) @ rotate(k, (n + 2) * omega)\ntorch.testing.assert_close(dot, torch.tensor(0.5, dtype=dtype))\ntorch.testing.assert_close(dot, relative)\ntorch.testing.assert_close(dot, shifted)\ntorch.testing.assert_close(qm.norm(), q.norm())\ntorch.testing.assert_close(kn.norm(), k.norm())\nprint(\"rotated q/k:\", qm.tolist(), kn.tolist())\nprint(\"original / relative / shifted:\", dot.item(), relative.item(), shifted.item())\nprint(\"distance 0,2,6,12:\", [round(math.cos(d * omega), 6) for d in (0, 2, 6, 12)])\n",
+      "codeKind": "runnable",
+      "codeExplanation": "这段确定性二维算例与图中的角度相同，验证范数、相对点积和共同平移。完整模型的 `apply_rope` 把相同计算向量化到 `[2,2,4,4]`，采用标准基数 10000；代码页还验证全序列与多种缓存分块的输出和所有参数梯度。",
+      "figures": [
+        {
+          "src": "/assets/figures/transformer-rope-pairs.svg",
+          "title": "RoPE 的二维旋转与相对位置",
+          "alt": "固定 q=k=(1,0)，在 30° 与 90° 旋转后点积为 1/2；两个位置共同平移后角度为 90° 与 150°，相对夹角仍为 60°。",
+          "caption": "本章原创数值示意，机制参照 [RoFormer §3.2](https://arxiv.org/abs/2104.09864)。π/6 是便于手算的单频率，完整模型采用 1、0.01 两组频率；图不表示任意上下文或长距离点积具有单调不变性质。",
+          "afterParagraph": 3
+        }
+      ]
+    },
+    {
+      "id": "mask-contract",
+      "title": "布尔与浮点 Mask",
+      "body": [
+        "手写实现约定 `allowed=True` 表示该 Query 可以读取该 Key。于是禁止位置应在 Softmax 前填为负无穷，而允许位置保持原分数。直接将分数乘零不是遮蔽：零分数仍会在 Softmax 中得到正概率。把 Softmax 后的部分权重乘零也会改变行和，除非再进行有明确定义的归一化处理。",
+        "PyTorch 的 `functional.scaled_dot_product_attention` 使用布尔 True 表示允许参与注意力；`nn.MultiheadAttention` 的布尔 `attn_mask` 和 `key_padding_mask` 则用 True 表示禁止或忽略。两者方向相反，形状约定也不同。SDPA 的 Mask 需要可广播到 `[B,H,L,S]`；MHA 的普通二维 `attn_mask` 为 `[L,S]`，批次相关的三维形式为 `[B×H,L,S]`，而 `key_padding_mask` 为 `[B,S]`。",
+        "因此，替换一个实现时不能只替换函数名。应同时核对布尔含义、Mask 的轴、返回结果是否平均头，以及输入是否 `batch_first`。建议在自己的接口层固定 allowed 语义，只在调用库函数的边界做转换。用于 Padding 的有效位、注意力连接图、Loss 有效位是三件相关但不同的事，不应混用同一个未经解释的 mask 变量。",
+        "浮点 Mask 是直接加到 attention logits 上的偏置，并不按布尔 True/False 规则解释。0 表示不加偏置，\\(-\\infty\\) 通常用于禁用连接；非零有限值也可以有意改变相对偏好。",
+        "完整模型把三项条件相交：`key_positions <= positions` 给出因果性，`key_valid` 禁止读取 Padding Key，`valid` 清除无效 Query。由此产生 `[2,1,4,4]` 的 allowed 并广播给两头。这里 `weights` 是 Dropout 前的归一化概率，训练时随后对它使用 Dropout；不能拿随机置零后的行和测试 Softmax 定义。"
+      ],
+      "formula": "M_{bij}=\\begin{cases}0,&\\text{allowed}_{bij}=\\mathrm{True}\\\\-\\infty,&\\text{otherwise}\\end{cases}",
+      "code": "# SDPA: True means allowed.\ny = F.scaled_dot_product_attention(q, k, v, attn_mask=allowed, dropout_p=0.0)\n# nn.MultiheadAttention: True means blocked.\nblocked = ~allowed_2d",
+      "takeaway": "Mask 名字相同不代表语义相同；用一个能手算的非对称矩阵核对。",
+      "focus": {
+        "kind": "易错",
+        "title": "迁移 Mask 时同时转换语义与形状",
+        "explanation": "SDPA的布尔True表示允许读取，MultiheadAttention的布尔mask中True表示屏蔽。转换只做维度扩展而忘记取反，会把信息流倒置；浮点加性mask又不是同一类型的约定。",
+        "check": "用一个极小序列，将被禁止位置的Value改成很大的独特数值。如果有效Query输出随之改变，Mask语义、广播或实现就需要检查。"
+      },
+      "comparison": {
+        "title": "相似名字，不同的 Mask 接口约定",
+        "columns": [
+          "接口 / Mask 类型",
+          "True 或数值含义",
+          "常用形状"
+        ],
+        "rows": [
+          [
+            "SDPA · bool `attn_mask`",
+            "True 允许参与注意力",
+            "可广播到 `[B,H,L,S]`"
+          ],
+          [
+            "MultiheadAttention · bool `attn_mask`",
+            "True 禁止对应 Query 读取 Key",
+            "`[L,S]` 或 `[B×H,L,S]`"
+          ],
+          [
+            "MultiheadAttention · bool `key_padding_mask`",
+            "True 表示忽略该 Key",
+            "`[B,S]`"
+          ],
+          [
+            "浮点加性 Mask",
+            "加到分数上；0不改变，\\(-\\infty\\)禁止",
+            "遵循所调用 API 的形状约定"
+          ]
+        ]
+      },
+      "lead": "位置编码提供位置身份，可见性约束则决定哪些信息允许参与当前预测。Mask 必须在正确的计算阶段改变归一化集合，接口中的布尔值含义也必须与这种数学约定一致。",
+      "codeKind": "fragment",
+      "codeExplanation": "接口对照片段，依赖 F、q/k/v、allowed 与 allowed_2d；完整可运行的手写及 SDPA 对照见代码页 `manual-mha`。本章统一用 True 表示允许，在库边界才转换。"
+    },
+    {
+      "id": "visibility-patterns",
+      "title": "多层可见性与间接泄漏",
+      "body": [
+        "第一层可以依据原始特征匹配，下一层则依据已经汇集的上下文重新形成 Q/K/V。即使两层 Mask 相同，数值注意力矩阵通常也不同；即使一层已经全局可见，额外层仍可对上下文进行非线性重组，而不只是扩大可达范围。下面先用共享恒等投影的两层小例子隔离这一机制：参数完全相同，但输入表示改变，读取权重仍会改变。它不证明加深总能改善任务，只说明重复使用第一层的固定权重一般不是同一个计算。",
+        "因果自注意力允许第 i 个 Query 读取 \\(j\\le i\\) 的 Key。训练时仍可以一次计算所有位置；矩阵的下三角约束保证每个预测只能使用其条件中允许的信息。双向注意力允许当前位置读取前后有效 token，适合编码整段已知观测；它不能直接用于要求严格自回归的下一 token 训练，否则可能读到答案。",
+        "设前缀长度为 \\(P\\)。一种前缀布局是 [观测或文本前缀, 动作区]：前缀内部双向读取，前缀不能读取动作区，动作区可以读取前缀。动作区内部采用因果还是双向可见性，取决于训练目标。若逐 token 预测离散动作，通常需要按相应生成顺序限制；若动作区输入的是同一去噪时刻的整块噪声动作，可以允许块内双向交互。这里描述的是一种可用设计，不是所有 VLA 的统一结构。",
+        "多层堆叠时，间接路径同样重要。若第一层前缀读到了动作真值，第二层动作即使只读前缀，也可能发生标签泄漏。正确性要检查所有层的连接与输入构造。观测历史与未来真值、生成时间 t 与机器人执行时间、语言顺序与动作区顺序也应区分。第三项练习专门用带历史偏移的位置构建非方形因果 Mask，避免缓存时错误地从零重新编号。",
+        "更一般地，将前两层可能读取的关系分别记为布尔矩阵 \\(M^{(0)},M^{(1)}\\)：若存在中间位置 \\(j\\)，使 \\(M^{(1)}_{ij}\\) 与 \\(M^{(0)}_{jk}\\) 都为真，输入位置 \\(k\\) 就可能影响第二层输出位置 \\(i\\)。下三角关系在这种路径组合下仍是下三角，因此每层因果、所有其他算子逐位置，才构成归纳证明。前缀缓存也使用同一逻辑：只要任一上游路径把动态动作或时间调制写入前缀，前缀 K/V 就不再是固定量。注意力分数依赖输入，不能把数值注意力矩阵直接相乘当作完整模型的贡献解释。",
+        "可以把上述归纳写成可检查的布尔递推。以输入表示为第 0 层，令 \\(M^{(\\ell)}_{ij}\\) 表示从第 \\(\\ell\\) 层到第 \\(\\ell+1\\) 层的变换中，输出位置 \\(i\\) 允许读取输入位置 \\(j\\)；加入残差自边后 \\(R^{(\\ell)}=I\\lor M^{(\\ell)}\\)。令 \\(D^{(0)}=I\\)，递推 \\(D^{(\\ell+1)}_{ik}=\\bigvee_j[R^{(\\ell)}_{ij}\\land D^{(\\ell)}_{jk}]\\)，则这里的布尔矩阵 \\(D^{(\\ell)}\\) 描述原输入到该层可能存在的路径，与通道宽度符号区分理解。这个分析假设 FFN、归一化及其他操作均逐 Token，且可见性本身不读取被禁止的输入；跨时间 BatchNorm、全序列池化或依赖未来数据的动态 Mask 都需要额外的边。",
+        "没有路径是结构性的独立性证据：在假设成立时，改变输入 k 不会改变输出 i。有路径只是可能依赖，不保证某个样本的 Jacobian 非零，因为参数退化、饱和或路径抵消都可能使导数为零；一次局部梯度为零也不能证明全局无依赖。后面的第三份实现同时使用布尔可达性、完整 token Jacobian、有限差分和输入扰动，分别检查结构、局部导数及实际输出。",
+        "反例只需两层：第一层允许 token 0 读未来 token 3，第二层的 token 1 虽然只读 0、1，仍会沿 \\(3\\to0\\to1\\) 受到未来影响。对缓存也相同：即使第一层前缀 K/V 来自固定输入，只要前缀在该层读过动态动作，第二层的前缀 K/V 就已经改变。代码检验的是第二层缓存，而不只比较容易保持不变的原始前缀投影。",
+        "主案例的两层 `Block` 都使用相同的下三角可见性，LayerNorm 和 FFN 均逐 Token，因此图中从输入到两层输出的所有路径都保持时间方向。第三份实现刻意把第一层的 \\(3\\to0\\) 边打开，展示第二层位置 1 如何沿 \\(3\\to0\\to1\\) 读取未来；这是结构反例，不是对正常主案例添加的功能。图只画出与这一判断有关的路径，完整导数支持集仍由原有代码计算。"
+      ],
+      "formula": "\\begin{aligned}R^{(\\ell)}&=I\\lor M^{(\\ell)},\\qquad D^{(0)}=I\\\\ D^{(\\ell+1)}_{ik}&=\\bigvee_j\\left(R^{(\\ell)}_{ij}\\land D^{(\\ell)}_{jk}\\right)\\\\ M_{ij}^{\\rm prefix}&=\\begin{cases}j<P,&i<P\\\\ \\mathrm{true},&i\\ge P\\ \\text{(bidirectional action block)}\\end{cases}\\end{aligned}",
+      "bullets": [
+        "因果语言块：只允许读取当前及以前的位置。",
+        "双向观测块：读取有效观测，不读取未知未来或监督答案。",
+        "混合前缀布局：明确每个区域之间是否允许信息流动，并在所有层保持约定。"
+      ],
+      "takeaway": "先由预测目标决定合法条件，再选择 Attention Mask。",
+      "lead": "一个 Block 输出的新表示会成为下一层的输入，后续匹配因此针对已经包含上下文的信息。先理解这种逐层更新，再追踪信息可能经过的路径，才能同时解释深度的作用和间接泄漏的风险。",
+      "code": "import math\nimport torch\n\nx = torch.tensor([[1., 0.], [0., 2.], [-1., 1.]], dtype=torch.float64)\ndef layer(z):\n    weights = torch.softmax(z @ z.T / math.sqrt(z.shape[-1]), dim=-1)\n    return z + weights @ z, weights\n\nh, a_first = layer(x)\ny, a_second = layer(h)\nfrozen_readout = h + a_first @ h\nassert not torch.allclose(a_first, a_second)\nassert not torch.allclose(y, frozen_readout)\ntorch.testing.assert_close(a_first.sum(-1), torch.ones(3, dtype=x.dtype))\ntorch.testing.assert_close(a_second.sum(-1), torch.ones(3, dtype=x.dtype))\nprint(\"通过：相同投影与可见性下，更新后的表示改变了第二层读取权重。\")\n",
+      "codeExplanation": "这里关闭位置编码、FFN 和学习投影，只保留内容匹配与残差，避免把不同参数的影响混入对照。frozen_readout 刻意重复使用第一层权重；它与真正重新计算第二层注意力不同。多层可达性和完整梯度的验证见代码页中对应实现。",
+      "codeKind": "runnable",
+      "figures": [
+        {
+          "src": "/assets/figures/transformer-two-layer-reachability.svg",
+          "title": "两层 Mask 的间接泄漏路径",
+          "alt": "第一层额外允许 token 0 读 token 3，第二层仍采用因果 Mask，但输出 1 可以沿输入 3、第一层 0、第二层 1 的路径受未来影响。",
+          "caption": "本章原创布尔可达性示意，与现有 layerwise-information-flow 实现中的反例逐项对应；灰色虚线只示意恒等边，其他合法连接为清晰起见未全部画出。有路径不保证当前 Jacobian 非零；具体数值由代码同时以导数、有限差分与输入扰动检查。基本因果约束来源：[Attention Is All You Need §3.1](https://arxiv.org/abs/1706.03762)。",
+          "afterParagraph": 8
+        }
+      ]
+    },
+    {
+      "id": "padding-and-empty",
+      "title": "Padding、无效 Query 与全遮蔽行",
+      "body": [
+        "Key Padding Mask 阻止其他位置读取无效 Key，但不自动说明无效 Query 的输出应该怎样处理。一个 Padding Query 仍可能读到有效上下文并输出非零向量；若随后平均池化、计算辅助 Loss 或把输出送入其他模块，就需要另外处理 Query 的有效位。只在输入处把 Padding embedding 置零，也不能阻止投影偏置和位置编码再次产生非零状态。",
+        "若一整行 Query 没有任何可见 Key，把该行分数全设为负无穷再直接 Softmax，常见手写实现会出现无定义的归一化，产生 NaN。仅将负无穷替换为绝对值很大的有限负数不能解决问题：全行都是同一数值时会得到均匀权重，错误地读取所有 V。可选约定包括拒绝此输入，或将空行的注意力输出定义为零；具体选择应随任务明确说明。",
+        "手写 Attention 对全遮蔽行输出零：先识别 `has_key`，在 Softmax 前把空行临时替换成安全的有限分数，再将禁止位置权重置零。这样空行最终所有权重均为零，且反向保持有限。对照官方函数时也显式包上相同的空行策略，避免依赖某一内核版本的隐含行为。需要注意，注意力输出为零以后，带偏置的 \\(W_O\\)、残差和后续 FFN 仍可产生非零最终状态；若约定要求无效位置为零，要在合适的模块边界再次处理。",
+        "主案例完整训练支持每条至少一个有效位置的右补齐，最后在 Block 与输出头边界清零无效 Query。缓存演示则仅接受等历史长度、全部有效的序列；带 Padding 的完整前向返回 `cache=None`。这项简化避免在没有保存历史有效位和每样本位置编号时错误复用缓存；通用变长 Batch 的缓存需要额外元数据，不能仅凭一个 `[B,H,P,d_h]` 张量恢复。"
+      ],
+      "formula": "h_i=\\mathbb{1}\\!\\left[\\sum_j\\mathrm{allowed}_{ij}>0\\right],\\qquad Z_i=0\\ \\text{when }h_i=0",
+      "code": "has_key = allowed.any(dim=-1, keepdim=True)\nscores = scores.masked_fill(~allowed, float('-inf'))\nsafe_scores = torch.where(has_key, scores, torch.zeros_like(scores))\nweights = safe_scores.softmax(-1).masked_fill(~allowed, 0.0)\nz = weights @ v",
+      "takeaway": "空行必须先定义语义，再保证前向与反向都符合这一语义。",
+      "focus": {
+        "kind": "易错",
+        "title": "全遮蔽行需要明确约定",
+        "explanation": "若一行所有分数均为负无穷，普通稳定Softmax中的“减去行最大值”会遇到负无穷减负无穷。用一个很大的负数替代也不自动正确：所有分数相同会产生均匀分布，仍然读入无效Value。",
+        "check": "教学实现对全无效Query规定零输出，并检查反向梯度有限；不要假定不同API、精度和内核的空行行为相同。"
+      },
+      "lead": "可见性规则还要处理不属于真实序列的位置。禁止读取一个 Key 与规定一个无效 Query 的输出并非同一要求，而没有任何合法 Key 的一行需要额外定义，不能留给数值实现猜测。",
+      "codeKind": "fragment",
+      "codeExplanation": "局部核心依赖 torch、有限 scores、布尔 allowed 与 v。可独立运行的完整边界检查见 `safe-masked-attention` 练习；`CausalAttention.forward` 在同一安全归一化后继续处理输出偏置和无效 Query。"
+    },
+    {
+      "id": "cross-attention",
+      "title": "Cross-Attention 与条件压缩",
+      "body": [
+        "交叉注意力让一组 Query 读取另一组 Key/Value。例如动作查询 \\(X\\in\\mathbb{R}^{B\\times L\\times D}\\)，视觉语言上下文 \\(C\\in\\mathbb{R}^{B\\times S\\times D_{\\mathrm{context}}}\\)。Q 由 X 投影，K 和 V 由 C 投影；输出为 L 个读出向量，而不是 S 个。Query 可以是有内容的动作特征，也可以是学习得到的查询向量；固定数量的查询可用于从较长上下文提取有限个表示。",
+        "Q 和 K 的最后一维必须一致，才能做点积；V 的维度可以另选，只需输出投影承接。两边原始特征宽度不必相同，因为线性层可以映射到公共注意力空间。注意力不是把两个序列先沿 Batch 轴堆叠：样本 b 的动作查询只能读取样本 b 的上下文，除非任务显式定义跨样本检索。",
+        "先去掉 Batch 和 Head 以便手算，取两个 Query 与三个条件位置，Q/K 宽度为 2。令 \\(Q=\\sqrt2\\ln 2\\,I_2\\)，K 的三行依次为 (1,0)、(0,1)、(0,0)，V 的三行依次为 (2,0)、(0,4)、(2,2)。两个 Query 的缩放分数分别为 \\((\\ln 2,0,0)\\) 与 \\((0,\\ln 2,0)\\)，所以权重是 \\((1/2,1/4,1/4)\\) 和 \\((1/4,1/2,1/4)\\)。输出分别为 \\((1.5,1.5)\\)、\\((1,2.5)\\)：同一组条件通过不同 Query 产生不同读取。",
+        "现在只保留前两个上下文位置，Query 数仍是 2。分数的行分母由 \\(2+1+1=4\\) 变为 \\(2+1=3\\)，两行权重变为 \\((2/3,1/3)\\) 与 \\((1/3,2/3)\\)，输出为 \\((4/3,4/3)\\) 和 \\((2/3,8/3)\\)。输出长度没有随上下文长度改变，但内容改变了；把第三列权重直接清零而不重新归一化会得到另一个结果。下方代码同时检查“裁去第三个 Key”与“在 Softmax 前屏蔽第三个 Key”等价。",
+        "Cross-Attention 的一次读出并不能保证保留全部空间细节。若视觉骨干先把所有 Patch 平均成一个向量，则后面的 Query 无法恢复已被丢弃的精细位置信息。是否需要保留 Patch 网格、多尺度或相机标识，要根据任务验证。后训练中还应区分冻结骨干参数与切断其计算图：骨干不更新参数，不代表经过骨干的所有上游梯度都应被截断。",
+        "压成一个有效条件 token 后，\\(\\operatorname{softmax}([s])\\) 恒等于 \\([1]\\)。在无注意力 Dropout 时，每个 Query 的读出都等于同一个 V，Q/K 在这条路径上的梯度为零，不能再按查询选择不同空间位置。Value 和输出投影仍可学习，残差仍可保留 Query 的信息，所以这不等于整个块成为常量。需要区分“把条件向量加给每个查询”与“让查询检索一组条件”的机制。",
+        "将它放回主案例的尺寸，四个动作或目标 Query 可以保持 `[2,4,8]`，外部条件则是 `[2,S,D_context]`；两头分数变成 `[2,2,4,S]`，每头输出仍是 `[2,2,4,4]`。需要分别构造 Query 投影 `Linear(8,8)` 与 Key/Value 投影 `Linear(D_context,8)`，而不能继续对同一个 x 使用 packed QKV。主案例本身是 decoder-only，没有偷偷增加 Cross-Attention；已有 `manual-mha` 实现独立验证非方形交叉注意力及全部六组输入／参数梯度，下面的原论文图再说明它在 Encoder–Decoder 中的位置。"
+      ],
+      "formula": "\\begin{aligned}Q&=\\sqrt2\\ln 2\\begin{bmatrix}1&0\\\\0&1\\end{bmatrix},\\quad K=\\begin{bmatrix}1&0\\\\0&1\\\\0&0\\end{bmatrix},\\quad V=\\begin{bmatrix}2&0\\\\0&4\\\\2&2\\end{bmatrix}\\\\ A&=\\operatorname{softmax}_{\\rm row}(QK^\\top/\\sqrt2)=\\begin{bmatrix}1/2&1/4&1/4\\\\1/4&1/2&1/4\\end{bmatrix}\\\\ O&=AV=\\begin{bmatrix}3/2&3/2\\\\1&5/2\\end{bmatrix}\\end{aligned}",
+      "takeaway": "Query 决定输出位置，Key 决定匹配，Value 决定被读取的内容。",
+      "lead": "条件序列与待更新序列不一定来自同一组位置。让一组查询读取另一组内容，便得到交叉注意力；其输出长度、条件压缩和梯度路径都应从这种非对称的数据流推导。",
+      "code": "import math\nimport torch\n\ndtype = torch.float64\nq = (math.sqrt(2) * math.log(2) * torch.eye(2, dtype=dtype)).requires_grad_()\nk = torch.tensor([[1., 0.], [0., 1.], [0., 0.]], dtype=dtype, requires_grad=True)\nv = torch.tensor([[2., 0.], [0., 4.], [2., 2.]], dtype=dtype, requires_grad=True)\n\ndef read(q, k, v, allowed=None):\n    score = q @ k.T / math.sqrt(q.shape[-1])\n    if allowed is not None:\n        score = score.masked_fill(~allowed, -torch.inf)\n    weight = score.softmax(-1)\n    return weight, weight @ v\n\na3, o3 = read(q, k, v)\na2, o2 = read(q, k[:2], v[:2])\nam, om = read(q, k, v, torch.tensor([[1, 1, 0], [1, 1, 0]], dtype=torch.bool))\ntorch.testing.assert_close(a3, torch.tensor([[.5, .25, .25], [.25, .5, .25]], dtype=dtype))\ntorch.testing.assert_close(o3, torch.tensor([[1.5, 1.5], [1., 2.5]], dtype=dtype))\ntorch.testing.assert_close(o2, torch.tensor([[4/3, 4/3], [2/3, 8/3]], dtype=dtype))\ntorch.testing.assert_close(om, o2)\ntorch.testing.assert_close(am[:, :2], a2)\n# One available key: every query reads the same V; score-path gradients vanish.\na1, o1 = read(q, k[:1], v[:1])\ntorch.testing.assert_close(o1, v[:1].expand(2, -1))\ngq, gk, gv = torch.autograd.grad(o1.sum(), (q, k, v))\nassert torch.count_nonzero(gq) == torch.count_nonzero(gk) == 0\ntorch.testing.assert_close(gv[0], torch.tensor([2., 2.], dtype=dtype))\nprint(\"S=3 weights/output:\", a3.tolist(), o3.tolist())\nprint(\"S=2 weights/output:\", a2.tolist(), o2.tolist())\nprint(\"single-key Q/K gradient maxima:\", gq.abs().max().item(), gk.abs().max().item())\n",
+      "codeKind": "runnable",
+      "codeExplanation": "固定两个 Query，依次改变可用上下文长度为 3、2、1；输出始终有两行。前两个结果可按整数指数质量手算，最后用 Autograd 检验单 Key 时 Q/K 路径梯度为零而 Value 梯度不为零。多头、批量及一般梯度对照保留在代码页的 `manual-mha`，此处只隔离查询与条件的关系。",
+      "figures": [
+        {
+          "src": "/assets/figures/transformer-cross-attention.svg",
+          "title": "不同 Query 如何读取同一组条件",
+          "alt": "两个 Query 读取三个二维 Key/Value，得到不同的两行输出；上下文缩短为两项后重新归一化，输出长度仍由 Query 决定。",
+          "caption": "本章原创矩阵算例，数值由本节 PyTorch 代码逐项验证。机制参照 [Attention Is All You Need §3.2.3](https://arxiv.org/abs/1706.03762)。图省略 Batch、Head 和输出投影，只隔离非方形读出及上下文长度的影响。",
+          "afterParagraph": 4
+        }
+      ]
+    },
+    {
+      "id": "encoder-decoder-families",
+      "title": "Encoder、Decoder：BERT、GPT-2 与 T5",
+      "body": [
+        "Encoder 与 Decoder 首先描述计算结构，自回归则描述条件概率的分解方式。典型 Encoder 在整段已知输入上做双向注意力；它能编码图像 patch 或已知观测，却不能因为名为 Encoder 就合法读取部署时不可得的未来帧。典型 Decoder-only 语言模型用因果 Self-Attention 建立 \\(p_\\theta(y)=\\prod_i p_\\theta(y_i\\mid y_{<i})\\)，训练时对齐真实前缀，生成时逐步追加模型输出。",
+        "Encoder–Decoder 模型把源序列 x 编成表示 \\(C=\\operatorname{Enc}(x)\\)。目标端先对 y 的已知前缀做因果 Self-Attention，再通过 Cross-Attention 读取 C：Q 来自目标隐状态，K/V 来自完整的、已经可用的源表示。它实现 \\(p_\\theta(y\\mid x)=\\prod_i p_\\theta(y_i\\mid y_{<i},x)\\)。目标端的因果性并不要求源序列也做因果注意力；关键是生成每个 \\(y_i\\) 时整个 x 是否已可用。 下式 \\(T_y\\) 是目标序列长度，C 是源编码器输出。",
+        "原论文图需要与本章案例分开阅读。2017 年 Transformer 使用两组各六层的堆叠：Encoder 每层为双向 Self-Attention 与逐位置 FFN；Decoder 每层依次为 masked Self-Attention、读取 Encoder 输出的 Cross-Attention、FFN。每个子层是 \\(\\operatorname{LN}(x+\\operatorname{Sublayer}(x))\\)，即 Post-LN；输入使用 Embedding 与位置编码相加。图中残差跨越子层后进入 Add & Norm，而本章案例的 Norm 位于分支入口，且没有 Encoder 和交叉子层。两张图共享 Attention 的核心计算，却不表示同一种架构或可直接交换权重。",
+        "这些结构在经典预训练工作中对应不同的学习问题。[BERT](https://aclanthology.org/N19-1423/) 从受扰动输入恢复被选中的 token，原版还联合下一句预测；它在可见上下文中建立双向表示。[GPT-2](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) 用左侧前缀预测下一个 token，因而直接定义可连续采样的序列概率。[T5](https://www.jmlr.org/papers/v21/20-074.html) 则将任务统一为文本到文本：预训练时把连续缺失片段替换为不同的 sentinel 标记，由目标端按顺序生成缺失片段。它们的差异同时存在于输入构造、可见集合和监督位置，不能只用“都优化交叉熵”概括。",
+        "有 Cross-Attention 或被命名为 decoder 的模块，不一定执行自回归采样。ACT 使用一组动作位置查询并行读出动作块；去噪 Transformer 可以让同一生成时间的噪声动作彼此双向读取，然后一起预测噪声或速度。二者没有把未来干净动作当作输入答案，因此不能仅凭双向 Mask 判定泄漏。是否泄漏应由随机变量、目标和训练时实际可见信息共同判断。",
+        "缓存条件随上述结构变化。因果自回归追加 token 时，历史位置的每层表示不依赖新位置，因而可重用其 K/V；固定 Encoder 输出的 Cross-Attention K/V 也可缓存。双向重编码、修改历史 token、改变前缀的时间调制或不断更新整块噪声动作时，对应表示通常需要重算。具体的等价性与位置偏移见后面的缓存小节，以及[KV Cache 专章](#/learn/kv-cache-inference)。",
+        "ViT 将二维 patch 网格展平为序列后，token 顺序本身并不使无位置编码的 Self-Attention 理解二维邻接；位置、视角和来源编码必须提供相应身份。图像、语言与状态可以在共享序列中交互，也可以保留独立编码器并通过 Cross-Attention 融合。详细的 patch 数量、位置身份与池化信息损失见 [视觉与多模态表示](#/learn/multimodal)，条件路由见 [条件融合](#/learn/conditioning-fusion)。"
+      ],
+      "formula": "p_\\theta(y\\mid x)=\\prod_{i=1}^{T_y}p_\\theta(y_i\\mid y_{<i},C),\\qquad C=\\operatorname{Enc}(x)",
+      "comparison": {
+        "title": "从代表性工作辨认结构与用途",
+        "columns": [
+          "代表工作",
+          "结构与预训练特点",
+          "主要表示或使用方式"
+        ],
+        "rows": [
+          [
+            "BERT（2018/2019）",
+            "双向 Encoder；Masked Language Modeling，原版另有 NSP。预测被选中位置的原词，不建立标准从左到右生成过程。",
+            "提供每个位置的上下文表示，接分类、序列标注或抽取式问答头；能读取任务已提供的左右上下文。"
+          ],
+          [
+            "GPT-2（2019）",
+            "因果 Decoder-only；下一 token 预测。采用 Pre-LN；它使用的学习式绝对位置并非本章示例的 RoPE。",
+            "按前缀续写，逐 token 生成；固定历史时可以复用 KV Cache。生成机制与预测下一个 token 的目标一致。"
+          ],
+          [
+            "T5（2020）",
+            "Encoder–Decoder；源侧双向读取扰动文本，目标侧因果生成缺失片段并通过 Cross-Attention 读取源。",
+            "将翻译、摘要、分类等输出表达为文本；源编码可复用，输出长度不必等于输入长度。"
+          ],
+          [
+            "ACT 的并行动作查询",
+            "动作查询同时读取观测与潜变量；虽然包含 Transformer decoder，却没有逐动作的因果概率分解。",
+            "并行读出动作块；与上述语言预训练目标的区别见[生成式动作策略](#/learn/generative-policy?tab=theory&section=act-conditional-latent-model)。"
+          ]
+        ]
+      },
+      "takeaway": "自回归由条件分解和输入约束定义；Decoder 这个名称不能代替对训练目标的检查。",
+      "lead": "同样的注意力与前馈模块，可以按不同的信息可用范围组成编码器或解码器。将计算结构和概率分解分别说明，可以避免仅凭模块名称判断是否自回归，或把一种 VLA 的接口推广到所有策略。",
+      "figures": [
+        {
+          "src": "/assets/figures/transformer-original-encoder-decoder.svg",
+          "title": "原论文 Encoder–Decoder：Post-LN",
+          "alt": "源侧双向编码、目标侧 masked 自注意力、源到目标交叉注意力和 FFN；每个子层先残差相加再 LayerNorm，源表示供每层交叉注意力的 K/V。",
+          "caption": "依据 [Vaswani et al. §3.1–3.5](https://arxiv.org/abs/1706.03762) 原创重绘。图采用原论文 Post-LN、正弦位置相加与两组六层堆叠；与本章两层 Pre-LN/RoPE 的 decoder-only 实例分开。为突出结构省略 Dropout 和具体 FFN 宽度。",
+          "afterParagraph": 3
+        }
+      ]
+    },
+    {
+      "id": "teacher-forcing-and-loss",
+      "title": "Teacher Forcing、标签与 Loss Mask",
+      "body": [
+        "训练下一 token 预测时，可以把 `[BOS,抓,杯,EOS]` 拆成输入 `[BOS,抓,杯]` 与目标 `[抓,杯,EOS]`。完整输出 `logits` 的形状为 \\([B,T,V_{\\mathrm{vocab}}]\\)，其中 \\(V_{\\mathrm{vocab}}\\) 是词表大小；每个位置预测其下一个 token，因果 Mask 确保模型只能读取输入中的合法前缀。这种并行训练称为 Teacher Forcing，因为输入使用已知的真实前缀；推理则使用模型自己此前生成的内容，二者访问的数据分布可能不同。",
+        "标签需要恰好移位一次。有的模型 forward 接受原始 labels 并内部移位；手写训练循环则可能在外部切片。先用带编号的短序列写出每个 logits 位置应该对应哪个 label，再确认是谁执行切片。直接给 logits 同位置的输入 token 当目标，模型可能学到复制；在模型内外各移一次，则会学到跨两步预测，训练仍可能下降。",
+        "指令微调常只对回答或动作 token 计 Loss，但 Prompt token 仍是条件上下文。把 Prompt 的 label 设为忽略，不等于把它从注意力中移除。先得到逐 token CE，再用有效位选择并按明确分母归约；若没有任何有效监督，应拒绝该 Batch 或显式跳过，而不是除以零。动作去噪模型的目标可能是噪声、速度或动作回归，不应机械套用词表 CE 和语言式移位。",
+        "主案例的完整序列是 `[[0,1,2,3,4],[3,4,5,6,0]]`，用前四个 ID 作输入、后四个作标签，得到八个监督位置。`readout` 的 `[2,4,7]` Logit 展平为 `[8,7]`，标签展平为 `[8]`，CE 对八个位置平均；其 Logit 梯度为 \\((p_{b,i,k}-\\mathbf1[k=y_{b,i}])/8\\)，再通过读出头、最终 Norm、两层 Block 回到 Embedding。完整代码调用 `loss.backward()`，检查全部参数梯度有限，再裁剪并更新 AdamW。两条循环序列的 Loss 下降只检验训练闭环，不构成语言建模或策略泛化结果。"
+      ],
+      "formula": "\\mathcal L=-\\frac{1}{\\sum_{b,i}m_{bi}}\\sum_{b,i}m_{bi}\\log p_\\theta(y_{bi}\\mid x_{b,\\le i}),\\qquad y_i=x_{i+1}",
+      "code": "inputs, labels = sequence[:, :-1], sequence[:, 1:]\nlogits, _, _ = model(inputs)\nloss = F.cross_entropy(logits.reshape(-1, vocab), labels.reshape(-1))\nloss.backward()",
+      "takeaway": "输入可见性、标签对齐和 Loss 有效位分别决定条件、目标与权重。",
+      "example": {
+        "title": "输入、目标与损失位置分别对齐",
+        "steps": [
+          "序列为[A,B,C,EOS]。最小下一token任务可以用输入[A,B,C]预测目标`[B,C,EOS]`，每个位置的logits有V个类别。",
+          "如果A、B属于只提供上下文的提示，可以屏蔽相应的损失项，但它们仍可作为后续token的注意力Key；Loss Mask并不自动屏蔽信息流。",
+          "如果模型封装已经内部shift，而数据侧又提前shift一次，就变成跨两步预测。应该打印一个样本每个logit位置对应的目标token，而不是只观察总loss。"
+        ],
+        "conclusion": "监督位置、输入可见性与Padding处理应分别写清，再检查组合后的行为。"
+      },
+      "lead": "选定自回归分解之后，每个输出位置必须对应一个尚未读取的目标。训练可以利用已知真实前缀并行计算，但需要精确对齐标签和有效监督，才能把结构上的因果性转化为正确的学习目标。",
+      "codeKind": "fragment",
+      "codeExplanation": "依赖完整案例中的 `sequence`、TinyLM 实例 `model`、词表大小 `vocab=7` 与 F。可运行的循环见[两层模型实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm)；模型返回 logits、逐层 cache 与可选 trace，因此这里先解包再计算 CE。"
+    },
+    {
+      "id": "kv-cache",
+      "title": "KV Cache 与历史状态",
+      "body": [
+        "在标准因果 Transformer 的确定性推理中，新增 token 不会改变过去位置的隐藏状态，因此可以为每层保存过去的 K 和 V。新一轮只计算新增 token 的 Q/K/V，再把新 K/V 接到历史缓存。只需要当前 Query 的输出时，历史 Query 无需重算。缓存按层保存，因为每层的 K/V 来自不同的隐藏状态和投影。",
+        "若已有 P 个历史 token，本次新增 L 个，则 Key 总长为 \\(S=P+L\\)。第 i 个新 Query 的全局位置是 \\(P+i\\)，合法条件为 \\(j\\le P+i\\)。直接对 `[L,S]` 做从左上角起的 tril，会把偏移忘掉；例如 \\(P=3,\\ L=1\\) 时，新 Query 应能看到四个 Key，而从零开始的下三角只允许第一个。第三项练习通过非方形片段、分块生成和完整前向的数值及梯度对照检出这种错误。",
+        "缓存复用需要保持权重、输入内容、位置规则和有关条件不变。双向序列追加位置后，旧位置可能读到新内容，因此一般不能沿用标准因果缓存逻辑。扩散或 Flow Matching 的动作 token 随去噪时间更新，其 K/V 也会变化；固定的视觉语言前缀只有在各层都不依赖动态动作或时间条件时才可复用。缓存是依赖分析的结果，不是根据“前缀”这个名字自动成立。",
+        "训练过程中缓存还涉及计算图寿命、梯度回传和显存，不能把推理时 `detach` 的缓存直接移到需要跨片段反传的训练中。缓存练习保留计算图，以比较分块与整段的梯度；实际生成一般处于 `no_grad` 或 `inference_mode`。它接收已完成投影及位置处理的 Q/K/V，位置编码本身仍由调用方按全局位置正确计算。",
+        "完整案例第一次用 `[2,4]` ID 同时计算四个位置，随后把同一输入切成 (1,1,1,1)、(2,2) 和 (1,3) 三种分块。每层缓存各为一对 `[2,2,P,4]` 的 K/V：K 已做 RoPE，V 未旋转；新片段 Q 长度是本次片段长度，K 长度包含历史。模型在 eval 下比较所有 `[2,4,7]` Logit，并用同一标量探针比较全部 28 组参数梯度。梯度对照故意保留缓存的计算图，只检验数学等价，不作为推荐的训练缓存策略。",
+        "训练后再从两个输入 Token 开始：取最后位置的 `argmax` 作为新 ID，把它反馈给带缓存的模型，并与整个已生成前缀重新计算的最后一个 Logit 比较。这一步区别于把真实标签逐段喂入模型：后续输入由模型自身决定。例子采用贪心解码、等长 Batch 和固定条件，不实现 EOS、采样温度、变长缓存或分页存储；那些工程选择不改变本节要验证的历史不变性。"
+      ],
+      "formula": "K_{\\mathrm{all}}=[K_{\\mathrm{past}};K_{\\mathrm{new}}],\\qquad \\mathrm{allowed}_{ij}=\\mathbb{1}[j\\le P+i]",
+      "takeaway": "非方形 Mask 要带历史偏移；缓存有效性取决于隐藏状态是否真的不变。",
+      "example": {
+        "title": "三个历史 token 后追加两个新 token",
+        "steps": [
+          "历史长度 \\(P=3\\)，新 Query 的绝对位置是 3、4，所有 Key 的位置是 0、1、2、3、4。第一个新 Query 允许读取 0 到 3，第二个允许读取 0 到 4。",
+          "因此两行可见性分别为`[True,True,True,True,False]`和`[True,True,True,True,True]`。它对应 `key_position <= P + query_local_position`。",
+          "直接对 \\(2\\times5\\) 矩阵取无偏移 `tril` 会得到仅第一个 Key、仅前两个 Key 可见，错误屏蔽了已经存在的历史。若新 Token 已旋转 RoPE，其位置也必须从 \\(P\\) 开始。"
+        ],
+        "conclusion": "非方形因果Mask与位置编码都要使用绝对位置。可将整段前向结果与多种分块大小的缓存结果逐项比较。"
+      },
+      "lead": "自回归生成每轮只追加新位置，因果结构使过去的计算具备复用的可能。把历史不变性对应到每层的 K/V，再处理局部与全局位置的差别，才能保证增量计算与完整前向等价。"
+    },
+    {
+      "id": "cost-and-inference",
+      "title": "分块 Softmax、显存与计算量",
+      "body": [
+        "标准密集自注意力的 \\(QK^\\top\\) 和 AV 计算随 \\(T^2D\\) 增长，显式注意力矩阵有 \\(BHT^2\\) 个元素；线性投影约随 \\(TD^2\\) 增长，FFN 还与 \\(D_{\\mathrm{ff}}\\) 有关。增加图像分辨率、相机数量或历史帧会增加 token 数，因此可能显著放大注意力成本。仅看参数量无法预测激活显存。保持宽度不变而把序列长度翻倍，注意力分数元素数约变为四倍。",
+        "FlashAttention 类方法减少显式注意力矩阵的存储和 GPU 层级之间的数据搬运，核心计算仍是密集注意力。它能够分块计算，依赖 Softmax 统计量的可合并性：每个块记录最大值 \\(m\\)、指数和 \\(\\ell=\\sum_j\\exp(s_j-m)\\)，以及未归一化读出 \\(r=\\sum_j\\exp(s_j-m)v_j\\)。两个块合并时先取共同最大值，再按 \\(\\exp(m_{\\mathrm{block}}-m)\\) 重标定各自的 \\(\\ell\\) 和 \\(r\\)，最后输出 \\(r/\\ell\\)。",
+        "不能把两个块各自算出的注意力输出直接平均：不同块的总指数质量通常不同。正确合并相当于恢复同一个全局分母，并非把 Softmax 改成局部归一化。该恒等式在实数代数中精确；浮点重排仍可能产生舍入差异。下面只是验证分块归约原理，实际高性能内核还需安排线程、片上存储与反向重计算，Python 循环本身不代表 FlashAttention 的速度。",
+        "减少中间存储不等于把完整密集注意力的乘加复杂度降成线性。KV Cache 则避免重复生成过去位置的 K/V，每一步新 Query 对已有 Key 的读出随历史长度增长，完整生成的总工作量仍会累积。若共有 \\(N_{\\mathrm{layer}}\\) 层、每层 \\(H_{\\mathrm{KV}}\\) 个 KV 头，且 Key 与 Value 的头宽均为 \\(d_h\\)，长度为 \\(S\\) 的缓存有 \\(2N_{\\mathrm{layer}}BH_{\\mathrm{KV}}S d_h\\) 个元素，再乘每元素字节数才得到容量；GQA 应代入 KV 头数而非 Query 头数。不同层的头数或 Key/Value 维度不同，则应逐层按实际形状求和。",
+        "训练态与推理态也要纳入比较条件。`nn.Dropout` 会响应 `model.eval()`，但 `functional.scaled_dot_product_attention` 的 `dropout_p` 参数需要调用方在推理时明确设为零。做数值对照时固定权重、输入、dtype、Mask 和 Dropout；浮点内核可有容差范围内的差异，不必要求逐位相等。推理 `no_grad` 只关闭自动微分，不会自动切换所有模块的训练状态。",
+        "完整案例还给出了可核查的缓存量：两层、两条样本、两头、四个历史位置、头宽四，共 \\(2\\times2\\times2\\times2\\times4\\times4=256\\) 个 K/V 元素，float64 仅这些张量占 2048 字节。它不包含 Python 容器、参数和临时激活，也不代表生产推理峰值显存。第二份演示同时检查未来扰动、Batch 隔离、三种缓存分块、全部参数梯度、训练循环与自回归反馈；每项断言针对一个具体计算约定，不把训练集 Loss 下降解释成真实任务能力。"
+      ],
+      "formula": "\\begin{aligned}m&=\\max(m_a,m_b)\\\\\\ell&=e^{m_a-m}\\ell_a+e^{m_b-m}\\ell_b\\\\r&=e^{m_a-m}r_a+e^{m_b-m}r_b,\\qquad o=r/\\ell\\end{aligned}",
+      "code": "import torch\n\nscores = torch.tensor([1000., 1001., 999., 1002.], dtype=torch.float64)\nvalues = torch.tensor([[1., 0.], [0., 2.], [3., 1.], [-1., 4.]], dtype=scores.dtype)\n\ndef stats(s, v):\n    m = s.max()\n    e = (s - m).exp()\n    return m, e.sum(), e @ v\n\nma, la, ra = stats(scores[:2], values[:2])\nmb, lb, rb = stats(scores[2:], values[2:])\nm = torch.maximum(ma, mb)\nwa, wb = (ma - m).exp(), (mb - m).exp()\nmerged = (wa * ra + wb * rb) / (wa * la + wb * lb)\nfull = scores.softmax(-1) @ values\nwrong = (ra / la + rb / lb) / 2\ntorch.testing.assert_close(merged, full)\nassert not torch.allclose(wrong, full)\nprint(\"全局 / 正确分块:\", full.tolist(), merged.tolist())\nprint(\"直接平均局部输出的误差:\", (wrong - full).abs().max().item())\n",
+      "takeaway": "输出、梯度和信息流都要验证；训练速度与内存优化不能代替数学等价性检查。",
+      "codeExplanation": "分数约为 1000，直接 `exp(scores)` 会溢出；各块减自己的最大值保持数值稳定，合并时再恢复共同尺度。`ra/la` 是块内归一化的输出，缺少该块的全局概率质量，因而直接平均会改变答案。示例不含 Mask；被完全遮蔽的块需要单独跳过或定义零质量，不能对 \\(-\\infty-(-\\infty)\\) 直接求指数。",
+      "lead": "理解数据流后，才可以可靠地估算哪些张量消耗了计算与显存。显式注意力矩阵、投影和缓存具有不同的规模关系；分块归约则说明如何减少中间存储而保持同一个数学输出。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "reading-vla-code",
+      "title": "VLA 的表示与条件路径",
+      "body": [
+        "先沿数据流找到输入组织：图像经过何种骨干，语言如何分词，状态怎样投影，动作是离散 token、连续查询还是噪声序列。随后标注 token 排列和每个区域长度，再找构建位置编码与 Attention Mask 的位置。这样能够把配置中的网络宽度、头数、动作长度和前向中的张量对应起来。",
+        "再逐层追踪参数更新路径：哪些模块冻结，哪些适配器或动作头训练，Loss 从哪些输出计算，梯度经过哪些条件分支。冻结参数、`no_grad`、`detach`、缓存复用各自改变不同内容，不能相互替代。模型可以把视觉语言骨干与动作生成器分开，也可以通过统一 token 序列交互；后训练修改必须服从具体模型的输入输出和可见性约定。",
+        "最后检查训练与部署的一致性：图像处理、tokenizer 特殊符号、归一化统计、时间编号、推理步数、有效位和动作还原必须配套。注意力热图可帮助发现错误连接，却不能单凭高权重断言某个区域就是决策原因：V 的内容、输出投影和后续层都会改变最终影响。需要用受控输入扰动、消融和闭环评估支持模型行为的解释。",
+        "把以上接口放进动作策略后，应继续区分潜变量解码、离散 token 自回归、Diffusion 和 Flow 的生成目标。它们可以共享视觉语言条件编码，却不能互换输出头、时间约定或采样器。[生成式动作策略](#/learn/generative-policy) 将这些接口与 ACT、闭环重规划及后训练目标连接起来。"
+      ],
+      "bullets": [
+        "输入约定 → 投影形状 → 位置与可见性 → Block → 输出头与损失 → 缓存和执行。",
+        "先在小张量上建立可重复的对照，再替换优化内核或接入大模型。"
+      ],
+      "takeaway": "从任务条件到代码证据逐层核对，比只记住 Attention 公式更接近独立修改模型的能力。",
+      "lead": "前面的机制可以作为阅读具体策略模型的共同语言，但不能预先决定某个模型采用哪一种结构。沿实际观测、条件、动作和损失的流向逐项定位，才能把通用理论连接到可靠的后训练修改。"
+    }
+  ],
+  "implementations": [
+    {
+      "id": "manual-mha",
+      "title": "实现一：手写多头交叉注意力，并逐项核对梯度",
+      "description": "用 float64、小张量和非对称 Mask 比较手写核心与官方 SDPA。空行显式定义为零输出；测试涵盖六组输入／参数梯度、禁止 Key 的扰动和 Batch 隔离。",
+      "source": "import math\nimport torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\nDTYPE = torch.float64\n\ndef split_heads(x, heads):\n    b, length, width = x.shape\n    if width % heads:\n        raise ValueError(\"width must be divisible by heads\")\n    return x.reshape(b, length, heads, width // heads).transpose(1, 2)\n\ndef attention_core(q, k, v, allowed, backend):\n    # allowed: [B, 1, L, S], True means visible.\n    has_key = allowed.any(-1, keepdim=True)\n    if backend == \"manual\":\n        score = (q @ k.transpose(-2, -1)) / math.sqrt(q.shape[-1])\n        score = score.masked_fill(~allowed, float(\"-inf\"))\n        safe_score = torch.where(has_key, score, torch.zeros_like(score))\n        weight = safe_score.softmax(-1).masked_fill(~allowed, 0.0)\n        return weight @ v, weight\n    if backend != \"sdpa\":\n        raise ValueError(\"unknown backend\")\n    # Give empty rows one temporary key, then explicitly zero their output.\n    first_key = torch.arange(k.shape[-2], device=k.device) == 0\n    safe_allowed = allowed | (~has_key & first_key)\n    z = F.scaled_dot_product_attention(\n        q, k, v, attn_mask=safe_allowed, dropout_p=0.0)\n    return torch.where(has_key, z, torch.zeros_like(z)), None\n\ndef multihead(x, context, wq, wk, wv, wo, allowed, heads, backend):\n    q = split_heads(F.linear(x, wq), heads)\n    k = split_heads(F.linear(context, wk), heads)\n    v = split_heads(F.linear(context, wv), heads)\n    per_head, weights = attention_core(q, k, v, allowed, backend)\n    b, _, length, _ = per_head.shape\n    merged = per_head.transpose(1, 2).reshape(b, length, -1)\n    # No output bias: our zero-attention row stays exactly zero here.\n    return F.linear(merged, wo), weights\n\nb, l, s, d, heads = 2, 3, 4, 8, 2\nraw = [torch.randn(b, l, d, dtype=DTYPE),\n       torch.randn(b, s, d, dtype=DTYPE)]\nraw += [torch.randn(d, d, dtype=DTYPE) / math.sqrt(d) for _ in range(4)]\nleft = [x.clone().requires_grad_() for x in raw]\nright = [x.clone().requires_grad_() for x in raw]\nallowed = torch.ones(b, 1, l, s, dtype=torch.bool)\nallowed[0, :, 0, 1:] = False  # One query can read only the first key.\nallowed[1, :, :, -1] = False  # Last context token is padding.\nallowed[1, :, -1, :] = False # One query has no valid keys.\n\nmanual, weight = multihead(*left, allowed, heads, \"manual\")\nreference, _ = multihead(*right, allowed, heads, \"sdpa\")\ntorch.testing.assert_close(manual, reference, atol=1e-10, rtol=1e-8)\nexpected_row_sum = allowed.any(-1).expand(b, heads, l).to(DTYPE)\ntorch.testing.assert_close(weight.sum(-1), expected_row_sum)\nassert torch.equal(manual[1, -1], torch.zeros(d, dtype=DTYPE))\n\nprobe = torch.randn_like(manual)\ngrad_manual = torch.autograd.grad((manual * probe).sum(), left)\ngrad_reference = torch.autograd.grad((reference * probe).sum(), right)\nfor a, z in zip(grad_manual, grad_reference):\n    assert torch.isfinite(a).all()\n    torch.testing.assert_close(a, z, atol=1e-10, rtol=1e-8)\n\n# A masked context key must not influence any output.\nchanged_context = raw[1].clone()\nchanged_context[1, -1] += 1000\nchanged, _ = multihead(raw[0], changed_context, *raw[2:],\n                       allowed, heads, \"manual\")\ntorch.testing.assert_close(changed, manual.detach(), atol=1e-10, rtol=1e-8)\n# A different sample must not influence sample zero.\nchanged_x = raw[0].clone()\nchanged_x[1] += 50\nchanged, _ = multihead(changed_x, raw[1], *raw[2:],\n                       allowed, heads, \"manual\")\ntorch.testing.assert_close(changed[0], manual.detach()[0])\nprint(\"passed: forward, all six gradients, mask perturbation, batch isolation\")\nprint(\"Q/K lengths:\", l, s, \"; output shape:\", tuple(manual.shape))\n",
+      "explanations": [
+        {
+          "lines": "1–13",
+          "text": "固定随机种子与 float64；`split_heads` 先拆通道再交换头和位置轴，避免形状看似正确的元素重排错误。"
+        },
+        {
+          "lines": "15–31",
+          "text": "手写核心沿 Key 归一化；空行在归一化前临时替换为有限分数，最后权重全零。SDPA 对照路径显式使用相同空行约定，不依赖内核默认行为。"
+        },
+        {
+          "lines": "33–41",
+          "text": "Query 和上下文分别投影成 Q 与 K/V；每头结果先转回位置轴，再拼接并输出投影。此处无输出偏置，零注意力行因此保持零。"
+        },
+        {
+          "lines": "43–59",
+          "text": "使用 \\(L=3,\\ S=4\\) 的非方形输入和非对称可见性，检查前向一致、权重行和及空行输出；仅 shape 检查不能代替这些断言。"
+        },
+        {
+          "lines": "61–66",
+          "text": "同一个随机线性读出生成标量目标，分别对 Query 输入、上下文和四组投影权重求导，核对全部六组梯度。"
+        },
+        {
+          "lines": "68–81",
+          "text": "改变禁止读取的上下文位置应不影响输出；只改变另一条样本也不应影响当前样本。这两项验证信息隔离。"
+        }
+      ],
+      "expected": "打印 passed: forward, all six gradients, mask perturbation, batch isolation；输出形状为 (2,3,8)，全遮蔽 Query 的无偏置读出为零。",
+      "runtime": "torch"
+    },
+    {
+      "id": "tiny-causal-lm",
+      "title": "实现二：贯穿全章的两层 Transformer——训练、RoPE 与 KV Cache",
+      "description": "固定 B=2、T=4、D=8、H=2、两层与 D_ff=32，从 Token ID、Embedding、手写 Attention、RoPE、Pre-LN 残差和 FFN 接到词表头、CE、反传、AdamW 与增量解码。相同参数下核对完整／缓存输出和全部 28 组参数梯度；原有非方形 MHA 与间接泄漏实现仍负责各自的独立验证。",
+      "source": "import json\nimport math\nimport torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(19)\ntorch.set_num_threads(1)\n\n\ndef apply_rope(x, positions, base=10000.0):\n    # x: [B,H,T,dh]. Adjacent channel pairs, column-vector rotation convention.\n    if x.shape[-1] % 2 or positions.shape != (x.shape[-2],):\n        raise ValueError(\"RoPE needs an even head width and one position per token\")\n    inv_freq = base ** (-torch.arange(0, x.shape[-1], 2,\n                                    device=x.device, dtype=x.dtype) / x.shape[-1])\n    angles = positions.to(dtype=x.dtype)[:, None] * inv_freq[None, :]\n    cos, sin = angles.cos()[None, None], angles.sin()[None, None]\n    even, odd = x[..., 0::2], x[..., 1::2]\n    return torch.stack((even * cos - odd * sin,\n                        even * sin + odd * cos), dim=-1).flatten(-2)\n\n\nclass CausalAttention(nn.Module):\n    def __init__(self, width=8, heads=2, dropout=0.1):\n        super().__init__()\n        if width % heads or (width // heads) % 2:\n            raise ValueError(\"width / heads must be an even integer\")\n        self.heads, self.head_dim = heads, width // heads\n        self.dropout_p = dropout\n        self.qkv = nn.Linear(width, 3 * width)\n        self.out = nn.Linear(width, width)\n\n    def forward(self, x, valid, past=None, inspect=False):\n        b, t, d = x.shape\n        past_len = 0 if past is None else past[0].shape[-2]\n        positions = past_len + torch.arange(t, device=x.device)\n        packed = self.qkv(x)  # [B,T,3D] = [2,4,24] in a full pass\n        q, k, v = [z.reshape(b, t, self.heads, self.head_dim).transpose(1, 2)\n                   for z in packed.chunk(3, dim=-1)]\n        q, k = apply_rope(q, positions), apply_rope(k, positions)\n        # Cache rotated K, unrotated V. Never rotate old keys a second time.\n        keys = k if past is None else torch.cat((past[0], k), dim=-2)\n        values = v if past is None else torch.cat((past[1], v), dim=-2)\n        key_valid = torch.cat((torch.ones(b, past_len, device=x.device,\n                                         dtype=torch.bool), valid), dim=-1)\n        key_positions = torch.arange(keys.shape[-2], device=x.device)\n        causal = key_positions[None, :] <= positions[:, None]\n        allowed = (causal[None, None] & key_valid[:, None, None, :]\n                   & valid[:, None, :, None])\n        scores = (q @ keys.transpose(-2, -1)) / math.sqrt(self.head_dim)\n        has_key = allowed.any(-1, keepdim=True)\n        masked = scores.masked_fill(~allowed, -torch.inf)\n        safe = torch.where(has_key, masked, torch.zeros_like(masked))\n        weights = safe.softmax(-1).masked_fill(~allowed, 0.0)\n        per_head = F.dropout(weights, self.dropout_p, self.training) @ values\n        merged = per_head.transpose(1, 2).reshape(b, t, d)\n        out = self.out(merged).masked_fill(~valid[..., None], 0.0)\n        detail = dict(packed=packed, q=q, k=keys, v=values, scores=scores,\n                      allowed=allowed, weights=weights, per_head=per_head,\n                      merged=merged, attention_output=out) if inspect else None\n        return out, (keys, values), detail\n\n\nclass Block(nn.Module):\n    def __init__(self, width=8, heads=2, hidden=32):\n        super().__init__()\n        self.norm1, self.norm2 = nn.LayerNorm(width), nn.LayerNorm(width)\n        self.attn = CausalAttention(width, heads)\n        self.up, self.down = nn.Linear(width, hidden), nn.Linear(hidden, width)\n        self.drop = nn.Dropout(0.1)\n\n    def forward(self, x, valid, past=None, inspect=False):\n        n1 = self.norm1(x)\n        update, present, detail = self.attn(n1, valid, past, inspect)\n        h = x + self.drop(update)\n        n2 = self.norm2(h)  # The FFN reads the UPDATED residual state.\n        hidden = F.gelu(self.up(n2))\n        y = (h + self.drop(self.down(hidden))).masked_fill(~valid[..., None], 0.0)\n        if inspect:\n            detail.update(norm1=n1, residual1=h, norm2=n2, ffn_hidden=hidden,\n                          output=y)\n        return y, present, detail\n\n\nclass TinyLM(nn.Module):\n    def __init__(self, vocab=7):\n        super().__init__()\n        self.token = nn.Embedding(vocab, 8)\n        self.blocks = nn.ModuleList([Block() for _ in range(2)])\n        self.norm = nn.LayerNorm(8)\n        self.readout = nn.Linear(8, vocab, bias=False)\n\n    def forward(self, ids, valid=None, past=None, inspect=False):\n        if ids.ndim != 2 or ids.shape[1] == 0 or ids.dtype != torch.long:\n            raise ValueError(\"ids must be nonempty int64 [B,T]\")\n        b, t = ids.shape\n        valid = torch.ones_like(ids, dtype=torch.bool) if valid is None else valid\n        if valid.dtype != torch.bool or valid.shape != ids.shape:\n            raise ValueError(\"valid must be boolean [B,T]\")\n        if not bool(valid[:, 0].all()) or bool((valid[:, 1:] & ~valid[:, :-1]).any()):\n            raise ValueError(\"full passes support nonempty, right-padded sequences\")\n        if past is not None:\n            if len(past) != 2 or not bool(valid.all()):\n                raise ValueError(\"cached passes need two layers and no padding\")\n            lengths = {k.shape[-2] for k, _ in past}\n            if len(lengths) != 1:\n                raise ValueError(\"all layers must cache the same history length\")\n            for k, v in past:\n                if k.shape != v.shape or k.shape[:2] != (b, 2) or k.shape[-1] != 4:\n                    raise ValueError(\"each K/V cache must have shape [B,2,P,4]\")\n        x = self.token(ids).masked_fill(~valid[..., None], 0.0)\n        record = dict(embedding=x, blocks=[]) if inspect else None\n        presents = []\n        for i, block in enumerate(self.blocks):\n            x, cache, detail = block(x, valid, None if past is None else past[i], inspect)\n            presents.append(cache)\n            if inspect:\n                record[\"blocks\"].append(detail)\n        normalized = self.norm(x)\n        logits = self.readout(normalized).masked_fill(~valid[..., None], 0.0)\n        if inspect:\n            record.update(final_norm=normalized, logits=logits)\n        # Padded caches need stored validity/individual position metadata.\n        # This small interface returns no reusable cache for a padded pass.\n        return logits, (presents if bool(valid.all()) else None), record\n\n\ndef streamed(model, inputs, chunks):\n    pieces, cache, start = [], None, 0\n    if sum(chunks) != inputs.shape[1] or min(chunks) < 1:\n        raise ValueError(\"chunks must partition the nonempty sequence\")\n    for size in chunks:\n        logits, cache, _ = model(inputs[:, start:start + size], past=cache)\n        pieces.append(logits)\n        start += size\n    return torch.cat(pieces, dim=1), cache\n\n\nvocab, B, T, D, H, N_LAYERS = 7, 2, 4, 8, 2, 2\nsequence = torch.tensor([[0, 1, 2, 3, 4], [3, 4, 5, 6, 0]])\ninputs, labels = sequence[:, :-1], sequence[:, 1:]  # Exactly one shift.\nmodel = TinyLM(vocab).double().eval()\nfull, _, trace = model(inputs, inspect=True)\nassert full.shape == (B, T, vocab)\nassert trace[\"blocks\"][0][\"q\"].shape == (B, H, T, D // H)\nassert trace[\"blocks\"][0][\"ffn_hidden\"].shape == (B, T, 32)\n\n# Same network and weights: full, one-token and multi-token cached passes.\ncache_errors = {}\nfor chunks in ((1, 1, 1, 1), (2, 2), (1, 3)):\n    cached, cache = streamed(model, inputs, chunks)\n    torch.testing.assert_close(cached, full, atol=2e-10, rtol=2e-8)\n    assert all(k.shape == v.shape == (B, H, T, D // H) for k, v in cache)\n    cache_errors[str(chunks)] = (cached - full).abs().max().item()\n\n# A single scalar probe compares ALL parameter gradients, not only outputs.\nprobe = torch.randn_like(full)\nfull_grads = torch.autograd.grad((full * probe).sum(), tuple(model.parameters()),\n                                retain_graph=True)\ncached, _ = streamed(model, inputs, (1, 3))\ncache_grads = torch.autograd.grad((cached * probe).sum(), tuple(model.parameters()))\nfor a, b in zip(full_grads, cache_grads):\n    torch.testing.assert_close(a, b, atol=3e-10, rtol=3e-8)\ngradient_error = max((a - b).abs().max().item() for a, b in zip(full_grads, cache_grads))\n\n# Future changes and other batch rows cannot affect earlier predictions.\nchanged = inputs.clone()\nchanged[:, 2:] = (changed[:, 2:] + 2) % vocab\ntorch.testing.assert_close(model(changed)[0][:, :2], full[:, :2])\nchanged = inputs.clone()\nchanged[1] = (changed[1] + 1) % vocab\ntorch.testing.assert_close(model(changed)[0][0], full[0])\ng_input = torch.autograd.grad(full[0, :2].square().sum(), trace[\"embedding\"])[0]\nassert torch.count_nonzero(g_input[0, 2:]) == 0\nassert torch.count_nonzero(g_input[1]) == 0\nvalid = torch.tensor([[1, 1, 1, 1], [1, 1, 0, 0]], dtype=torch.bool)\npadded, padded_cache, _ = model(inputs, valid)\nassert padded_cache is None and torch.count_nonzero(padded[1, 2:]) == 0\n\n# Tiny optimization task; a falling CE verifies this training path only.\noptimizer = torch.optim.AdamW(model.parameters(), lr=0.01)\ndef evaluate_loss():\n    model.eval()\n    with torch.no_grad():\n        return F.cross_entropy(model(inputs)[0].reshape(-1, vocab), labels.reshape(-1)).item()\n\nbefore = evaluate_loss()\nfor _ in range(120):\n    model.train()\n    optimizer.zero_grad(set_to_none=True)\n    logits, _, _ = model(inputs)\n    loss = F.cross_entropy(logits.reshape(-1, vocab), labels.reshape(-1))\n    loss.backward()\n    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())\n    nn.utils.clip_grad_norm_(model.parameters(), 1.0)\n    optimizer.step()\nafter = evaluate_loss()\nassert after < before * 0.25\n\n# Autoregressive decoding feeds the model's own output back as the next input.\nwith torch.no_grad():\n    generated = inputs[:, :2].clone()\n    logits, cache, _ = model(generated)\n    for _ in range(3):\n        next_id = logits[:, -1].argmax(-1, keepdim=True)\n        generated = torch.cat((generated, next_id), dim=1)\n        logits, cache, _ = model(next_id, past=cache)\n        recomputed = model(generated)[0][:, -1:]\n        torch.testing.assert_close(logits, recomputed, atol=2e-10, rtol=2e-8)\n\nsummary = dict(seed=19, dimensions=dict(B=B, T=T, D=D, H=H, layers=N_LAYERS),\n               block0_shapes={k: list(v.shape) for k, v in trace[\"blocks\"][0].items()},\n               parameter_gradient_groups=len(full_grads), cache_errors=cache_errors,\n               max_parameter_gradient_error=gradient_error,\n               future_input_gradient_max=g_input[0, 2:].abs().max().item(),\n               synthetic_ce_before=before, synthetic_ce_after=after,\n               greedy_sequences=generated.tolist())\nprint(\"TINY_LM_VALIDATION \" + json.dumps(summary, sort_keys=True))\n",
+      "explanations": [
+        {
+          "lines": "11–23",
+          "text": "相邻通道配对，每一对按全局位置旋转；广播轴为 Batch 和 Head。V 不旋转。"
+        },
+        {
+          "lines": "24–64",
+          "text": "手写 packed QKV、分头、RoPE、带偏移的可见性、安全 Softmax、Value 读取与合头。缓存旋转后的 K 和未旋转的 V；inspect 保留关键中间张量。"
+        },
+        {
+          "lines": "65–85",
+          "text": "两个独立的 LayerNorm 与两条残差；第二分支必须读取更新后的 h，GELU 隐层为 [2,4,32]。"
+        },
+        {
+          "lines": "86–128",
+          "text": "Embedding 产生 [2,4,8]，两层 Block 后最终 Norm 与词表头产生 [2,4,7]；完整前向支持右补齐，缓存接口限定等长且无 Padding。"
+        },
+        {
+          "lines": "129–139",
+          "text": "将任意指定的正长度分块依次追加，并拼回全部位置的输出；缓存按层传递，未截断计算图。"
+        },
+        {
+          "lines": "140–166",
+          "text": "固定数据、尺寸和种子，检查 (1,1,1,1)、(2,2)、(1,3) 分块与完整前向，以及全部参数的向量—Jacobian 乘积。"
+        },
+        {
+          "lines": "167–180",
+          "text": "未来扰动、其他样本扰动、Embedding 梯度与 Padding 输出验证整网信息边界。"
+        },
+        {
+          "lines": "181–200",
+          "text": "唯一一次标签移位、逐位置 CE、backward、梯度有限性、裁剪与 AdamW；训练态启用 Dropout，评估关闭。"
+        },
+        {
+          "lines": "201–219",
+          "text": "把模型自己的贪心输出反馈为后续输入，并逐步与完整前缀重算比较；最后打印可复现记录。"
+        }
+      ],
+      "expected": "CPU float64、随机种子 19：三种缓存分块的最大 Logit 误差不超过 6.7e−16，28 组参数梯度最大误差约 2.22e−15，未来输入位置梯度为零。两条合成序列训练 120 步的 CE 约从 2.2915 降至 0.00749；贪心续写与全前缀重算一致。数值依赖版本与浮点实现，断言使用容差；该任务只验证接口与可优化性，不是语言或机器人性能评估。",
+      "runtime": "torch"
+    },
+    {
+      "id": "layerwise-information-flow",
+      "title": "实现三：证明两层信息边界，并构造间接泄漏反例",
+      "description": "以逐 token LayerNorm、手写注意力和残差组成两层小网络。布尔路径给出依赖上界；Jacobian、有限差分与扰动检查实际依赖。最后验证第二层前缀 K/V 的可缓存条件。",
+      "source": "import math\nimport torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(43)\ntorch.set_num_threads(1)\ndtype = torch.float64\nT, D, P = 4, 4, 2  # one sample; token, channel, prefix lengths\nx = torch.randn(T, D, dtype=dtype)\nweights = []\nfor _ in range(2):\n    weights.append({name: torch.randn(*shape, dtype=dtype) / math.sqrt(shape[-1])\n                    for name, shape in [('q',(D,D)), ('k',(D,D)), ('v',(D,D)),\n                                        ('o',(D,D)), ('up',(8,D)), ('down',(D,8))]})\n\ndef block(z, allowed, w):\n    normalized = F.layer_norm(z, (D,))  # each token separately\n    q, k, v = [F.linear(normalized, w[name]) for name in ('q','k','v')]\n    logits = q @ k.T / math.sqrt(D)\n    assert bool(allowed.any(-1).all())\n    attention = logits.masked_fill(~allowed, float('-inf')).softmax(-1)\n    h = z + 0.25 * F.linear(attention @ v, w['o'])\n    return h + 0.1 * F.linear(F.gelu(F.linear(F.layer_norm(h, (D,)), w['up'])), w['down'])\n\ndef forward(z, masks):\n    states = [z]\n    for allowed, w in zip(masks, weights):\n        states.append(block(states[-1], allowed, w))\n    return states\n\ndef possible_dependencies(masks):\n    # Boolean-semiring composition; rows are output tokens, columns input tokens.\n    reach = torch.eye(T, dtype=torch.bool)\n    identity = torch.eye(T, dtype=torch.bool)\n    for mask in masks:\n        local = mask | identity  # residual preserves the same position\n        reach = (local.to(torch.int64) @ reach.to(torch.int64)) > 0\n    return reach\n\ndef token_jacobian_norms(masks):\n    jac = torch.autograd.functional.jacobian(lambda z: forward(z, masks)[-1], x)\n    # jac: [out_token,out_channel,in_token,in_channel]\n    norm = jac.permute(0, 2, 1, 3).abs().amax(dim=(-1, -2))\n    return jac, norm\n\ncausal = torch.ones(T, T, dtype=torch.bool).tril()\nleaky_first = causal.clone()\nleaky_first[0, 3] = True  # layer one writes future token 3 into token 0\nsafe_masks, leaky_masks = [causal, causal], [leaky_first, causal]\njsafe, nsafe = token_jacobian_norms(safe_masks)\njleak, nleak = token_jacobian_norms(leaky_masks)\nfor masks, norms in [(safe_masks, nsafe), (leaky_masks, nleak)]:\n    reachable = possible_dependencies(masks)\n    assert bool((norms[~reachable] < 1e-12).all())\nassert not bool(causal[1, 3]) and bool(possible_dependencies(leaky_masks)[1, 3])\nassert nsafe[1, 3] == 0 and nleak[1, 3] > 1e-8\n\nchanged = x.clone()\nchanged[3, 0] += 0.7\nbefore, after = forward(x, safe_masks)[-1], forward(changed, safe_masks)[-1]\ntorch.testing.assert_close(before[:3], after[:3], atol=1e-12, rtol=1e-10)\nassert (forward(x, leaky_masks)[-1][1] - forward(changed, leaky_masks)[-1][1]).norm() > 1e-8\n# A finite-difference probe independently checks one indirect derivative.\nepsilon = 1e-5\nplus, minus = x.clone(), x.clone()\nplus[3, 0] += epsilon\nminus[3, 0] -= epsilon\nfd = (forward(plus, leaky_masks)[-1][1, 0] - forward(minus, leaky_masks)[-1][1, 0]) / (2 * epsilon)\ntorch.testing.assert_close(fd, jleak[1, 0, 3, 0], atol=1e-8, rtol=1e-5)\n\n# Fixed-prefix cache: both prefix states and projected K/V must stay invariant.\nprefix_mask = torch.ones(T, T, dtype=torch.bool)\nprefix_mask[:P, P:] = False\nbad_prefix_mask = prefix_mask.clone()\nbad_prefix_mask[0, -1] = True\n\ndef prefix_kv_after_first(z, first_mask):\n    first = block(z, first_mask, weights[0])\n    normalized_prefix = F.layer_norm(first[:P], (D,))\n    return [F.linear(normalized_prefix, weights[1][name]) for name in ('k','v')]\n\nfor a, b in zip(prefix_kv_after_first(x, prefix_mask),\n                prefix_kv_after_first(changed, prefix_mask)):\n    torch.testing.assert_close(a, b, atol=1e-12, rtol=1e-10)\nbad_a = prefix_kv_after_first(x, bad_prefix_mask)\nbad_b = prefix_kv_after_first(changed, bad_prefix_mask)\nassert all((a-b).abs().max() > 1e-8 for a,b in zip(bad_a,bad_b))\nprint('causal future derivative:', nsafe[1, 3].item())\nprint('indirect future derivative:', nleak[1, 3].item())\nprint('finite-difference error:', abs(fd-jleak[1, 0, 3, 0]).item())\nprint('passed: reachability, Jacobian support, perturbation, prefix KV invariance')\n",
+      "explanations": [
+        {
+          "lines": "1–29",
+          "text": "每层独立初始化 Q/K/V、输出投影及 FFN 参数。注意力分数是 `[T,T]`，Mask 的行表示读取者，列表示被读取位置；LayerNorm 只沿通道计算，避免额外的跨位置通路。"
+        },
+        {
+          "lines": "31–44",
+          "text": "布尔矩阵乘积只表示路径是否存在，不是数值注意力的解释。完整 Jacobian 的轴为 [输出位置,输出通道,输入位置,输入通道]；按通道归约后得到位置之间的导数范数。"
+        },
+        {
+          "lines": "46–69",
+          "text": "两层因果网络应对未来输入保持不变。只在第一层添加 \\(3\\to0\\) 边，即使第二层仍因果，未来也能影响位置 1。有限差分核对一个具体导数，避免只观察总体梯度。"
+        },
+        {
+          "lines": "71–91",
+          "text": "动态动作只改变后缀。前缀禁止读取后缀时，第二层前缀 K/V 保持一致；第一层一旦允许前缀读后缀，缓存等价性便失效。数值非零只证明此固定种子下存在依赖，结构可达性不是非零导数的充分条件。"
+        }
+      ],
+      "expected": "CPU float64、种子 43：因果网络的未来导数为 0；反例中位置 1 对未来 token 3 的导数范数约 0.02335，有限差分误差约 1.9e−12。断言同时检查输出扰动与第二层前缀 K/V；这些数值用于复现实验，不是跨参数设置的梯度下界。"
+    }
+  ],
+  "labs": [
+    {
+      "id": "visibility-mask",
+      "level": "入门",
+      "title": "构造前缀与动作区的可见性矩阵",
+      "prompt": "只用 Python 标准库，实现 `prefix_action_mask(prefix_len,action_len,mode)`。返回 `[P+A,P+A]` 的布尔嵌套列表，`True` 表示可见。前缀内部双向、前缀不能读动作；动作总能读前缀。`mode=\"denoise\"` 时动作区内部双向，`mode=\"causal\"` 时动作位置只能读取自身及更早动作。要求 \\(P\\ge0\\)、\\(A\\ge1\\)，非法长度或模式抛 `ValueError`。",
+      "starter": "def prefix_action_mask(prefix_len, action_len, mode=\"denoise\"):\n    # TODO: separate query region from key region.\n    raise NotImplementedError(\"implement the information-flow contract\")\n",
+      "solution": "def prefix_action_mask(prefix_len, action_len, mode=\"denoise\"):\n    if not isinstance(prefix_len, int) or not isinstance(action_len, int):\n        raise ValueError(\"lengths must be integers\")\n    if prefix_len < 0 or action_len < 1:\n        raise ValueError(\"need prefix_len >= 0 and action_len >= 1\")\n    if mode not in (\"denoise\", \"causal\"):\n        raise ValueError(\"unknown action visibility\")\n    total = prefix_len + action_len\n    allowed = []\n    for i in range(total):\n        row = []\n        for j in range(total):\n            if i < prefix_len:\n                visible = j < prefix_len\n            else:\n                visible = j < prefix_len or mode == \"denoise\" or j <= i\n            row.append(visible)\n        allowed.append(row)\n    return allowed\n",
+      "tests": "expected = [\n    [True, True, False, False, False],\n    [True, True, False, False, False],\n    [True, True, True, True, True],\n    [True, True, True, True, True],\n    [True, True, True, True, True],\n]\nassert prefix_action_mask(2, 3, \"denoise\") == expected\ncausal = prefix_action_mask(2, 3, \"causal\")\nassert causal[:2] == expected[:2]\nassert causal[2] == [True, True, True, False, False]\nassert causal[3] == [True, True, True, True, False]\nassert causal[4] == [True] * 5\nassert prefix_action_mask(0, 1) == [[True]]\nassert prefix_action_mask(0, 3, \"causal\") == [\n    [True, False, False], [True, True, False], [True, True, True]]\nfor prefix, actions, mode in [(-1, 2, \"denoise\"), (2, 0, \"denoise\"),\n                               (2, 2, \"unknown\"), (1.5, 2, \"causal\")]:\n    try:\n        prefix_action_mask(prefix, actions, mode)\n        raise AssertionError(\"invalid contract must be rejected\")\n    except ValueError:\n        pass\nprint(\"passed: prefix isolation, bidirectional actions, causal actions, boundaries\")\n",
+      "runtime": "python",
+      "hints": [
+        "先按 Query 的 i 是否小于 P 分两类，再判断 Key 的 j 属于哪个区域。",
+        "因果条件是 \\(j\\le i\\)，不能将整个混合布局直接替换为普通下三角，因为前缀内部要求双向。"
+      ],
+      "explanation": "\\(P=2,A=3\\) 时，前两行只允许读取前两列；后三行首先允许读取前缀，再按动作生成目标选择块内双向或下三角。测试区分这三种连接，能发现前缀泄漏、把所有块误设为因果、以及忘记历史条件的错误。该布局只是明确给定的一种架构约定，不声称适用于所有 VLA。"
+    },
+    {
+      "id": "safe-masked-attention",
+      "level": "应用",
+      "title": "实现具有空行处理约定的注意力核心",
+      "prompt": "实现 `masked_attention(q,k,v,allowed)`。输入 `q:[B,H,L,E]`、`k:[B,H,S,E]`、`v:[B,H,S,E_v]` 为有限浮点数，\\(S,E>0\\)；`allowed` 是可广播到 `[B,H,L,S]` 的布尔 Tensor，`True` 为可见。沿 Key 维稳定归一化，返回 `[B,H,L,E_v]`；没有可见 Key 的 Query 返回零，前向和反向都不能产生 NaN。不得调用 SDPA 或 MultiheadAttention。",
+      "starter": "import math\nimport torch\n\ndef masked_attention(q, k, v, allowed):\n    # TODO: scores, shape contract, safe empty rows, softmax, weighted values.\n    raise NotImplementedError(\"implement safe masked attention\")\n",
+      "solution": "import math\nimport torch\n\ndef masked_attention(q, k, v, allowed):\n    if q.ndim != 4 or k.ndim != 4 or v.ndim != 4:\n        raise ValueError(\"expected [B,H,length,features] tensors\")\n    if q.shape[:2] != k.shape[:2] or k.shape[:3] != v.shape[:3]:\n        raise ValueError(\"batch/head/key lengths must match\")\n    if q.shape[-1] != k.shape[-1] or q.shape[-1] < 1 or k.shape[-2] < 1:\n        raise ValueError(\"need matching nonempty query/key features and keys\")\n    if allowed.dtype != torch.bool:\n        raise ValueError(\"allowed must be boolean: True means visible\")\n    scores = q @ k.transpose(-2, -1) / math.sqrt(q.shape[-1])\n    allowed = torch.broadcast_to(allowed, scores.shape)\n    has_key = allowed.any(-1, keepdim=True)\n    masked = scores.masked_fill(~allowed, float(\"-inf\"))\n    safe = torch.where(has_key, masked, torch.zeros_like(masked))\n    weights = safe.softmax(-1).masked_fill(~allowed, 0.0)\n    return weights @ v\n",
+      "tests": "torch.manual_seed(21)\nq = torch.randn(2,2,3,3,dtype=torch.float64,requires_grad=True)\nk = torch.randn(2,2,4,3,dtype=torch.float64,requires_grad=True)\nv = torch.randn(2,2,4,2,dtype=torch.float64,requires_grad=True)\nallowed = torch.ones(2,1,3,4,dtype=torch.bool)\nallowed[..., -1] = False\nallowed[0,:,0,1:] = False\nallowed[1,:,-1,:] = False\nactual = masked_attention(q,k,v,allowed)\n# Independent oracle: select only legal keys before normalizing.\nexpanded = allowed.expand(2,2,3,4)\nbatches = []\nfor b in range(2):\n    heads = []\n    for h in range(2):\n        rows = []\n        for i in range(3):\n            indices = expanded[b,h,i].nonzero().flatten()\n            if len(indices):\n                score = k[b,h,indices] @ q[b,h,i] / math.sqrt(3)\n                row = (score.softmax(0)[:,None] * v[b,h,indices]).sum(0)\n            else:\n                zero = (q[b,h,i].sum()+k[b,h].sum()+v[b,h].sum())*0\n                row = zero.expand(v.shape[-1])\n            rows.append(row)\n        heads.append(torch.stack(rows))\n    batches.append(torch.stack(heads))\nreference = torch.stack(batches)\ntorch.testing.assert_close(actual,reference,atol=1e-10,rtol=1e-8)\nprobe = torch.randn_like(actual)\ng_actual = torch.autograd.grad((actual*probe).sum(),(q,k,v),retain_graph=True)\ng_reference = torch.autograd.grad((reference*probe).sum(),(q,k,v))\nfor a,b in zip(g_actual,g_reference):\n    assert torch.isfinite(a).all()\n    torch.testing.assert_close(a,b,atol=1e-10,rtol=1e-8)\nassert torch.equal(actual[1,:,-1],torch.zeros(2,2,dtype=torch.float64))\nchanged_k,changed_v = k.detach().clone(),v.detach().clone()\nchanged_k[:,:,-1] += 1000\nchanged_v[:,:,-1] -= 1000\ntorch.testing.assert_close(masked_attention(q.detach(),changed_k,changed_v,allowed),\n                           actual.detach(),atol=1e-10,rtol=1e-8)\n# A 2D mask must broadcast over independent samples and heads.\nsmall = torch.tensor([[True,False,False,False]]*3)\nbroadcast_result = masked_attention(q.detach(),k.detach(),v.detach(),small)\ntorch.testing.assert_close(broadcast_result,v.detach()[:,:,:1].expand(2,2,3,2))\nprint(\"passed: selected-key oracle, gradients, empty rows, padding, broadcasting\")\n",
+      "runtime": "torch",
+      "hints": [
+        "先用 `allowed.any(-1,keepdim=True)` 找出空行；在 Softmax 前为它们提供安全分数，而不是先产生 NaN 再清理。",
+        "Softmax 后仍要把禁止连接置零，才能使临时安全分数不向任何 Value 分配权重。"
+      ],
+      "explanation": "参考实现先建立显式可见性，再把全遮蔽行定义为零。测试的独立参考通过逐行选取合法 Key 计算，不重复同一 Mask 技巧；同时比较 Q/K/V 的梯度。空行没有可见内容，因此其读出和相关局部梯度均为零。此约定只针对注意力核心，后续投影偏置、残差或 FFN 的输出不一定为零。"
+    },
+    {
+      "id": "cache-offset",
+      "level": "诊断",
+      "title": "修复 KV Cache 的非方形因果偏移",
+      "prompt": "实现 `append_causal_attention(q_new,k_new,v_new,past_k=None,past_v=None)`，返回当前 Query 输出及追加后的 K/V 缓存。采用标准 MHA，所有 token 有效、无 Dropout；本次 Q/K/V 长度相同，可能一次追加多个 token。输入已完成位置编码与投影，函数只负责缓存和带全局偏移的因果 Mask。不原地改旧缓存，不 `detach`，以便用梯度检查分块等价性。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef append_causal_attention(q_new, k_new, v_new, past_k=None, past_v=None):\n    # TODO: append K/V, form global query/key positions, apply an explicit mask.\n    raise NotImplementedError(\"fix non-square causal attention with history\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef append_causal_attention(q_new, k_new, v_new, past_k=None, past_v=None):\n    if (past_k is None) != (past_v is None):\n        raise ValueError(\"both caches must be provided together\")\n    if q_new.shape[-2] != k_new.shape[-2] or k_new.shape[-2] < 1:\n        raise ValueError(\"need matching nonempty new query/key lengths\")\n    if k_new.shape[:3] != v_new.shape[:3]:\n        raise ValueError(\"new key/value batch, heads and length must match\")\n    past_len = 0 if past_k is None else past_k.shape[-2]\n    keys = k_new if past_k is None else torch.cat([past_k,k_new],dim=-2)\n    values = v_new if past_v is None else torch.cat([past_v,v_new],dim=-2)\n    q_pos = past_len + torch.arange(q_new.shape[-2],device=q_new.device)\n    k_pos = torch.arange(keys.shape[-2],device=q_new.device)\n    allowed = k_pos[None,:] <= q_pos[:,None]\n    output = F.scaled_dot_product_attention(\n        q_new,keys,values,attn_mask=allowed,dropout_p=0.0)\n    return output,keys,values\n",
+      "tests": "torch.manual_seed(34)\nq = torch.randn(2,2,6,4,dtype=torch.float64,requires_grad=True)\nk = torch.randn(2,2,6,4,dtype=torch.float64,requires_grad=True)\nv = torch.randn(2,2,6,3,dtype=torch.float64,requires_grad=True)\nfull = F.scaled_dot_product_attention(q,k,v,is_causal=True,dropout_p=0.0)\npk = pv = None\npieces = []\nstart = 0\nfor size in (2,1,3):\n    old_k = None if pk is None else pk.detach().clone()\n    old_handle = pk\n    z,pk,pv = append_causal_attention(q[:,:,start:start+size],\n        k[:,:,start:start+size],v[:,:,start:start+size],pk,pv)\n    if old_k is not None:\n        torch.testing.assert_close(old_handle,old_k)\n    pieces.append(z)\n    start += size\n    assert pk.shape[-2] == start and pv.shape[-2] == start\nstreamed = torch.cat(pieces,dim=2)\ntorch.testing.assert_close(streamed,full,atol=1e-10,rtol=1e-8)\nprobe = torch.randn_like(full)\ng_stream = torch.autograd.grad((streamed*probe).sum(),(q,k,v),retain_graph=True)\ng_full = torch.autograd.grad((full*probe).sum(),(q,k,v))\nfor a,b in zip(g_stream,g_full):\n    assert torch.isfinite(a).all()\n    torch.testing.assert_close(a,b,atol=1e-10,rtol=1e-8)\n# P=3,L=1: zero scores imply a mean over all four values, not just key zero.\nqn = torch.zeros(1,1,1,2,dtype=torch.float64)\nkn = torch.zeros_like(qn)\nvn = torch.tensor([[[[40.]]]],dtype=torch.float64)\nold_k = torch.zeros(1,1,3,2,dtype=torch.float64)\nold_v = torch.tensor([[[[10.],[20.],[30.]]]],dtype=torch.float64)\nanswer,_,_ = append_causal_attention(qn,kn,vn,old_k,old_v)\ntorch.testing.assert_close(answer,torch.tensor([[[[25.]]]],dtype=torch.float64))\ntry:\n    append_causal_attention(qn,kn,vn,old_k,None)\n    raise AssertionError(\"partial cache must be rejected\")\nexcept ValueError:\n    pass\nprint(\"passed: multi-chunk forward, gradients, history offset, immutable cache\")\n",
+      "runtime": "torch",
+      "hints": [
+        "历史长度为 P 时，新 Query i 的全局位置为 \\(P+i\\)；Key 的位置为 0 到 P+L−1。",
+        "对 `[L,P+L]` 使用普通从零开始的 tril 不等价。已有历史但 \\(L=1\\) 时，当前 Query 应看到全部历史和自己。"
+      ],
+      "explanation": "分块长度取 2、1、3，既覆盖单 token 解码，也覆盖新增多 token 的情况。独立参考是完整序列的一次因果 SDPA，输出与梯度都需要一致；四个零分数 Value 的例子还给出可手算的均值 25，能够直接检出位置偏移缺失。实际推理可在 `no_grad` 下使用缓存，但训练时若需跨片段反向传播，则不能对缓存使用 `detach`。RoPE 位置和 Prefix 是否可复用属于调用方的额外约定。"
+    },
+    {
+      "id": "multihead-self-attention",
+      "level": "应用",
+      "title": "手写多头自注意力：从 X 到输出投影",
+      "prompt": "实现 `ManualSelfAttention(width, heads)`，不能调用 `nn.MultiheadAttention`、SDPA、`nn.Transformer` 或相关封装。允许使用 `nn.Linear` 和张量算子。输入 \\(X\\in\\mathbb{R}^{B\\times T\\times D}\\)，其中 \\(B,T>0\\)、\\(D=H d_h\\)；构造函数要求正整数宽度与头数，布尔值不算整数。`qkv` 是带偏置的 `Linear(D,3D)`，打包顺序固定为 Q、K、V；`out_proj` 是带偏置的 `Linear(D,D)`。\n\n`valid` 为 `None` 或与输入同设备的布尔 `[B,T]`，`True` 表示有效位置；无效 Key 不参与读取，无效 Query 的权重和最终输出必须精确为零。`causal` 是布尔值，开启时仅允许 \\(j\\le i\\)。返回输出 `[B,T,D]` 和未跨头平均的权重 `[B,H,T,T]`，保留二者的计算图。支持非连续输入、内部 Padding 和全 Padding 样本；全遮蔽行采用零权重、零输出、有限零梯度约定。输入、投影和分数均假定有限，输入的浮点类型、设备与参数一致；不要求实现 NaN 清洗、Dropout、RoPE、GQA 或缓存。错误维度、Mask 类型／形状与非布尔 `causal` 应抛出 `ValueError`。\n\n依次完成投影、分头、缩放、Mask、Softmax、Value 读出、合头与输出投影。",
+      "starter": "import math\nimport torch\nfrom torch import nn\n\n\nclass ManualSelfAttention(nn.Module):\n    def __init__(self, width, heads):\n        super().__init__()\n        # TODO 1: validate positive integer dimensions and divisibility.\n        # Keep these attributes/parameter names for the comparison tests.\n        self.width, self.heads = width, heads\n        self.qkv = nn.Linear(width, 3 * width, bias=True)\n        self.out_proj = nn.Linear(width, width, bias=True)\n\n    def forward(self, x, valid=None, causal=False):\n        # TODO 2: validate x [B,T,D], valid bool [B,T], and causal bool.\n        # TODO 3: project X -> Q,K,V, then split channels and exchange axes.\n        # TODO 4: construct key + query validity and optional causal visibility.\n        # TODO 5: scaled logits -> safe masked softmax along the key axis.\n        # TODO 6: read V, merge heads, project with Wo, clear invalid queries.\n        # Return output [B,T,D], weights [B,H,T,T]; do not detach either.\n        raise NotImplementedError\n",
+      "solution": "import math\nimport torch\nfrom torch import nn\n\n\nclass ManualSelfAttention(nn.Module):\n    def __init__(self, width, heads):\n        super().__init__()\n        if (type(width) is not int or type(heads) is not int\n                or width <= 0 or heads <= 0 or width % heads):\n            raise ValueError(\"width/heads must be positive integers, width % heads == 0\")\n        self.width, self.heads = width, heads\n        # Packed row order: Q, K, V; all three projections have a bias.\n        self.qkv = nn.Linear(width, 3 * width, bias=True)\n        self.out_proj = nn.Linear(width, width, bias=True)\n\n    def forward(self, x, valid=None, causal=False):\n        if (x.ndim != 3 or x.shape[-1] != self.width\n                or x.shape[0] == 0 or x.shape[1] == 0\n                or not x.is_floating_point()):\n            raise ValueError(\"x must be floating [B,T,width], with B,T > 0\")\n        if type(causal) is not bool:\n            raise ValueError(\"causal must be bool\")\n        batch, steps, _ = x.shape\n        if valid is None:\n            valid = torch.ones(batch, steps, dtype=torch.bool, device=x.device)\n        if (valid.dtype != torch.bool or valid.shape != (batch, steps)\n                or valid.device != x.device):\n            raise ValueError(\"valid must be bool [B,T] on x.device\")\n        head_dim = self.width // self.heads\n        q, k, v = self.qkv(x).chunk(3, dim=-1)\n        # Split the channel axis before exchanging token and head axes.\n        q, k, v = [z.reshape(batch, steps, self.heads, head_dim)\n                    .transpose(1, 2) for z in (q, k, v)]\n        scores = (q @ k.transpose(-2, -1)) / math.sqrt(head_dim)\n        allowed = valid[:, None, :, None] & valid[:, None, None, :]\n        if causal:\n            pos = torch.arange(steps, device=x.device)\n            allowed = allowed & (pos[None, :] <= pos[:, None])[None, None]\n        # Softmax(-inf,...,-inf) is undefined. Normalize a safe row, then\n        # set every disallowed weight to zero, including empty query rows.\n        has_key = allowed.any(dim=-1, keepdim=True)\n        masked = scores.masked_fill(~allowed, -torch.inf)\n        safe = torch.where(has_key, masked, torch.zeros_like(masked))\n        weights = safe.softmax(dim=-1).masked_fill(~allowed, 0.0)\n        per_head = weights @ v\n        merged = per_head.transpose(1, 2).reshape(batch, steps, self.width)\n        # Mask AFTER the output bias: an empty attention core is insufficient.\n        output = self.out_proj(merged).masked_fill(~valid[..., None], 0.0)\n        return output, weights\n",
+      "tests": "# Append below your implementation. Official operators are an oracle ONLY.\nimport json\n\ntorch.manual_seed(71)\ntorch.set_num_threads(1)\ndtype = torch.float64\nsummary = {\"seed\": 71, \"official_cases\": [], \"checks\": []}\n\n\ndef close(a, b):\n    torch.testing.assert_close(a, b, atol=2e-10, rtol=2e-8)\n\n\ndef must_reject(call):\n    try:\n        call()\n    except ValueError:\n        return\n    raise AssertionError(\"invalid contract was accepted\")\n\n\nfor heads in (1, 3):\n    for causal in (False, True):\n        model = ManualSelfAttention(6, heads).to(dtype=dtype)\n        ref = nn.MultiheadAttention(6, heads, dropout=0.0, bias=True,\n                                   batch_first=True, dtype=dtype)\n        with torch.no_grad():\n            ref.in_proj_weight.copy_(model.qkv.weight)\n            ref.in_proj_bias.copy_(model.qkv.bias)\n            ref.out_proj.weight.copy_(model.out_proj.weight)\n            ref.out_proj.bias.copy_(model.out_proj.bias)\n        # Unequal B/T/H dimensions, non-contiguous X, right padding.\n        # Every oracle query has >= 1 visible key, even at padded query slots.\n        x = torch.randn(2, 6, 5, dtype=dtype).transpose(1, 2).detach().requires_grad_()\n        assert not x.is_contiguous()\n        xr = x.detach().clone().requires_grad_()\n        valid = torch.tensor([[1, 1, 1, 1, 1], [1, 1, 1, 0, 0]], dtype=torch.bool)\n        blocked = torch.ones(5, 5, dtype=torch.bool).triu(1) if causal else None\n        y, weights = model(x, valid, causal)\n        yr, wr = ref(xr, xr, xr, key_padding_mask=~valid, attn_mask=blocked,\n                     need_weights=True, average_attn_weights=False)\n        # PyTorch's key_padding_mask does not zero padded QUERY outputs.\n        yr = yr.masked_fill(~valid[..., None], 0.0)\n        wr = wr.masked_fill(~valid[:, None, :, None], 0.0)\n        close(y, yr)\n        close(weights, wr)\n        close(weights.sum(-1), valid[:, None, :].expand(2, heads, 5).to(dtype))\n        yp, wp = torch.randn_like(y), torch.randn_like(weights)\n        # Include returned weights: detaching weights must also be detected.\n        loss = (y * yp).sum() + 0.07 * (weights * wp).sum()\n        loss_ref = (yr * yp).sum() + 0.07 * (wr * wp).sum()\n        left = [x, model.qkv.weight, model.qkv.bias,\n                model.out_proj.weight, model.out_proj.bias]\n        right = [xr, ref.in_proj_weight, ref.in_proj_bias,\n                 ref.out_proj.weight, ref.out_proj.bias]\n        grads, grads_ref = torch.autograd.grad(loss, left), torch.autograd.grad(loss_ref, right)\n        for g, gr in zip(grads, grads_ref):\n            assert torch.isfinite(g).all()\n            close(g, gr)\n        summary[\"official_cases\"].append({\n            \"heads\": heads, \"causal\": causal, \"gradient_groups\": len(grads),\n            \"max_output_error\": (y - yr).abs().max().item(),\n            \"max_weight_error\": (weights - wr).abs().max().item(),\n            \"max_gradient_error\": max((g - gr).abs().max().item()\n                                      for g, gr in zip(grads, grads_ref))})\n\nmodel = ManualSelfAttention(6, 3).to(dtype=dtype)\nx = torch.randn(2, 5, 6, dtype=dtype, requires_grad=True)\ny, _ = model(x, causal=True)\nchanged = x.detach().clone()\nchanged[0, 3:] += torch.tensor([3., -2., 5., 1., -4., 2.], dtype=dtype)\ny_changed, _ = model(changed, causal=True)\nclose(y[0, :3], y_changed[0, :3])\nassert (y[0, 3:] - y_changed[0, 3:]).abs().max() > 1e-5\nprobe = torch.randn_like(y[0, :3])\ngx = torch.autograd.grad((y[0, :3] * probe).sum(), x)[0]\nassert torch.count_nonzero(gx[0, 3:]) == 0\nassert torch.count_nonzero(gx[1]) == 0\nchanged = x.detach().clone()\nchanged[1] += 100 * torch.randn_like(changed[1])\nclose(model(x)[0][0], model(changed)[0][0])\nsummary[\"checks\"].append(\"causal perturbation, future gradients and batch isolation\")\n\n# Internal padding holes and an entirely padded sample: no oracle behavior\n# is assumed for its empty softmax rows.\nvalid = torch.tensor([[1, 0, 1, 1, 0], [0, 0, 0, 0, 0]], dtype=torch.bool)\ny, weights = model(x, valid, causal=True)\nchanged = x.detach().clone()\nchanged[~valid] += 100 * torch.randn_like(changed[~valid])\nyc, wc = model(changed, valid, causal=True)\nclose(y, yc)\nclose(weights, wc)\nassert torch.count_nonzero(y[~valid]) == 0\nassert torch.count_nonzero(weights.masked_select(~valid[:, None, :, None])) == 0\nassert torch.count_nonzero(weights.masked_select(~valid[:, None, None, :])) == 0\nassert torch.isfinite(y).all() and torch.isfinite(weights).all()\nsummary[\"checks\"].append(\"padding values cannot leak; empty rows stay finite and zero\")\n\nempty_x = torch.randn(1, 3, 6, dtype=dtype, requires_grad=True)\nempty_valid = torch.zeros(1, 3, dtype=torch.bool)\ney, ew = model(empty_x, empty_valid, causal=True)\neg = torch.autograd.grad(ey.sum() + ew.sum(), [empty_x, *model.parameters()])\nassert torch.count_nonzero(ey) == 0 and torch.count_nonzero(ew) == 0\nassert all(torch.isfinite(g).all() and torch.count_nonzero(g) == 0 for g in eg)\nsummary[\"checks\"].append(\"all-padding output and all five input/parameter gradient groups are zero\")\n\n# One token has weight 1. Its output is exactly Wo(Wv x + bv) + bo.\nsingle = torch.randn(2, 1, 6, dtype=dtype)\nsy, sw = model(single, causal=True)\nexpected = model.out_proj(torch.nn.functional.linear(\n    single, model.qkv.weight[12:], model.qkv.bias[12:]))\nclose(sy, expected)\nclose(sw, torch.ones_like(sw))\nsummary[\"checks\"].append(\"single-token analytic value readout\")\n\nfor dims in ((6, 0), (5, 3), (0, 1), (6, True), (6.0, 2)):\n    must_reject(lambda dims=dims: ManualSelfAttention(*dims))\nmust_reject(lambda: model(torch.randn(2, 6, dtype=dtype)))\nmust_reject(lambda: model(torch.randn(2, 0, 6, dtype=dtype)))\nmust_reject(lambda: model(torch.randn(2, 5, 7, dtype=dtype)))\nmust_reject(lambda: model(x, torch.ones(2, 5, dtype=dtype)))\nmust_reject(lambda: model(x, torch.ones(2, 4, dtype=torch.bool)))\nmust_reject(lambda: model(x, causal=1))\nsummary[\"checks\"].append(\"invalid dimensions, mask dtype/shape and causal flag rejected\")\nprint(\"MHA_VALIDATION \" + json.dumps(summary, sort_keys=True))\n",
+      "runtime": "torch",
+      "hints": [
+        "单头是 \\(H=1\\) 的同一实现。先把最后一维拆成 `[H,d_h]`，再交换 Token 与 Head 轴；合头时反向执行这两步。`reshape` 处理非连续张量，直接从 `[B,T,D]` 变成 `[B,H,T,d_h]` 会混淆元素。",
+        "构造 `[B,1,T,T]` 的可见矩阵，分别纳入 Query 有效性、Key 有效性和可选因果条件。Softmax 始终沿最后的 Key 轴，缩放使用 \\(\\sqrt{d_h}\\)。",
+        "对全遮蔽行先替换为有限的临时分数，再在 Softmax 后清零所有禁止位置。最后还要在 `out_proj` 之后清零无效 Query，否则输出偏置会重新引入非零值。",
+        "对照官方 MHA 时复制四组参数，使用 `average_attn_weights=False`。它的布尔 Mask 中 `True` 表示禁止，且 Key Padding 不会自动清零 Query 输出；先转换约定再比较。全遮蔽行不依赖官方算子的特定行为。",
+        "不要通过 `detach`、重建参数或把结果转成列表通过前向测试。测试同时用输出和注意力权重构造标量目标，比较输入及所有参数梯度，并验证一个样本不能影响另一条样本。"
+      ],
+      "explanation": "这题将前面“安全 Mask”算子放回完整参数化模型。打包投影仍有三组独立参数；分头只重排通道，不混合 Batch 或 Token。输出既取决于 \\(A\\) 与 \\(V\\)，也取决于 \\(W_O\\)，因此只核对注意力热图不足以验证整个模块。单头／三头、因果／双向四组官方对照使用 CPU float64、零 Dropout、相同参数和非空参考行，逐一比较输入与四组参数梯度。独立测试再检查单 Token 的解析读出、全 Padding 零梯度、Padding 扰动、未来扰动和 Batch 隔离。\n\n常见追问：为什么打包 QKV 与三个 Linear 等价却不是共享同一权重？为什么合头前必须交换轴？为什么输出偏置会破坏空行零输出？为什么数值一致仍可能因 `detach` 使训练行为不同？题目限定标准等宽多头，不代表支持所有生产模型的 Attention 变体。"
+    },
+    {
+      "id": "pre-ln-transformer-block",
+      "level": "应用",
+      "title": "手写 Pre-LN Transformer Block：两条残差与 FFN",
+      "prompt": "在题面提供的手写 `ManualSelfAttention` 上实现 `ManualPreLNBlock(width, heads, ff_width, eps)`。MHA 辅助类已完整提供，使本题能独立运行；只需补全 Block。禁止用 `nn.Transformer`、`nn.TransformerEncoderLayer`、`nn.MultiheadAttention` 或 SDPA 代替实现；允许 `nn.LayerNorm`、`nn.Linear` 和 `functional.gelu`。\n\n输入／输出均为 `[B,T,D]`，Mask 与前题相同。实现 \\(h=x+\\operatorname{MHA}(\\operatorname{LN}_1(x))\\)，再实现 \\(y=h+W_2\\operatorname{GELU}(W_1\\operatorname{LN}_2(h)+b_1)+b_2\\)。两次 LayerNorm 仅沿最后通道维归一化，并含独立可训练仿射参数；FFN 中间宽度为 \\(D_{\\mathrm{ff}}>0\\)，使用精确 GELU，无 Dropout，无末尾归一化。注意第二个分支读取更新后的 \\(h\\)，而不是原输入。\n\n沿用题面参数名，校验正整数 `ff_width` 和有限正 `eps`，输入校验同前题。无效位置在完整 Block 输出处清零，全 Padding 输出和梯度仍应有限且为零。参考测试使用官方 Block 只作数值判据，不可在解答中调用。",
+      "starter": "# Provided helper from the preceding exercise; implement only ManualPreLNBlock.\nimport math\nimport torch\nfrom torch import nn\n\n\nclass ManualSelfAttention(nn.Module):\n    def __init__(self, width, heads):\n        super().__init__()\n        if (type(width) is not int or type(heads) is not int\n                or width <= 0 or heads <= 0 or width % heads):\n            raise ValueError(\"width/heads must be positive integers, width % heads == 0\")\n        self.width, self.heads = width, heads\n        # Packed row order: Q, K, V; all three projections have a bias.\n        self.qkv = nn.Linear(width, 3 * width, bias=True)\n        self.out_proj = nn.Linear(width, width, bias=True)\n\n    def forward(self, x, valid=None, causal=False):\n        if (x.ndim != 3 or x.shape[-1] != self.width\n                or x.shape[0] == 0 or x.shape[1] == 0\n                or not x.is_floating_point()):\n            raise ValueError(\"x must be floating [B,T,width], with B,T > 0\")\n        if type(causal) is not bool:\n            raise ValueError(\"causal must be bool\")\n        batch, steps, _ = x.shape\n        if valid is None:\n            valid = torch.ones(batch, steps, dtype=torch.bool, device=x.device)\n        if (valid.dtype != torch.bool or valid.shape != (batch, steps)\n                or valid.device != x.device):\n            raise ValueError(\"valid must be bool [B,T] on x.device\")\n        head_dim = self.width // self.heads\n        q, k, v = self.qkv(x).chunk(3, dim=-1)\n        # Split the channel axis before exchanging token and head axes.\n        q, k, v = [z.reshape(batch, steps, self.heads, head_dim)\n                    .transpose(1, 2) for z in (q, k, v)]\n        scores = (q @ k.transpose(-2, -1)) / math.sqrt(head_dim)\n        allowed = valid[:, None, :, None] & valid[:, None, None, :]\n        if causal:\n            pos = torch.arange(steps, device=x.device)\n            allowed = allowed & (pos[None, :] <= pos[:, None])[None, None]\n        # Softmax(-inf,...,-inf) is undefined. Normalize a safe row, then\n        # set every disallowed weight to zero, including empty query rows.\n        has_key = allowed.any(dim=-1, keepdim=True)\n        masked = scores.masked_fill(~allowed, -torch.inf)\n        safe = torch.where(has_key, masked, torch.zeros_like(masked))\n        weights = safe.softmax(dim=-1).masked_fill(~allowed, 0.0)\n        per_head = weights @ v\n        merged = per_head.transpose(1, 2).reshape(batch, steps, self.width)\n        # Mask AFTER the output bias: an empty attention core is insufficient.\n        output = self.out_proj(merged).masked_fill(~valid[..., None], 0.0)\n        return output, weights\n\n\nclass ManualPreLNBlock(nn.Module):\n    def __init__(self, width, heads, ff_width, eps=1e-5):\n        super().__init__()\n        # TODO 1: validate ff_width and eps; ManualSelfAttention validates width/heads.\n        # Preserve names for comparison tests; LayerNorm is over channels only.\n        self.attention = ManualSelfAttention(width, heads)\n        self.norm1 = nn.LayerNorm(width, eps=eps)\n        self.norm2 = nn.LayerNorm(width, eps=eps)\n        self.up = nn.Linear(width, ff_width, bias=True)\n        self.down = nn.Linear(ff_width, width, bias=True)\n\n    def forward(self, x, valid=None, causal=False):\n        # TODO 2: validate nonempty floating x [B,T,D] before applying norms.\n        # TODO 3: h = x + MHA(LN1(x)); propagate valid and causal.\n        # TODO 4: y = h + down(GELU(up(LN2(h)))); no final normalization.\n        # TODO 5: clear invalid positions at the complete block boundary.\n        raise NotImplementedError\n",
+      "solution": "import math\nimport torch\nfrom torch import nn\n\n\nclass ManualSelfAttention(nn.Module):\n    def __init__(self, width, heads):\n        super().__init__()\n        if (type(width) is not int or type(heads) is not int\n                or width <= 0 or heads <= 0 or width % heads):\n            raise ValueError(\"width/heads must be positive integers, width % heads == 0\")\n        self.width, self.heads = width, heads\n        # Packed row order: Q, K, V; all three projections have a bias.\n        self.qkv = nn.Linear(width, 3 * width, bias=True)\n        self.out_proj = nn.Linear(width, width, bias=True)\n\n    def forward(self, x, valid=None, causal=False):\n        if (x.ndim != 3 or x.shape[-1] != self.width\n                or x.shape[0] == 0 or x.shape[1] == 0\n                or not x.is_floating_point()):\n            raise ValueError(\"x must be floating [B,T,width], with B,T > 0\")\n        if type(causal) is not bool:\n            raise ValueError(\"causal must be bool\")\n        batch, steps, _ = x.shape\n        if valid is None:\n            valid = torch.ones(batch, steps, dtype=torch.bool, device=x.device)\n        if (valid.dtype != torch.bool or valid.shape != (batch, steps)\n                or valid.device != x.device):\n            raise ValueError(\"valid must be bool [B,T] on x.device\")\n        head_dim = self.width // self.heads\n        q, k, v = self.qkv(x).chunk(3, dim=-1)\n        # Split the channel axis before exchanging token and head axes.\n        q, k, v = [z.reshape(batch, steps, self.heads, head_dim)\n                    .transpose(1, 2) for z in (q, k, v)]\n        scores = (q @ k.transpose(-2, -1)) / math.sqrt(head_dim)\n        allowed = valid[:, None, :, None] & valid[:, None, None, :]\n        if causal:\n            pos = torch.arange(steps, device=x.device)\n            allowed = allowed & (pos[None, :] <= pos[:, None])[None, None]\n        # Softmax(-inf,...,-inf) is undefined. Normalize a safe row, then\n        # set every disallowed weight to zero, including empty query rows.\n        has_key = allowed.any(dim=-1, keepdim=True)\n        masked = scores.masked_fill(~allowed, -torch.inf)\n        safe = torch.where(has_key, masked, torch.zeros_like(masked))\n        weights = safe.softmax(dim=-1).masked_fill(~allowed, 0.0)\n        per_head = weights @ v\n        merged = per_head.transpose(1, 2).reshape(batch, steps, self.width)\n        # Mask AFTER the output bias: an empty attention core is insufficient.\n        output = self.out_proj(merged).masked_fill(~valid[..., None], 0.0)\n        return output, weights\n\n\nclass ManualPreLNBlock(nn.Module):\n    def __init__(self, width, heads, ff_width, eps=1e-5):\n        super().__init__()\n        if type(ff_width) is not int or ff_width <= 0:\n            raise ValueError(\"ff_width must be a positive integer\")\n        if not math.isfinite(eps) or eps <= 0:\n            raise ValueError(\"eps must be positive and finite\")\n        self.attention = ManualSelfAttention(width, heads)\n        self.norm1 = nn.LayerNorm(width, eps=eps)\n        self.norm2 = nn.LayerNorm(width, eps=eps)\n        self.up = nn.Linear(width, ff_width, bias=True)\n        self.down = nn.Linear(ff_width, width, bias=True)\n\n    def forward(self, x, valid=None, causal=False):\n        if (x.ndim != 3 or x.shape[-1] != self.attention.width\n                or x.shape[0] == 0 or x.shape[1] == 0\n                or not x.is_floating_point()):\n            raise ValueError(\"x must be floating [B,T,width], with B,T > 0\")\n        # Pre-LN: only the residual branch is normalized.\n        attention, _ = self.attention(self.norm1(x), valid, causal)\n        h = x + attention\n        # The FFN reads UPDATED h, not the original x. No final LayerNorm.\n        y = h + self.down(torch.nn.functional.gelu(self.up(self.norm2(h))))\n        # Residuals and FFN biases can reintroduce invalid-query values.\n        if valid is not None:\n            y = y.masked_fill(~valid[..., None], 0.0)\n        return y\n",
+      "tests": "# Append below your implementation. The official block is an oracle ONLY.\nimport json\n\ntorch.manual_seed(73)\ntorch.set_num_threads(1)\ndtype = torch.float64\nsummary = {\"seed\": 73, \"official_cases\": [], \"checks\": []}\n\n\ndef close(a, b):\n    torch.testing.assert_close(a, b, atol=3e-10, rtol=3e-8)\n\n\nfor causal in (False, True):\n    model = ManualPreLNBlock(6, 3, 11, eps=1e-4).to(dtype=dtype)\n    ref = nn.TransformerEncoderLayer(6, 3, dim_feedforward=11,\n        dropout=0.0, activation=\"gelu\", layer_norm_eps=1e-4,\n        batch_first=True, norm_first=True, bias=True, dtype=dtype)\n    # Non-default affine parameters make omitted/reordered norms observable.\n    with torch.no_grad():\n        for norm in (model.norm1, model.norm2):\n            norm.weight.uniform_(0.7, 1.3)\n            norm.bias.normal_(0.0, 0.2)\n    pairs = [\n        (model.attention.qkv.weight, ref.self_attn.in_proj_weight),\n        (model.attention.qkv.bias, ref.self_attn.in_proj_bias),\n        (model.attention.out_proj.weight, ref.self_attn.out_proj.weight),\n        (model.attention.out_proj.bias, ref.self_attn.out_proj.bias),\n        (model.norm1.weight, ref.norm1.weight), (model.norm1.bias, ref.norm1.bias),\n        (model.norm2.weight, ref.norm2.weight), (model.norm2.bias, ref.norm2.bias),\n        (model.up.weight, ref.linear1.weight), (model.up.bias, ref.linear1.bias),\n        (model.down.weight, ref.linear2.weight), (model.down.bias, ref.linear2.bias)]\n    assert len(pairs) == len(list(model.parameters())) == 12\n    with torch.no_grad():\n        for own, official in pairs:\n            official.copy_(own)\n    x = torch.randn(2, 6, 5, dtype=dtype).transpose(1, 2).detach().requires_grad_()\n    xr = x.detach().clone().requires_grad_()\n    valid = torch.tensor([[1, 1, 1, 1, 1], [1, 1, 1, 0, 0]], dtype=torch.bool)\n    blocked = torch.ones(5, 5, dtype=torch.bool).triu(1) if causal else None\n    y = model(x, valid, causal)\n    yr = ref(xr, src_mask=blocked, src_key_padding_mask=~valid)\n    yr = yr.masked_fill(~valid[..., None], 0.0)\n    close(y, yr)\n    probe = torch.randn_like(y)\n    gs = torch.autograd.grad((y * probe).sum(), [x, *[a for a, _ in pairs]])\n    grs = torch.autograd.grad((yr * probe).sum(), [xr, *[b for _, b in pairs]])\n    for g, gr in zip(gs, grs):\n        assert torch.isfinite(g).all()\n        close(g, gr)\n    summary[\"official_cases\"].append({\n        \"causal\": causal, \"gradient_groups\": len(gs),\n        \"max_output_error\": (y - yr).abs().max().item(),\n        \"max_gradient_error\": max((g - gr).abs().max().item() for g, gr in zip(gs, grs))})\n\nmodel = ManualPreLNBlock(6, 3, 11).to(dtype=dtype)\nx = torch.randn(2, 5, 6, dtype=dtype, requires_grad=True)\ny = model(x, causal=True)\nchanged = x.detach().clone()\nchanged[0, 3:] += torch.tensor([4., -1., 3., -2., 5., 1.], dtype=dtype)\nyc = model(changed, causal=True)\nclose(y[0, :3], yc[0, :3])\nassert (y[0, 3:] - yc[0, 3:]).abs().max() > 1e-5\ngx = torch.autograd.grad((y[0, :3] * torch.randn_like(y[0, :3])).sum(), x)[0]\nassert torch.count_nonzero(gx[0, 3:]) == 0\nassert torch.count_nonzero(gx[1]) == 0\nchanged = x.detach().clone()\nchanged[1] += 50 * torch.randn_like(changed[1])\nclose(model(x)[0], model(changed)[0])\nsummary[\"checks\"].append(\"whole-block causal perturbation, future gradients and batch isolation\")\n\nvalid = torch.tensor([[1, 0, 1, 1, 0], [0, 0, 0, 0, 0]], dtype=torch.bool)\ny = model(x, valid, causal=True)\nchanged = x.detach().clone()\nchanged[~valid] += 100 * torch.randn_like(changed[~valid])\nclose(y, model(changed, valid, causal=True))\nassert torch.isfinite(y).all() and torch.count_nonzero(y[~valid]) == 0\nsummary[\"checks\"].append(\"invalid values cannot leak through attention, norm or residual branches\")\n\nempty_x = torch.randn(1, 3, 6, dtype=dtype, requires_grad=True)\nempty_y = model(empty_x, torch.zeros(1, 3, dtype=torch.bool), causal=True)\nempty_grads = torch.autograd.grad(empty_y.sum(), [empty_x, *model.parameters()])\nassert torch.count_nonzero(empty_y) == 0\nassert all(torch.isfinite(g).all() and torch.count_nonzero(g) == 0 for g in empty_grads)\nsummary[\"checks\"].append(\"all-padding output and all thirteen input/parameter gradients are zero\")\n\n# With both branch OUTPUT maps zero (including biases), Pre-LN is identity\n# on valid positions. This would be false for a final Post-LN operation.\nwith torch.no_grad():\n    model.attention.out_proj.weight.zero_()\n    model.attention.out_proj.bias.zero_()\n    model.down.weight.zero_()\n    model.down.bias.zero_()\nz = torch.randn(2, 5, 6, dtype=dtype, requires_grad=True)\nzi = model(z, valid, causal=True)\nclose(zi, z.masked_fill(~valid[..., None], 0.0))\nprobe = torch.randn_like(zi)\ngz = torch.autograd.grad((zi * probe).sum(), z)[0]\nclose(gz, probe.masked_fill(~valid[..., None], 0.0))\nsummary[\"checks\"].append(\"zero branches recover identity forward and identity input Jacobian\")\n\n\ndef must_reject(call):\n    try:\n        call()\n    except ValueError:\n        return\n    raise AssertionError(\"invalid contract was accepted\")\n\n\nfor ff in (0, -2, True, 3.5):\n    must_reject(lambda ff=ff: ManualPreLNBlock(6, 3, ff))\nfor eps in (0.0, -1e-5, float(\"nan\"), float(\"inf\")):\n    must_reject(lambda eps=eps: ManualPreLNBlock(6, 3, 11, eps))\nmust_reject(lambda: model(torch.randn(2, 5, 7, dtype=dtype)))\nmust_reject(lambda: model(torch.randn(2, 0, 6, dtype=dtype)))\nmust_reject(lambda: model(x, valid.to(dtype)))\nsummary[\"checks\"].append(\"FFN/epsilon and input contracts rejected when invalid\")\nprint(\"BLOCK_VALIDATION \" + json.dumps(summary, sort_keys=True))\n",
+      "runtime": "torch",
+      "hints": [
+        "Pre-LN 归一化的是残差分支输入。不要把 \\(x+F(\\operatorname{LN}(x))\\) 写成 \\(\\operatorname{LN}(x+F(x))\\)，也不要在整个 Block 末尾额外加归一化。",
+        "第一条残差完成后，将得到的 `h` 输入 `norm2`。FFN 对每个 Token 共享同一套通道变换，`LayerNorm(width)` 不应包含 Batch 或时间维。",
+        "MHA 已清零无效 Query，但原输入残差和 FFN 偏置可以再次产生非零值，所以完整 Block 边界还要使用有效位。",
+        "官方对照必须指定 `norm_first=True`、`activation=\"gelu\"`、`dropout=0`、`batch_first=True` 和一致的 `layer_norm_eps`，并复制注意力、两个归一化和两个 FFN Linear 的全部 12 组参数。",
+        "将注意力输出投影与 FFN 最后投影的权重、偏置同时清零。有效位置的输出应等于输入，输入 Jacobian 应等于恒等映射；这个检查能直接发现 Post-LN 或多余末尾归一化。"
+      ],
+      "explanation": "本题检验层的组合规则：第一条分支负责跨位置读取，第二条分支重组更新后表示的通道，两条恒等路径保留未归一化的残差状态。官方对照使用相同的非默认 LayerNorm 仿射参数与 \\(\\epsilon=10^{-4}\\)，比较整个输出和输入加 12 组参数的梯度；这比仅使用默认归一化和检查 shape 更容易暴露顺序、偏置及归一化轴错误。未来扰动与 Batch 梯度检查针对整个 Block，避免只证明 MHA 因果而遗漏别处的信息混合。\n\n常见追问：为什么 FFN 必须读 \\(h\\)？分支置零后 Pre-LN 和 Post-LN 分别是什么映射？为什么只清权重而保留输出偏置不足以形成恒等映射？这些测试证明当前有限案例与明确约定，不构成任意深度网络训练稳定性的保证。"
+    },
+    {
+      "id": "rotary-position-offset",
+      "level": "应用",
+      "title": "手写 RoPE：通道配对、相对位置与缓存偏移",
+      "prompt": "实现 `rotary_pairs(x,positions,base=10000.0)`，输入为有限浮点 `[B,H,T,d_h]`，头宽为正偶数，positions 为长度 T 的一维全局位置。对相邻通道 (0,1)、(2,3)… 使用 \\(\\omega_r=\\mathrm{base}^{-2r/d_h}\\) 旋转，保持形状和计算图，不调用现成 RoPE 或复数快捷实现。输出仍是 `[B,H,T,d_h]`；位置可从非零值开始。非法头宽、位置长度与非正或非有限 base 抛 ValueError。\n\n先完成代码，再解释：为什么同一段历史 Key 不能重复旋转？为什么拼接两个局部从零编号的片段，不等价于全局编号？共同平移的点积不变性需要固定哪些内容？",
+      "starter": "import math\nimport torch\n\ndef rotary_pairs(x, positions, base=10000.0):\n    # TODO: validate, form [T,dh/2] angles, rotate adjacent channel pairs.\n    # Keep gradients and use global positions supplied by the caller.\n    raise NotImplementedError\n",
+      "solution": "import math\nimport torch\n\ndef rotary_pairs(x, positions, base=10000.0):\n    if x.ndim != 4 or x.shape[-1] < 2 or x.shape[-1] % 2:\n        raise ValueError(\"x must be [B,H,T,even_dh]\")\n    if positions.ndim != 1 or len(positions) != x.shape[-2]:\n        raise ValueError(\"positions must have one entry per token\")\n    if not math.isfinite(base) or base <= 0:\n        raise ValueError(\"base must be finite and positive\")\n    freq = base ** (-torch.arange(0, x.shape[-1], 2,\n                                  device=x.device, dtype=x.dtype) / x.shape[-1])\n    angle = positions.to(device=x.device, dtype=x.dtype)[:, None] * freq[None, :]\n    cos, sin = angle.cos()[None, None], angle.sin()[None, None]\n    even, odd = x[..., 0::2], x[..., 1::2]\n    return torch.stack((even*cos - odd*sin, even*sin + odd*cos), -1).flatten(-2)\n",
+      "tests": "torch.manual_seed(37)\ntorch.set_num_threads(1)\ndtype=torch.float64\nx=torch.randn(2, 2, 4, 4, dtype=dtype, requires_grad=True)\npositions=torch.arange(7,11)\ny=rotary_pairs(x,positions)\n# Independent reference uses explicit 2x2 matrices, not even/odd broadcasting.\nreference=[]\nfor t,p in enumerate(positions.tolist()):\n    pairs=[]\n    for r in range(2):\n        angle=p * 10000.0 ** (-2*r/4)\n        c,s=math.cos(angle),math.sin(angle)\n        rotation=torch.tensor([[c,-s],[s,c]],dtype=dtype)\n        pairs.append(x[:,:,t,2*r:2*r+2] @ rotation.T)\n    reference.append(torch.cat(pairs,-1))\nreference=torch.stack(reference,dim=2)\ntorch.testing.assert_close(y,reference,atol=1e-12,rtol=1e-10)\ntorch.testing.assert_close(y.square().sum(-1),x.square().sum(-1))\nprobe=torch.randn_like(y)\ng1=torch.autograd.grad((y*probe).sum(),x,retain_graph=True)[0]\ng2=torch.autograd.grad((reference*probe).sum(),x)[0]\ntorch.testing.assert_close(g1,g2,atol=1e-12,rtol=1e-10)\n# Cached pieces use global positions 7..8 and 9..10, never 0..1 twice.\nchunked=torch.cat([rotary_pairs(x[:,:,:2],positions[:2]),\n                   rotary_pairs(x[:,:,2:],positions[2:])],dim=2)\ntorch.testing.assert_close(chunked,y)\nwrong=rotary_pairs(x[:,:,2:],torch.arange(2))\nassert not torch.allclose(wrong,y[:,:,2:])\n# Hold q,k content fixed. A common shift preserves every cross-position dot.\nq=torch.randn(2,2,4,4,dtype=dtype)\nk=torch.randn(2,2,4,4,dtype=dtype)\nq0,k0=rotary_pairs(q,positions),rotary_pairs(k,positions)\nq1,k1=rotary_pairs(q,positions+5),rotary_pairs(k,positions+5)\ntorch.testing.assert_close(q0@k0.transpose(-2,-1),q1@k1.transpose(-2,-1),\n                           atol=1e-12,rtol=1e-10)\nfor bad, pos in [(torch.zeros(1,1,2,3),torch.arange(2)),\n                 (torch.zeros(1,1,2,4),torch.arange(3))]:\n    try:\n        rotary_pairs(bad,pos)\n        raise AssertionError(\"invalid shape must fail\")\n    except ValueError:\n        pass\nprint(\"passed: explicit rotations, norm, gradients, global offset, relative shift\")\n",
+      "runtime": "torch",
+      "hints": [
+        "先构造 `[d_h/2]` 的频率，与 `[T]` 位置做外积；不要在 Batch 或 Head 上重新生成一套位置。",
+        "对一对 (a,b)，旋转后为 (a cosθ − b sinθ, a sinθ + b cosθ)。stack 后合并最后两轴，可恢复相邻通道布局。",
+        "缓存的旧 Key 已在原位置旋转；只旋转新 Key。把新位置重置为零会改变相对角度，即使张量尺寸完全正确。"
+      ],
+      "explanation": "显式 2×2 旋转矩阵作为独立参考，分别比较前向与输入梯度。范数守恒来自正交矩阵；固定 q/k 内容后，共同位置平移由 \\(R(m)^\\top R(n)=R(n-m)\\) 消去。测试再比较位置 7..10 的整段与两个片段，故意对后半段从零编号得到错误对照。该恒等式不保证实际多层网络在改变边界、Mask 或上下文后仍有相同输出。完整两层模型的缓存测试进一步检验 RoPE 与整网数据流的组合。"
+    }
+  ],
+  "questions": [
+    {
+      "question": "为什么把 \\(D\\) 维分成 \\(H\\) 个头后，还要再乘一次输出投影？",
+      "answer": [
+        "各头给出不同投影空间中的读取结果，拼接只是把这些向量放在一起。\\(W_O\\) 进一步学习跨头、跨通道的线性组合，并把结果映射到残差需要的输出宽度。没有它，模型的可表达映射与参数结构都改变了；把头平均也不是标准拼接加投影的等价实现。",
+        "在手写演示中检查 `per_head:[B,H,L,d_h]` → `transpose` → `reshape:[B,L,D]` → `F.linear` 的顺序。对同一输入只替换 \\(W_O\\)，注意力权重不会变化，但最终输出会变，这也是“注意力权重不能独自解释最终决策”的一个小反例。"
+      ]
+    },
+    {
+      "question": "为什么 Softmax 必须沿 Key 轴？沿 Query 轴算也能得到同样形状。",
+      "answer": [
+        "注意力要为每个 Query 构造一个对候选 Key 的分布，因此固定 b、h、i 后，所有 j 的权重应在合法位置上归一化。沿 Query 轴归一化则让不同 Query 竞争同一个 Key 的权重，得到的是另一个计算。",
+        "测试不仅要检查输出形状，还应检查非空权重行和、已知两个 Key 的手算例，以及与按合法 Key 单独选择的参考实现是否一致。带 \\(L\\ne S\\) 的交叉注意力更容易暴露把两轴混淆的错误。"
+      ]
+    },
+    {
+      "question": "为什么把 Attention Mask 从 `nn.MultiheadAttention` 直接传给 SDPA 可能完全反过来？",
+      "answer": [
+        "两个 API 的布尔约定不同：MHA 的 True 表示禁止连接或 Padding，SDPA 的 True 表示允许参与。即使两份张量尺寸相同，数值含义仍相反；MHA 的批次／头形状约定也和 SDPA 的广播约定不同。",
+        "可以在自己的模型接口统一 allowed 语义，再在库调用边界转换。验证时使用“Query 只能看到第一个 Key”的小例子，使正确结果恰好等于第一个 Value；如果输出变成其他 Value 的组合，就能直接定位语义错误。"
+      ]
+    },
+    {
+      "question": "为什么同时需要 Attention Mask 和 Loss Mask？",
+      "answer": [
+        "Attention Mask 规定前向能获取哪些条件，Loss Mask 规定哪些输出与目标进入优化。Prompt token 可以不承担预测损失，却仍是回答或动作必须读取的条件；相反，一个位置参与 Loss，也不意味着它能读取对应答案或未来真值。",
+        "需要分别检查输入 token、Query/Key 有效位、标签偏移和损失分母。将所有不计 Loss 的输入都遮住可能删除条件；把不允许的未来信息仅从 Loss 中删去，又不能阻止它通过隐藏状态泄漏到其他预测。"
+      ]
+    },
+    {
+      "question": "为什么多层 Transformer 中，某一层的局部 Mask 正确仍不够？",
+      "answer": [
+        "第 l 层的 Key/Value 是前面层已经计算过的表示。若某个位置在早期层读到了禁止信息，后续层即使没有直接连接该信息，也可能通过这个中间表示读到它。合法条件必须对所有层的输入与连接成立。",
+        "对因果模型，改变未来 token 后比较所有更早输出，是比肉眼看一次 Mask 更强的行为检查。还应确认归一化不会跨时间统计、输入构造没有拼入监督答案、缓存没有混入别的样本，避免注意力之外的泄漏路径。"
+      ]
+    },
+    {
+      "question": "为什么 Pre-LN、RMSNorm 和 SwiGLU 不能当作可任意替换的性能选项？",
+      "answer": [
+        "Pre-LN 改变残差分支的归一化位置，RMSNorm 改变统计量与参数形式，SwiGLU 改变 FFN 的非线性与投影数量。它们都改变模型函数、参数形状或数值分布，并非只改变执行速度。",
+        "从零训练可以把这些机制作为有控制的架构实验，但加载已有权重时需要匹配配置和具体实现。即便形状巧合一致，改变归一化顺序或激活也不等价；应明确是否接受模型函数变化，再设计训练与评估。"
+      ]
+    },
+    {
+      "question": "为什么缓存追加一个 token 时，`is_causal=True` 不一定等价于完整因果前向？",
+      "answer": [
+        "当 Query 只有新增片段而 Key 包括历史时，注意力矩阵非方形。当前 Query 的全局位置有历史偏移 P，合法条件是 \\(j\\le P+i\\)；从左上角对齐的下三角按 i 从零计数，可能错误屏蔽历史。已有三个 Key 再新增一个时，当前 Query 应能看四个 Key，而不是只有第一个。",
+        "修复方法是用全局 Query/Key 位置生成显式布尔 allowed。练习将同一序列分成 2、1、3 三段，与完整前向比较输出和梯度，同时给出零分数时 Value 均值为 25 的解析检查。"
+      ]
+    },
+    {
+      "question": "固定视觉语言前缀是否足以保证每一层前缀 KV 可以跨生成时间缓存？",
+      "answer": [
+        "不够。第一层输入固定，若后续前缀允许读取动态动作，或它的归一化、FiLM、AdaLN 参数依赖生成时间，下一层前缀隐藏状态仍会变化。缓存成立要求所有上游依赖在复用期间不变。",
+        "只冻结权重并不会删除输入依赖。先证明结构上的不变路径，再用两个动作状态或生成时间比较各层 K/V，以及缓存路径与完整重算输出；这样才能把条件不变与偶然数值接近分开。"
+      ]
+    },
+    {
+      "question": "所有 Value 相同，但注意力很尖锐时，Q/K 和 V 的梯度分别怎样？",
+      "answer": [
+        "无 Dropout 的读出 \\(o=\\sum_j a_jv_j\\)等于那个共同 Value。因为 \\(\\partial o/\\partial s_j=a_j(v_j-o)=0\\)，分数以及该读出路径上的 Q/K 梯度为零。",
+        "Value 梯度为 \\(A^\\top G\\)，一般不为零。注意力权重只决定梯度怎样分给各个 Value，不能据此把整个层判断为不学习，更不能仅按最大权重定位最终预测的原因。"
+      ]
+    },
+    {
+      "question": "单头 \\(QK^\\top\\) 的秩不超过头宽，为什么 Softmax 后的矩阵可以满秩？",
+      "answer": [
+        "矩阵秩的线性代数约束不会被逐元素非线性指数自动保留。Softmax 先逐元素指数，再做非零行尺度归一化，指数步骤可以提高秩。",
+        "取列向量 \\(q=k=(0,1,2)^\\top\\)，\\(qk^\\top\\) 秩为 1。其逐元素指数矩阵各行为 \\((1,1,1)\\)、\\((1,e,e^2)\\)、\\((1,e^2,e^4)\\)，三行线性独立；行归一化不改变秩，因此注意力矩阵秩为 3。"
+      ]
+    },
+    {
+      "question": "分块计算时，为什么不能平均各块自己的 Softmax 输出？正确合并需要保存什么？",
+      "answer": [
+        "块内 Softmax 分母只包含当前块；两个块占全局的概率质量一般不相等。直接平均等于强行给每块相同总权重，改变了原始注意力。",
+        "保存每块最大值 \\(m\\)、指数和 \\(\\ell\\) 和未归一化加权和 \\(r\\)。合并使用共同最大值重标定 \\(\\ell,r\\)，最后才做 \\(r/\\ell\\)。这样恢复的是同一个全局 Softmax，在实数代数中等价，同时避免直接对巨大 logits 取指数。"
+      ]
+    },
+    {
+      "question": "手写 MHA 的前向已与官方一致，为什么还要比较所有参数梯度？",
+      "answer": [
+        "前向数值只检查当前输入的函数值。把 Q/K、权重或投影结果 `detach`，或者在前向中重新包装成参数，仍可能输出相同数值，却切断优化需要的路径。逐一比较输入、QKV 权重／偏置与输出投影权重／偏置，才能发现这些问题。",
+        "测试用同一个随机线性读出构造标量目标，再比较向量—Jacobian 乘积。若接口返回注意力权重，还应让目标包含该权重，避免只验证输出分支。有限组输入与探针不证明所有输入上的等价；它们结合单 Token 解析值、Padding 与因果扰动提供互补证据。"
+      ]
+    },
+    {
+      "question": "为什么将两条分支的输出投影置零，可以诊断 Pre-LN 的组装顺序？",
+      "answer": [
+        "将注意力的输出投影和 FFN 的最后投影的权重、偏置同时置零后，两条分支均为零。有效位置上 \\(h=x\\)、\\(y=x\\)，因此输入 Jacobian 是 \\(I\\)。若额外施加末尾 LayerNorm，结果将变为 \\(\\operatorname{LN}(x)\\)，不再通过恒等检查。",
+        "只把权重置零而保留输出偏置，仍有常量残差项，所以输出不必等于输入。该测试检查结构和偏置处理；它不证明非零分支或任意深度时的梯度稳定。"
+      ]
+    },
+    {
+      "question": "BERT、GPT-2 与 T5 都使用 token 交叉熵，为什么不能直接复用同一份输入、Mask 和标签？",
+      "answer": [
+        "BERT 的 token 损失只在被选中预测的位置计算，输入经过遮蔽、替换或保留的扰动规则；可见上下文是双向的，原版还有独立的 NSP 损失。GPT-2 用合法左侧前缀预测下一 token，需使标签移位与因果 Mask 一致。将 GPT 的未来干净 token 开放给当前预测，会改变其条件分解。",
+        "T5 的源是带 sentinel 的扰动文本，目标是由 sentinel 分隔的缺失片段，并以最终 sentinel 标记结束；目标端做移位后的因果训练，同时读取完整源编码。因此源长度、目标长度、目标 Loss Mask 各自定义。把 BERT 的逐位置标签直接套在 T5 decoder 上，既错配位置，也错配目标序列。"
+      ]
+    }
+  ],
+  "pitfalls": [
+    {
+      "title": "尺寸正确，但把 Batch 当成序列",
+      "detail": "错误的 `batch_first` 或 reshape 可令不同样本参与同一次注意力。",
+      "fix": "逐轴标注 B/T/H/D；修改一个样本，确认其他样本输出不变。"
+    },
+    {
+      "title": "直接把分数乘 0 当作 Mask",
+      "detail": "零分数在 Softmax 中仍有正概率，禁止连接没有被删除。",
+      "fix": "在 Softmax 前加入 \\(-\\infty\\) 偏置或使用语义正确的布尔 Mask。"
+    },
+    {
+      "title": "所有禁止位置填一个很大的有限负数",
+      "detail": "全遮蔽行会变成均匀权重，产生错误读取；这只是隐藏了 NaN。",
+      "fix": "显式拒绝空行，或采用先安全归一化再清零的零输出约定，并检查梯度。"
+    },
+    {
+      "title": "将 QKV 直接 reshape 为 [B,H,T,d]",
+      "detail": "这可能把不同 token 的元素混入同一头，元素数检查无法发现。",
+      "fix": "先 `[B,T,H,d]`，再 transpose；使用连续整数张量检查索引对应。"
+    },
+    {
+      "title": "模型内外各做一次标签移位",
+      "detail": "训练目标变成预测跨两步 token，Loss 可能仍下降。",
+      "fix": "用短序列列出 logits 与 labels 的逐位置对应，确认唯一移位责任。"
+    },
+    {
+      "title": "eval 后 SDPA 仍有随机输出",
+      "detail": "函数式 SDPA 的 `dropout_p` 未按 `self.training` 切换，或比较时模型状态不同。",
+      "fix": "推理显式传 `dropout_p=0`，并同时设置 `model.eval()` 与合适的梯度模式。"
+    },
+    {
+      "title": "把非方形缓存 Mask 当普通 tril",
+      "detail": "新增 Query 的位置从零开始，历史 Key 被错误屏蔽。",
+      "fix": "用历史长度加当前索引构造全局位置，并测试分块长度不全为一的情况。"
+    },
+    {
+      "title": "用旧缓存处理变化的动作或条件",
+      "detail": "去噪状态、时间条件或双向上下文变化后，旧 K/V 不再对应当前前向。",
+      "fix": "检查每层依赖，比较缓存与完整前向；仅复用真正不变的部分。"
+    },
+    {
+      "title": "用注意力热图直接断言决策原因",
+      "detail": "权重只是一次加权读取，Value、\\(W_O\\)、残差和后续层都会影响最终行为。",
+      "fix": "将热图用于查连接，并结合输入扰动、消融和任务评估解释影响。"
+    }
+  ],
+  "sources": [
+    {
+      "title": "Attention Is All You Need · 原论文",
+      "url": "https://arxiv.org/abs/1706.03762"
+    },
+    {
+      "title": "PyTorch · scaled_dot_product_attention",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html"
+    },
+    {
+      "title": "PyTorch · MultiheadAttention",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.MultiheadAttention.html"
+    },
+    {
+      "title": "On Layer Normalization in the Transformer Architecture",
+      "url": "https://proceedings.mlr.press/v119/xiong20b.html"
+    },
+    {
+      "title": "Root Mean Square Layer Normalization",
+      "url": "https://arxiv.org/abs/1910.07467"
+    },
+    {
+      "title": "GLU Variants Improve Transformer",
+      "url": "https://arxiv.org/abs/2002.05202"
+    },
+    {
+      "title": "RoFormer: Enhanced Transformer with Rotary Position Embedding",
+      "url": "https://arxiv.org/abs/2104.09864"
+    },
+    {
+      "title": "Transformers · How caching works",
+      "url": "https://huggingface.co/docs/transformers/main/cache_explanation"
+    },
+    {
+      "title": "FlashAttention：分块精确注意力与 IO 复杂度",
+      "url": "https://arxiv.org/abs/2205.14135"
+    },
+    {
+      "title": "Layer Normalization 原始论文",
+      "url": "https://arxiv.org/abs/1607.06450"
+    },
+    {
+      "title": "Vision Transformer：图像 patch 序列与位置表示",
+      "url": "https://arxiv.org/abs/2010.11929"
+    },
+    {
+      "title": "ACT 官方模型：并行查询、潜变量与解码器",
+      "url": "https://github.com/tonyzhaozh/act/blob/main/detr/models/detr_vae.py"
+    },
+    {
+      "title": "PyTorch · TransformerEncoderLayer：norm_first、GELU 与残差顺序",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.TransformerEncoderLayer.html"
+    },
+    {
+      "title": "PyTorch · LayerNorm：归一化轴与仿射参数",
+      "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html"
+    },
+    {
+      "title": "Devlin et al. · BERT：双向表示、MLM 与 NSP",
+      "url": "https://aclanthology.org/N19-1423/"
+    },
+    {
+      "title": "Radford et al. · GPT-2：因果语言建模与 Pre-LN",
+      "url": "https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf"
+    },
+    {
+      "title": "Raffel et al. · T5：统一文本到文本与片段去噪",
+      "url": "https://www.jmlr.org/papers/v21/20-074.html"
+    },
+    {
+      "title": "GPT-2 官方实现：学习式位置、Pre-LN 与历史 K/V",
+      "url": "https://github.com/openai/gpt-2/blob/master/src/model.py"
+    }
+  ]
+}

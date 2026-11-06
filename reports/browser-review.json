@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-11-06",
+  "environment": "Managed Sites preview with cloud browser",
+  "observed": [
+    {
+      "check": "desktop home",
+      "result": "Seven chapters and four core entries displayed"
+    },
+    {
+      "check": "flow figures",
+      "result": "Both SVGs loaded; no page horizontal overflow; zero observed KaTeX errors"
+    },
+    {
+      "check": "390px mobile frame",
+      "body_width": 375,
+      "scroll_width": 375,
+      "toc_closes_after_selection": true
+    },
+    {
+      "check": "mobile code",
+      "code_viewport": 320,
+      "code_content_width": 613,
+      "page_scroll_width": 375,
+      "code_blocks": 4
+    },
+    {
+      "check": "legacy topic native route",
+      "result": "/topics/transformer/?tab=labs&lab=visibility-mask redirects to canonical exercise"
+    },
+    {
+      "check": "browser Python",
+      "result": "visibility-mask reference solution passed all assertions in bundled Pyodide; original draft restored"
+    },
+    {
+      "check": "full text search",
+      "query": "ELBO",
+      "result": "Opened latent-variable-models at elbo-derivation with search dialog closed"
+    },
+    {
+      "check": "controlled transfer article",
+      "code_lines": 219,
+      "table_rows": 5,
+      "math_errors": 0,
+      "page_width": 1348,
+      "scroll_width": 1348
+    }
+  ],
+  "note": "Content math/complete-code/static-link validations are recorded separately. Browser extension metadata errors are outside the site scripts.",
+  "screenshot": "reports/site-preview.png"
+}

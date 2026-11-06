@@ -1,0 +1,118 @@
+{
+  "python": "3.12.14",
+  "device": "CPU",
+  "torch_path": "/tmp/embodied-torch",
+  "files": {
+    "content/topics/transformer.json": "4d8399d3e058340c74e05dbdb8adb3bb06b38fd431ebd38eb740850f847b851f",
+    "content/policy-models.json": "8400e44494cb7fd1525340b3e281fe2dfec6064b6fe4a53ab225339b6e291bfc",
+    "content/revisions/transformer-policy.json": "4d0a5cf9ae103be8a4c4297d524754c89fc1cf42dabd051edcfffacd13bc9b3f"
+  },
+  "cases": [
+    {
+      "id": "transformer/manual-mha",
+      "scope": "implementation",
+      "sha256": "3df66264bd55d13dabef6108751cc81c58a0b61972c272203f4d499cea26a8e3",
+      "exit_code": 0,
+      "seconds": 1.592,
+      "stdout": "passed: forward, all six gradients, mask perturbation, batch isolation\nQ/K lengths: 3 4 ; output shape: (2, 3, 8)\n",
+      "stderr": ""
+    },
+    {
+      "id": "transformer/tiny-causal-lm",
+      "scope": "implementation",
+      "sha256": "ce0dc31de87931868bf5fa82a44c357cd3e02a08fac69106c19ee02485895555",
+      "exit_code": 0,
+      "seconds": 2.43,
+      "stdout": "synthetic CE: 2.1159 -> 0.0009\npassed: optimization, causality, batch isolation, eval, invalid-query output\n",
+      "stderr": ""
+    },
+    {
+      "id": "transformer/layerwise-information-flow",
+      "scope": "implementation",
+      "sha256": "ea1e80a9a9b3aefdd0936a803f2399ba24bacd50b494cfcada7baf1e75c109f2",
+      "exit_code": 0,
+      "seconds": 1.547,
+      "stdout": "causal future derivative: 0.0\nindirect future derivative: 0.02335226556510318\nfinite-difference error: 1.890090514655718e-12\npassed: reachability, Jacobian support, perturbation, prefix KV invariance\n",
+      "stderr": ""
+    },
+    {
+      "id": "transformer/visibility-mask",
+      "scope": "exercise",
+      "sha256": "172de7e6942ed70a16f5460780368b227dbcd6a126dbec38325d34de0043eeb4",
+      "exit_code": 0,
+      "seconds": 0.012,
+      "stdout": "passed: prefix isolation, bidirectional actions, causal actions, boundaries\n",
+      "stderr": ""
+    },
+    {
+      "id": "transformer/safe-masked-attention",
+      "scope": "exercise",
+      "sha256": "7e452098ea72dfb34bc45adbeb4feead073282ebd6b4ced3698acd985ee915b3",
+      "exit_code": 0,
+      "seconds": 1.51,
+      "stdout": "passed: selected-key oracle, gradients, empty rows, padding, broadcasting\n",
+      "stderr": ""
+    },
+    {
+      "id": "transformer/cache-offset",
+      "scope": "exercise",
+      "sha256": "10a03b2192177b2e5b65a4e13155b8cd578cf0967e30dcab3cb84e9254cc85de",
+      "exit_code": 0,
+      "seconds": 1.527,
+      "stdout": "passed: multi-chunk forward, gradients, history offset, immutable cache\n",
+      "stderr": ""
+    },
+    {
+      "id": "generative-policy/demo",
+      "scope": "new demonstration",
+      "sha256": "2ca7c2fc64aa9e20dd3bb9960621c3ca5612195b0ac3e6fe5479575f7925bfb7",
+      "exit_code": 0,
+      "seconds": 2.031,
+      "stdout": "flow one-step loss: 0.809143 target shape: (3, 4, 2)\ndiffusion one-step loss: 0.794653 target shape: (3, 4, 2)\nflow-Heun steps: 16 oracle endpoint RMSE: 0.0031192\nflow-Heun steps: 64 oracle endpoint RMSE: 0.0002315\nDDIM steps: 16 oracle endpoint RMSE: 0.0425212\nDDIM steps: 64 oracle endpoint RMSE: 0.0114388\nreplanning calls K=1 / K=4: 12 3\npost-disturbance error K=1 / K=4: 0.859409 1.063493\npassed: targets, valid-loss gradients, oracle samplers and receding horizon\n",
+      "stderr": ""
+    },
+    {
+      "id": "generative-policy/exercise",
+      "scope": "new exercise",
+      "sha256": "6ca6e93b26eb048afebe7777dc4a2d77c0d8e84cf3895cb02142db0e98ba1a6f",
+      "exit_code": 0,
+      "seconds": 0.012,
+      "stdout": "passed: prior equality, variance convention and independent-coordinate KL\n",
+      "stderr": ""
+    },
+    {
+      "id": "generative-policy/pytorchTask",
+      "scope": "new exercise",
+      "sha256": "35ddbbd29c191d5ef586229b94bf266c8903718fcd2920883e68e9067e7d5f10",
+      "exit_code": 0,
+      "seconds": 1.692,
+      "stdout": "passed: endpoint direction, interior target, analytic gradient and invalid supervision\n",
+      "stderr": ""
+    },
+    {
+      "id": "behavior-cloning/pytorchTask",
+      "scope": "corrected exercise",
+      "sha256": "652ce65596ef7ab6df75a700fa3432e718ace8ec65685b43226787b577367435",
+      "exit_code": 0,
+      "seconds": 1.515,
+      "stdout": "passed: valid-scalar denominator, analytic gradient, ignored NaNs and invalid supervision\n",
+      "stderr": ""
+    },
+    {
+      "id": "multimodal/pytorchTask",
+      "scope": "corrected exercise",
+      "sha256": "7fe08b2254020c0baea3a47a0083e2ee677335f4a7aa4f28b01f9eec25c4f755",
+      "exit_code": 0,
+      "seconds": 1.483,
+      "stdout": "passed: per-example denominator, analytic gradient and ignored nonfinite padding\n",
+      "stderr": ""
+    }
+  ],
+  "passed": 11,
+  "total": 11,
+  "schema_check": "passed: required fields, section IDs, code compilation and explanation line ranges",
+  "formula_check": {
+    "formulas": 29,
+    "failures": []
+  }
+}

@@ -1,0 +1,1010 @@
+{
+  "total": 251,
+  "passed": 251,
+  "results": [
+    {
+      "name": "Mathematical brackets are preserved rather than parsed as a relative link",
+      "passed": true
+    },
+    {
+      "name": "Deployment paths cover assets, downloads and repeated normalization",
+      "passed": true
+    },
+    {
+      "name": "tensor theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "tensor legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "tensor native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "matrix-grad theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "matrix-grad legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "matrix-grad native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "probability theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "probability legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "probability native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "losses theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "losses legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "losses native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "autograd theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "autograd legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "autograd native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "optimization theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "optimization legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "optimization native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "numerical theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "numerical legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "numerical native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "generalization theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "generalization legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "generalization native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "mlp theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "mlp legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "mlp native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 0",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 1",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 2",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 3",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 4",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 5",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 6",
+      "passed": true
+    },
+    {
+      "name": "mlp old section 7",
+      "passed": true
+    },
+    {
+      "name": "mlp old discussion link question-0",
+      "passed": true
+    },
+    {
+      "name": "mlp old discussion link question-1",
+      "passed": true
+    },
+    {
+      "name": "mlp old discussion link pitfall-0",
+      "passed": true
+    },
+    {
+      "name": "mlp old discussion link pitfall-1",
+      "passed": true
+    },
+    {
+      "name": "mlp old discussion link pitfall-2",
+      "passed": true
+    },
+    {
+      "name": "mlp old discussion link pitfall-3",
+      "passed": true
+    },
+    {
+      "name": "mlp native alias guide",
+      "passed": true
+    },
+    {
+      "name": "mlp native alias code",
+      "passed": true
+    },
+    {
+      "name": "mlp native alias labs",
+      "passed": true
+    },
+    {
+      "name": "mlp native alias questions",
+      "passed": true
+    },
+    {
+      "name": "mlp native alias reference",
+      "passed": true
+    },
+    {
+      "name": "mlp migrated draft affine-from-loops",
+      "passed": true
+    },
+    {
+      "name": "mlp migrated draft manual-gradient",
+      "passed": true
+    },
+    {
+      "name": "mlp migrated draft masked-readout",
+      "passed": true
+    },
+    {
+      "name": "mlp migrated draft relu-spline",
+      "passed": true
+    },
+    {
+      "name": "activation-init theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "activation-init legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "activation-init native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "normalization theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "normalization legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "normalization native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "residual theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "residual legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "residual native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 0",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 1",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 2",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 3",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 4",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 5",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 6",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old section 7",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link question-0",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link question-1",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link question-2",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link pitfall-0",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link pitfall-1",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link pitfall-2",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link pitfall-3",
+      "passed": true
+    },
+    {
+      "name": "cnn-receptive-field old discussion link pitfall-4",
+      "passed": true
+    },
+    {
+      "name": "cnn native alias guide",
+      "passed": true
+    },
+    {
+      "name": "cnn native alias code",
+      "passed": true
+    },
+    {
+      "name": "cnn native alias labs",
+      "passed": true
+    },
+    {
+      "name": "cnn native alias questions",
+      "passed": true
+    },
+    {
+      "name": "cnn native alias reference",
+      "passed": true
+    },
+    {
+      "name": "cnn migrated draft geometry-and-receptive-field",
+      "passed": true
+    },
+    {
+      "name": "cnn migrated draft grouped-convolution",
+      "passed": true
+    },
+    {
+      "name": "cnn migrated draft spatial-expectation",
+      "passed": true
+    },
+    {
+      "name": "attention theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "attention legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "attention native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "embeddings theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "embeddings legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "embeddings native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "transformer theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "transformer legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "transformer native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 0",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 1",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 2",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 3",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 4",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 5",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 6",
+      "passed": true
+    },
+    {
+      "name": "transformer old section 7",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link question-0",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link question-1",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link question-2",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link pitfall-0",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link pitfall-1",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link pitfall-2",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link pitfall-3",
+      "passed": true
+    },
+    {
+      "name": "transformer old discussion link pitfall-4",
+      "passed": true
+    },
+    {
+      "name": "transformer native alias guide",
+      "passed": true
+    },
+    {
+      "name": "transformer native alias code",
+      "passed": true
+    },
+    {
+      "name": "transformer native alias labs",
+      "passed": true
+    },
+    {
+      "name": "transformer native alias questions",
+      "passed": true
+    },
+    {
+      "name": "transformer native alias reference",
+      "passed": true
+    },
+    {
+      "name": "transformer migrated draft visibility-mask",
+      "passed": true
+    },
+    {
+      "name": "transformer migrated draft safe-masked-attention",
+      "passed": true
+    },
+    {
+      "name": "transformer migrated draft cache-offset",
+      "passed": true
+    },
+    {
+      "name": "transformer migrated draft multihead-self-attention",
+      "passed": true
+    },
+    {
+      "name": "transformer migrated draft pre-ln-transformer-block",
+      "passed": true
+    },
+    {
+      "name": "transformer migrated draft rotary-position-offset",
+      "passed": true
+    },
+    {
+      "name": "vision-preprocessing theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "vision-preprocessing legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "vision-preprocessing native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "multimodal theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "multimodal legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "multimodal native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "contrastive-pretraining theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "contrastive-pretraining legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "contrastive-pretraining native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "tokenizer-autoregressive theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "tokenizer-autoregressive legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "tokenizer-autoregressive native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "conditioning-fusion theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "conditioning-fusion legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "conditioning-fusion native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "kv-cache-inference theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "kv-cache-inference legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "kv-cache-inference native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "latent-variable-models theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "latent-variable-models legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "latent-variable-models native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "diffusion theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "diffusion legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "diffusion native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "score-sde theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "score-sde legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "score-sde native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "flow-matching theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "flow-matching legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "flow-matching native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 0",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 1",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 2",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 3",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 4",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 5",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 6",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old section 7",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link question-0",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link question-1",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link question-2",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link pitfall-0",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link pitfall-1",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link pitfall-2",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link pitfall-3",
+      "passed": true
+    },
+    {
+      "name": "flow-matching old discussion link pitfall-4",
+      "passed": true
+    },
+    {
+      "name": "flow-matching native alias guide",
+      "passed": true
+    },
+    {
+      "name": "flow-matching native alias code",
+      "passed": true
+    },
+    {
+      "name": "flow-matching native alias labs",
+      "passed": true
+    },
+    {
+      "name": "flow-matching native alias questions",
+      "passed": true
+    },
+    {
+      "name": "flow-matching native alias reference",
+      "passed": true
+    },
+    {
+      "name": "flow-matching migrated draft path-and-conditional-mean",
+      "passed": true
+    },
+    {
+      "name": "flow-matching migrated draft masked-cfm-objective",
+      "passed": true
+    },
+    {
+      "name": "flow-matching migrated draft conditional-heun",
+      "passed": true
+    },
+    {
+      "name": "flow-matching migrated draft general-path-target",
+      "passed": true
+    },
+    {
+      "name": "behavior-cloning theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "behavior-cloning legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "behavior-cloning native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "action-representation theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "action-representation legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "action-representation native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "action-chunk theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "action-chunk legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "action-chunk native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "partial-observability theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "partial-observability legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "partial-observability native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "generative-policy theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "generative-policy legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "generative-policy native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "vla-architecture theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "vla-architecture legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "vla-architecture native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "finetuning theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "finetuning legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "finetuning native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "returns-bellman theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "returns-bellman legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "returns-bellman native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "policy-gradient theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "policy-gradient legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "policy-gradient native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "modules theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "modules legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "modules native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "dataloader theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "dataloader legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "dataloader native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "training-loop theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "training-loop legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "training-loop native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "checkpoint theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "checkpoint legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "checkpoint native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "data-quality theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "data-quality legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "data-quality native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "gradient-accumulation theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "gradient-accumulation legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "gradient-accumulation native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "mixed-precision theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "mixed-precision legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "mixed-precision native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "memory-checkpointing theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "memory-checkpointing legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "memory-checkpointing native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "distributed-training theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "distributed-training legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "distributed-training native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "training-diagnostics theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "training-diagnostics legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "training-diagnostics native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "multitask-gradients theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "multitask-gradients legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "multitask-gradients native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "distribution-shift theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "distribution-shift legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "distribution-shift native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "execution-latency theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "execution-latency legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "execution-latency native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "evaluation theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "evaluation legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "evaluation native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "train-infer-contract theory introduction and exercise separation",
+      "passed": true
+    },
+    {
+      "name": "train-infer-contract legacy discussion and pitfall routes lead to course exercises",
+      "passed": true
+    },
+    {
+      "name": "train-infer-contract native code and exercise routes",
+      "passed": true
+    }
+  ]
+}

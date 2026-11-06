@@ -1,0 +1,58 @@
+{
+  "torch": "2.15.0+cpu",
+  "device": "cpu",
+  "dtype": "float64",
+  "means": [
+    [
+      [
+        -1.6,
+        -0.6
+      ],
+      [
+        1.6,
+        0.6
+      ]
+    ],
+    [
+      [
+        -0.6,
+        1.6
+      ],
+      [
+        0.6,
+        -1.6
+      ]
+    ]
+  ],
+  "weights": [
+    [
+      0.35,
+      0.65
+    ],
+    [
+      0.65,
+      0.35
+    ]
+  ],
+  "data_std": 0.28,
+  "checks": [
+    {
+      "path": "linear",
+      "score_max_error": 4.440892098500626e-16,
+      "continuity_max_error": 1.1102230246251565e-16
+    },
+    {
+      "path": "vp",
+      "score_max_error": 4.440892098500626e-16,
+      "continuity_max_error": 5.551115123125783e-17,
+      "forward_fp_max_error": 2.220446049250313e-16
+    }
+  ],
+  "endpoints_equal": true,
+  "middle_paths_differ": true,
+  "limits": [
+    "Analytic identity checks, not trained generation results.",
+    "The VP interpolation gives SDE marginals, not Brownian trajectories.",
+    "Score-to-output division is only used at interior times."
+  ]
+}

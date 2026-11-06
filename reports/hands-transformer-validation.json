@@ -1,0 +1,630 @@
+{
+  "scope": [
+    "content/topics/transformer.json",
+    "content/vla_p0.json"
+  ],
+  "runtime": {
+    "python": "Python 3.12.14",
+    "torch": "2.15.0+cpu",
+    "device": "CPU",
+    "new_exercise_dtype": "float64",
+    "seeds": [
+      71,
+      73
+    ]
+  },
+  "source_sha256": {
+    "content/topics/transformer.json": "93f9f0fb84c6d86d69b3b9830aac3befcaad8646dc1556e84024eae0e1b8365a",
+    "content/vla_p0.json": "dadbbd4fd328f836052752c3169cd09e8a2cdbd6b79ad0fcb6ea472b71086985"
+  },
+  "new_lab_ids": [
+    "multihead-self-attention",
+    "pre-ln-transformer-block"
+  ],
+  "exercise_runs": [
+    {
+      "id": "visibility-mask",
+      "status": "passed",
+      "elapsed_seconds": 0.012,
+      "solution_sha256": "92d48bc4889cf85386bd612ae47c2cd670072337f6eadb74d60032413c3854f8",
+      "tests_sha256": "bc715b955b47aee93d5a415a9017b1df326108acdb0c44521ddd610850413761",
+      "stdout": "passed: prefix isolation, bidirectional actions, causal actions, boundaries",
+      "stderr": ""
+    },
+    {
+      "id": "safe-masked-attention",
+      "status": "passed",
+      "elapsed_seconds": 1.5489,
+      "solution_sha256": "9d0f2cddeed83f477d1cbf1ec77bd8ca3c6de87131121d698fc2157c23644cca",
+      "tests_sha256": "deefccab429039182bcc69fa1b64d964cb6e0b5879da2d6ccbc8deafe4cbc709",
+      "stdout": "passed: selected-key oracle, gradients, empty rows, padding, broadcasting",
+      "stderr": ""
+    },
+    {
+      "id": "cache-offset",
+      "status": "passed",
+      "elapsed_seconds": 1.653,
+      "solution_sha256": "5b8715bdff61fa774991d374da29fc6cf2d80c5679e7e0ceb10e73f245b671f2",
+      "tests_sha256": "fd0a085f5955a7da8ed546be2c866cfa77da3cddce78355562ad1cb62099c264",
+      "stdout": "passed: multi-chunk forward, gradients, history offset, immutable cache",
+      "stderr": ""
+    },
+    {
+      "id": "multihead-self-attention",
+      "status": "passed",
+      "elapsed_seconds": 1.6015,
+      "solution_sha256": "6688b2e69def68f555312e43fa04da030b0f96277cb5b45745524483c49f5eb2",
+      "tests_sha256": "4fb12bef1d5b6a63fb9a878442d4f59b11a8282e803649ac327b67dd87672fea",
+      "stdout": "MHA_VALIDATION {\"checks\": [\"causal perturbation, future gradients and batch isolation\", \"padding values cannot leak; empty rows stay finite and zero\", \"all-padding output and all five input/parameter gradient groups are zero\", \"single-token analytic value readout\", \"invalid dimensions, mask dtype/shape and causal flag rejected\"], \"official_cases\": [{\"causal\": false, \"gradient_groups\": 5, \"heads\": 1, \"max_gradient_error\": 4.440892098500626e-16, \"max_output_error\": 5.551115123125783e-17, \"max_weight_error\": 8.326672684688674e-17}, {\"causal\": true, \"gradient_groups\": 5, \"heads\": 1, \"max_gradient_error\": 6.661338147750939e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 1.1102230246251565e-16}, {\"causal\": false, \"gradient_groups\": 5, \"heads\": 3, \"max_gradient_error\": 8.881784197001252e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 5.551115123125783e-17}, {\"causal\": true, \"gradient_groups\": 5, \"heads\": 3, \"max_gradient_error\": 7.771561172376096e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 1.1102230246251565e-16}], \"seed\": 71}",
+      "stderr": "",
+      "observations": {
+        "checks": [
+          "causal perturbation, future gradients and batch isolation",
+          "padding values cannot leak; empty rows stay finite and zero",
+          "all-padding output and all five input/parameter gradient groups are zero",
+          "single-token analytic value readout",
+          "invalid dimensions, mask dtype/shape and causal flag rejected"
+        ],
+        "official_cases": [
+          {
+            "causal": false,
+            "gradient_groups": 5,
+            "heads": 1,
+            "max_gradient_error": 4.440892098500626e-16,
+            "max_output_error": 5.551115123125783e-17,
+            "max_weight_error": 8.326672684688674e-17
+          },
+          {
+            "causal": true,
+            "gradient_groups": 5,
+            "heads": 1,
+            "max_gradient_error": 6.661338147750939e-16,
+            "max_output_error": 1.1102230246251565e-16,
+            "max_weight_error": 1.1102230246251565e-16
+          },
+          {
+            "causal": false,
+            "gradient_groups": 5,
+            "heads": 3,
+            "max_gradient_error": 8.881784197001252e-16,
+            "max_output_error": 1.1102230246251565e-16,
+            "max_weight_error": 5.551115123125783e-17
+          },
+          {
+            "causal": true,
+            "gradient_groups": 5,
+            "heads": 3,
+            "max_gradient_error": 7.771561172376096e-16,
+            "max_output_error": 1.1102230246251565e-16,
+            "max_weight_error": 1.1102230246251565e-16
+          }
+        ],
+        "seed": 71
+      },
+      "solution_forbidden_operator_calls": [],
+      "starter_is_incomplete_and_fails_tests": true
+    },
+    {
+      "id": "pre-ln-transformer-block",
+      "status": "passed",
+      "elapsed_seconds": 1.5168,
+      "solution_sha256": "572d059e1b8b69eafe9a07b914929ee783022356a6af11f4e24a4d79b4e8cd6d",
+      "tests_sha256": "236656ab51f9d0614073b342c24041060c4c2d2f036dcd45198c5439ad47fdfe",
+      "stdout": "BLOCK_VALIDATION {\"checks\": [\"whole-block causal perturbation, future gradients and batch isolation\", \"invalid values cannot leak through attention, norm or residual branches\", \"all-padding output and all thirteen input/parameter gradients are zero\", \"zero branches recover identity forward and identity input Jacobian\", \"FFN/epsilon and input contracts rejected when invalid\"], \"official_cases\": [{\"causal\": false, \"gradient_groups\": 13, \"max_gradient_error\": 1.1102230246251565e-15, \"max_output_error\": 4.440892098500626e-16}, {\"causal\": true, \"gradient_groups\": 13, \"max_gradient_error\": 8.881784197001252e-16, \"max_output_error\": 3.3306690738754696e-16}], \"seed\": 73}",
+      "stderr": "",
+      "observations": {
+        "checks": [
+          "whole-block causal perturbation, future gradients and batch isolation",
+          "invalid values cannot leak through attention, norm or residual branches",
+          "all-padding output and all thirteen input/parameter gradients are zero",
+          "zero branches recover identity forward and identity input Jacobian",
+          "FFN/epsilon and input contracts rejected when invalid"
+        ],
+        "official_cases": [
+          {
+            "causal": false,
+            "gradient_groups": 13,
+            "max_gradient_error": 1.1102230246251565e-15,
+            "max_output_error": 4.440892098500626e-16
+          },
+          {
+            "causal": true,
+            "gradient_groups": 13,
+            "max_gradient_error": 8.881784197001252e-16,
+            "max_output_error": 3.3306690738754696e-16
+          }
+        ],
+        "seed": 73
+      },
+      "solution_forbidden_operator_calls": [],
+      "starter_is_incomplete_and_fails_tests": true
+    }
+  ],
+  "preservation": {
+    "original_lab_ids_preserved": true,
+    "original_lab_programs_unchanged": true,
+    "original_implementation_sources_unchanged": true,
+    "original_section_ids_and_code_unchanged": true,
+    "original_question_order_preserved_with_two_followups_appended": true,
+    "vla_p0_all_ids_display_equations_and_executable_sources_unchanged": true
+  },
+  "mutation_checks": [
+    {
+      "exercise": "multihead-self-attention",
+      "error": "detach packed projections",
+      "rejected": true
+    },
+    {
+      "exercise": "multihead-self-attention",
+      "error": "ignore causal mask",
+      "rejected": true
+    },
+    {
+      "exercise": "pre-ln-transformer-block",
+      "error": "FFN reads original x",
+      "rejected": true
+    },
+    {
+      "exercise": "pre-ln-transformer-block",
+      "error": "extra final LayerNorm",
+      "rejected": true
+    }
+  ],
+  "modified_existing_text_fields": {
+    "transformer": [
+      ".sections[0].body[0]",
+      ".sections[0].body[1]",
+      ".sections[0].body[3]",
+      ".sections[0].codeExplanation",
+      ".sections[1].body[1]",
+      ".sections[1].body[2]",
+      ".sections[1].body[3]",
+      ".sections[1].body[4]",
+      ".sections[2].body[0]",
+      ".sections[2].body[1]",
+      ".sections[2].body[2]",
+      ".sections[2].body[3]",
+      ".sections[2].body[4]",
+      ".sections[2].body[5]",
+      ".sections[2].body[6]",
+      ".sections[2].body[7]",
+      ".sections[2].formula",
+      ".sections[2].example.steps[0]",
+      ".sections[2].example.steps[1]",
+      ".sections[2].example.steps[2]",
+      ".sections[3].body[0]",
+      ".sections[3].body[1]",
+      ".sections[3].body[2]",
+      ".sections[3].body[3]",
+      ".sections[3].body[4]",
+      ".sections[3].body[5]",
+      ".sections[3].example.steps[0]",
+      ".sections[3].example.steps[2]",
+      ".sections[4].body[0]",
+      ".sections[4].body[1]",
+      ".sections[4].body[2]",
+      ".sections[4].body[3]",
+      ".sections[4].comparison.rows[0][0]",
+      ".sections[4].comparison.rows[0][2]",
+      ".sections[4].comparison.rows[1][0]",
+      ".sections[4].comparison.rows[1][2]",
+      ".sections[4].comparison.rows[2][0]",
+      ".sections[4].comparison.rows[2][2]",
+      ".sections[4].comparison.rows[3][1]",
+      ".sections[5].body[0]",
+      ".sections[5].body[1]",
+      ".sections[5].body[3]",
+      ".sections[5].body[4]",
+      ".sections[5].body[6]",
+      ".sections[6].body[2]",
+      ".sections[7].body[0]",
+      ".sections[7].body[3]",
+      ".sections[8].body[2]",
+      ".sections[8].body[3]",
+      ".sections[8].body[4]",
+      ".sections[8].body[5]",
+      ".sections[9].body[0]",
+      ".sections[9].body[1]",
+      ".sections[9].body[3]",
+      ".sections[9].body[4]",
+      ".sections[9].codeExplanation",
+      ".sections[10].body[1]",
+      ".sections[10].body[2]",
+      ".sections[11].body[0]",
+      ".sections[11].example.steps[0]",
+      ".sections[12].body[0]",
+      ".sections[12].body[1]",
+      ".sections[13].body[1]",
+      ".sections[13].body[3]",
+      ".sections[13].example.steps[0]",
+      ".sections[13].example.steps[1]",
+      ".sections[13].example.steps[2]",
+      ".sections[14].body[0]",
+      ".sections[14].body[1]",
+      ".sections[14].body[3]",
+      ".sections[14].body[4]",
+      ".sections[14].codeExplanation",
+      ".sections[15].body[1]",
+      ".goals[0]",
+      ".notation[0].symbol",
+      ".notation[1].symbol",
+      ".notation[2].shape",
+      ".notation[2].symbol",
+      ".notation[2].meaning",
+      ".notation[3].symbol",
+      ".notation[4].symbol",
+      ".notation[5].symbol",
+      ".notation[5].meaning",
+      ".notation[6].symbol",
+      ".notation[7].shape",
+      ".notation[7].symbol",
+      ".notation[7].meaning",
+      ".questions[0].question",
+      ".questions[0].answer[0]",
+      ".questions[0].answer[1]",
+      ".questions[1].answer[1]",
+      ".questions[2].question",
+      ".questions[6].question",
+      ".questions[6].answer[0]",
+      ".questions[8].answer[0]",
+      ".questions[8].answer[1]",
+      ".questions[9].question",
+      ".questions[9].answer[1]",
+      ".questions[10].answer[1]",
+      ".labs[0].explanation",
+      ".labs[0].hints[1]",
+      ".labs[0].prompt",
+      ".labs[1].hints[0]",
+      ".labs[1].prompt",
+      ".labs[2].explanation",
+      ".labs[2].hints[0]",
+      ".labs[2].hints[1]",
+      ".labs[2].prompt",
+      ".quickFacts[0].value",
+      ".quickFacts[1].value",
+      ".quickFacts[2].value",
+      ".quickFacts[3].detail",
+      ".implementations[0].explanations[0].text",
+      ".implementations[0].explanations[3].text",
+      ".implementations[1].explanations[0].text",
+      ".implementations[1].explanations[3].text",
+      ".implementations[2].explanations[0].text",
+      ".implementations[2].explanations[2].text",
+      ".pitfalls[0].detail",
+      ".pitfalls[1].fix",
+      ".pitfalls[3].fix",
+      ".pitfalls[5].detail",
+      ".pitfalls[5].fix",
+      ".pitfalls[8].detail"
+    ],
+    "vla_p0": [
+      "[0].exercise.prompt",
+      "[0].keyPoints[2]",
+      "[0].sections[0].body[0]",
+      "[0].sections[0].body[1]",
+      "[0].sections[1].body[0]",
+      "[0].sections[1].body[1]",
+      "[0].sections[2].body[0]",
+      "[0].sections[2].body[1]",
+      "[0].sections[2].example.steps[0]",
+      "[0].sections[3].body[0]",
+      "[0].sections[3].body[1]",
+      "[0].sections[4].body[0]",
+      "[0].sections[4].body[1]",
+      "[0].sections[5].body[0]",
+      "[0].sections[5].body[1]",
+      "[0].sections[5].body[2]",
+      "[0].sections[5].focus.check",
+      "[0].sections[5].focus.explanation",
+      "[0].sections[5].example.steps[0]",
+      "[0].sections[5].example.steps[2]",
+      "[0].knowledgeChecks[0].codeFocus",
+      "[0].knowledgeChecks[1].question",
+      "[0].knowledgeChecks[1].answer[0]",
+      "[0].knowledgeChecks[1].answer[1]",
+      "[0].knowledgeChecks[1].codeFocus",
+      "[0].pytorchTask.hints[0]",
+      "[0].pytorchTask.hints[1]",
+      "[0].pytorchTask.prompt",
+      "[0].objectives[2]",
+      "[1].exercise.prompt",
+      "[1].sections[0].body[0]",
+      "[1].sections[1].body[0]",
+      "[1].sections[1].body[1]",
+      "[1].sections[1].example.steps[0]",
+      "[1].sections[1].example.steps[1]",
+      "[1].sections[1].example.steps[2]",
+      "[1].sections[2].body[0]",
+      "[1].sections[2].body[1]",
+      "[1].sections[2].body[2]",
+      "[1].sections[3].body[1]",
+      "[1].sections[3].body[2]",
+      "[1].sections[3].example.steps[0]",
+      "[1].sections[3].example.steps[1]",
+      "[1].sections[4].body[2]",
+      "[1].knowledgeChecks[0].codeFocus",
+      "[1].knowledgeChecks[1].codeFocus",
+      "[1].knowledgeChecks[2].acceptance[0]",
+      "[1].knowledgeChecks[2].answer[0]",
+      "[1].pytorchTask.explanation",
+      "[1].pytorchTask.prompt",
+      "[2].exercise.explanation",
+      "[2].exercise.prompt",
+      "[2].sections[0].body[0]",
+      "[2].sections[0].body[1]",
+      "[2].sections[0].body[2]",
+      "[2].sections[0].example.steps[0]",
+      "[2].sections[0].example.steps[1]",
+      "[2].sections[0].example.steps[2]",
+      "[2].sections[1].body[0]",
+      "[2].sections[1].body[1]",
+      "[2].sections[2].body[0]",
+      "[2].sections[2].body[1]",
+      "[2].sections[2].body[2]",
+      "[2].sections[2].focus.check",
+      "[2].sections[3].body[0]",
+      "[2].sections[3].focus.check",
+      "[2].sections[3].example.steps[0]",
+      "[2].sections[3].example.steps[1]",
+      "[2].sections[3].example.steps[2]",
+      "[2].sections[4].body[0]",
+      "[2].sections[4].body[2]",
+      "[2].sections[4].focus.check",
+      "[2].sections[5].body[0]",
+      "[2].sections[5].body[1]",
+      "[2].sections[5].body[2]",
+      "[2].sections[5].body[3]",
+      "[2].sections[5].focus.check",
+      "[2].sections[5].codeExplanation",
+      "[2].sections[6].body[0]",
+      "[2].sections[6].body[1]",
+      "[2].sections[7].body[1]",
+      "[2].knowledgeChecks[0].question",
+      "[2].knowledgeChecks[0].codeFocus",
+      "[2].knowledgeChecks[1].codeFocus",
+      "[2].shapes[1].name",
+      "[2].pytorchTask.explanation",
+      "[2].pytorchTask.hints[0]",
+      "[2].pytorchTask.hints[1]",
+      "[2].pytorchTask.prompt",
+      "[2].pitfalls[3].detail",
+      "[3].why",
+      "[3].exercise.explanation",
+      "[3].exercise.hints[0]",
+      "[3].exercise.prompt",
+      "[3].keyPoints[2]",
+      "[3].keyPoints[3]",
+      "[3].sections[0].body[0]",
+      "[3].sections[0].body[1]",
+      "[3].sections[0].focus.check",
+      "[3].sections[1].body[0]",
+      "[3].sections[1].body[1]",
+      "[3].sections[1].example.steps[0]",
+      "[3].sections[1].example.steps[2]",
+      "[3].sections[2].body[0]",
+      "[3].sections[2].body[1]",
+      "[3].sections[2].body[2]",
+      "[3].sections[2].body[3]",
+      "[3].sections[3].body[0]",
+      "[3].sections[3].body[1]",
+      "[3].sections[3].codeExplanation",
+      "[3].sections[4].body[0]",
+      "[3].sections[4].body[1]",
+      "[3].sections[4].body[2]",
+      "[3].sections[4].example.steps[1]",
+      "[3].sections[4].example.steps[2]",
+      "[3].sections[5].body[0]",
+      "[3].sections[5].body[1]",
+      "[3].sections[5].body[2]",
+      "[3].sections[5].focus.check",
+      "[3].sections[5].focus.explanation",
+      "[3].sections[6].body[0]",
+      "[3].sections[6].body[1]",
+      "[3].sections[6].body[2]",
+      "[3].sections[7].body[0]",
+      "[3].sections[7].body[2]",
+      "[3].sections[8].body[0]",
+      "[3].sections[8].body[2]",
+      "[3].sections[9].body[1]",
+      "[3].knowledgeChecks[0].acceptance[1]",
+      "[3].knowledgeChecks[0].question",
+      "[3].knowledgeChecks[0].answer[0]",
+      "[3].knowledgeChecks[1].acceptance[1]",
+      "[3].knowledgeChecks[1].question",
+      "[3].knowledgeChecks[1].answer[0]",
+      "[3].knowledgeChecks[1].answer[1]",
+      "[3].knowledgeChecks[1].codeFocus",
+      "[3].knowledgeChecks[2].question",
+      "[3].knowledgeChecks[2].answer[1]",
+      "[3].knowledgeChecks[2].codeFocus",
+      "[3].tags[3]",
+      "[3].shapes[1].name",
+      "[3].shapes[2].name",
+      "[3].pytorchTask.explanation",
+      "[3].pytorchTask.hints[0]",
+      "[3].pytorchTask.hints[1]",
+      "[3].pytorchTask.prompt",
+      "[3].pitfalls[2].detail",
+      "[3].objectives[2]",
+      "[4].exercise.hints[0]",
+      "[4].exercise.prompt",
+      "[4].sections[0].body[0]",
+      "[4].sections[1].body[0]",
+      "[4].sections[1].body[2]",
+      "[4].sections[1].example.steps[0]",
+      "[4].sections[1].example.steps[1]",
+      "[4].sections[2].body[1]",
+      "[4].sections[3].example.steps[0]",
+      "[4].sections[5].body[0]",
+      "[4].sections[5].body[1]",
+      "[4].sections[5].focus.check",
+      "[4].knowledgeChecks[1].codeFocus",
+      "[4].pytorchTask.hints[0]",
+      "[4].pytorchTask.hints[1]",
+      "[4].pytorchTask.prompt",
+      "[5].exercise.prompt",
+      "[5].sections[2].body[1]",
+      "[5].sections[3].body[0]",
+      "[5].sections[3].example.steps[0]",
+      "[5].sections[3].example.steps[1]",
+      "[5].sections[3].example.steps[2]",
+      "[5].sections[4].body[0]",
+      "[5].sections[4].example.steps[0]",
+      "[5].sections[4].example.steps[1]",
+      "[5].sections[4].example.steps[2]",
+      "[5].sections[5].body[1]",
+      "[5].sections[7].body[0]",
+      "[5].sections[7].body[3]",
+      "[5].knowledgeChecks[0].codeFocus",
+      "[5].knowledgeChecks[1].codeFocus",
+      "[5].pytorchTask.explanation",
+      "[5].pytorchTask.hints[0]",
+      "[5].pytorchTask.prompt"
+    ]
+  },
+  "limitations": [
+    "Official comparisons use CPU float64, standard equal-width MHA, no dropout or positional encoding, and no empty reference softmax rows.",
+    "All-padding behavior is an explicit exercise convention checked independently; it is not attributed to all PyTorch kernels.",
+    "Fixed-seed finite tests and mutation checks provide regression evidence, not a proof for every input or production Transformer variant.",
+    "Site-wide build, browser visual checks and deployment are owned by the parent agent."
+  ],
+  "math_validation": {
+    "status": "passed",
+    "counts": {
+      "content/topics/transformer.json": {
+        "inline": 264,
+        "display": 15,
+        "paragraphsWithMath": 94,
+        "mathml_subscripts": 242,
+        "mathml_superscripts": 82,
+        "mathml_fractions": 7
+      },
+      "content/vla_p0.json": {
+        "inline": 218,
+        "display": 21,
+        "paragraphsWithMath": 94,
+        "mathml_subscripts": 246,
+        "mathml_superscripts": 43,
+        "mathml_fractions": 12
+      }
+    },
+    "semantic_structure_checks": [
+      {
+        "name": "QKV bilinear matching uses transposes, head subscript and square root",
+        "has": "S=XW_Q^\\top",
+        "tags": [
+          "msup",
+          "msub",
+          "msqrt"
+        ],
+        "matches": [
+          {
+            "file": "content/topics/transformer.json",
+            "path": "$.sections[1].body[1]#1"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "LayerNorm Jacobian is an actual fraction with superscript transpose",
+        "has": "J_{\\rm LN}=\\frac",
+        "tags": [
+          "mfrac",
+          "msup"
+        ],
+        "matches": [
+          {
+            "file": "content/topics/transformer.json",
+            "path": "$.sections[8].formula"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "RoPE relative position is a subscript, not literal underscore text",
+        "has": "q^\\top R_{n-m}k",
+        "tags": [
+          "msub",
+          "msup"
+        ],
+        "matches": [
+          {
+            "file": "content/topics/transformer.json",
+            "path": "$.sections[10].body[1]#7"
+          },
+          {
+            "file": "content/topics/transformer.json",
+            "path": "$.sections[10].formula"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "Policy baseline optimum has fraction and norm powers",
+        "has": "b^*=\\frac",
+        "tags": [
+          "mfrac",
+          "msup"
+        ],
+        "matches": [
+          {
+            "file": "content/vla_p0.json",
+            "path": "$[3].sections[2].body[2]#3"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "GAE uses time subscripts and advantage accents",
+        "has": "\\hat A_t&=",
+        "tags": [
+          "msub",
+          "mover"
+        ],
+        "matches": [
+          {
+            "file": "content/vla_p0.json",
+            "path": "$[2].sections[5].formula"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "Diffusion clean reconstruction has fractions and square roots",
+        "has": "\\frac{x-\\sqrt",
+        "tags": [
+          "mfrac",
+          "msqrt",
+          "mover"
+        ],
+        "matches": [
+          {
+            "file": "content/vla_p0.json",
+            "path": "$[5].sections[4].example.steps[1]#3"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "Bellman next-state prime is a true superscript",
+        "has": "V^\\pi(s^\\prime)",
+        "tags": [
+          "msup"
+        ],
+        "matches": [
+          {
+            "file": "content/vla_p0.json",
+            "path": "$[2].sections[1].body[1]#1"
+          },
+          {
+            "file": "content/vla_p0.json",
+            "path": "$[2].sections[1].formula"
+          }
+        ],
+        "passed": true
+      }
+    ],
+    "failures": [],
+    "note": "Every explicit formula rendered through the current shared browser/SSR math module. Manual audit also checked dimensions, mask conventions, conditioning and limiting cases; browser viewport QA is parent-owned."
+  }
+}

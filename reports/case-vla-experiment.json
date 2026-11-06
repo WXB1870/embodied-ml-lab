@@ -1,0 +1,51 @@
+{
+  "seed": 20261106,
+  "torch": "2.15.0+cpu",
+  "dtype": "float64",
+  "shapes": {
+    "images": [
+      4,
+      2,
+      3,
+      8,
+      8
+    ],
+    "prefix": [
+      4,
+      11,
+      16
+    ],
+    "suffix": [
+      4,
+      4,
+      12
+    ],
+    "velocity": [
+      4,
+      3,
+      3
+    ]
+  },
+  "loss_before": 1.287935188682425,
+  "loss_after_40_updates": 0.08756648812250836,
+  "first_step_gradient_norms": {
+    "vision": 0.426417696187561,
+    "language": 0.054512596003486,
+    "prefix": 1.2979475041405437,
+    "expert": 3.901721677225518
+  },
+  "cache_velocity_max_error": 4.440892098500626e-16,
+  "cache_sample_max_error": 4.440892098500626e-16,
+  "stale_cache_max_error": 0.13542782422104205,
+  "checks": [
+    "finite valid-mask FM loss",
+    "two parameter groups receive gradients",
+    "full/cache velocity and Euler equality",
+    "changed-image cache invalidation",
+    "missing-view isolation",
+    "graph-preserving cache gradient equality",
+    "frozen parameter versus input gradient",
+    "no_grad cuts input route",
+    "empty supervision rejected"
+  ]
+}

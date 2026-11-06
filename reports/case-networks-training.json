@@ -1,0 +1,839 @@
+{
+  "baseline": "0035390787417ffcd51de4ec0ec5636579853082",
+  "scope": {
+    "canonical_courses": 27,
+    "not_double_counted": [
+      "mlp topic/proxy",
+      "transformer topic/proxy"
+    ],
+    "source_files": [
+      "content/foundations.json",
+      "content/architecture.json",
+      "content/foundations_p0.json",
+      "content/topics/mlp.json",
+      "content/topics/cnn.json"
+    ],
+    "reviewed_theory_sections": 238,
+    "all_leads_present": true
+  },
+  "classification_legend": {
+    "A": "成熟内容保留",
+    "B": "理论深但缺直观案例",
+    "C": "重要机制浅",
+    "D": "内容碎片，需要连贯案例",
+    "E": "重复或边界/顺序需调整"
+  },
+  "courses": [
+    {
+      "id": "tensor",
+      "title": "张量与广播",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "维度语义、广播、视图/复制及有效池化已有独立数值与梯度检查；无需再造端到端模型。",
+      "change": "正文、代码、练习保持。",
+      "source": "content/foundations.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "matrix-grad",
+      "title": "线性代数与矩阵求导",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "VJP/JVP、链式法则、秩/零空间与有限差分连接完整，具有可执行参照。",
+      "change": "正文保留；独立片段标记 runnable 并复验。",
+      "source": "content/foundations.json",
+      "section_count": 10,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "probability",
+      "title": "概率、统计与训练目标",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "条件分布、全期望/全方差、高斯条件化及条件均值的成立条件已展开。",
+      "change": "理论、例题与练习保留；独立片段标记 runnable 并复验。",
+      "source": "content/foundations.json",
+      "section_count": 12,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "mlp",
+      "title": "MLP 基础",
+      "classification": [
+        "A",
+        "B",
+        "D"
+      ],
+      "action": "贯穿案例改写",
+      "finding": "通用反向、样条表达能力与初始化已成熟，但正文的 2→2→1 手算与 manual-backprop 的 2→3→2 不同，数值链被打断。",
+      "change": "统一现有 17 参数模型的前向、损失、五组梯度、SGD；增加计算图和数值表，保留成熟推导、其余实现和练习 ID。",
+      "source": "content/foundations.json",
+      "section_count": 11,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "activation-init",
+      "title": "激活与初始化",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "跨课衔接",
+      "finding": "激活导数、二阶矩与方差区别、对称性和初始化假设已成熟，需明确与完整 MLP 的对应。",
+      "change": "保留推导；链接同一 MLP 的 ReLU 门与偏置扰动，避免另造案例。",
+      "source": "content/foundations.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "autograd",
+      "title": "PyTorch 自动微分与计算图",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "跨课衔接",
+      "finding": "计算图、冻结与 no_grad、VJP 和高阶梯度已有有效对照；需要把局部求导放回完整更新。",
+      "change": "链接 MLP 的前向—VJP—梯度—更新链；保留原实验。",
+      "source": "content/foundations.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "losses",
+      "title": "损失、掩码与归约",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "MSE/NLL、有效集合、加权分母和 NaN 梯度均已解释，工程分母需要与数据与累积共用。",
+      "change": "正文指向共同项目 masked_error_sum；成熟目标与安全选择推导保留。",
+      "source": "content/foundations.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "optimization",
+      "title": "梯度下降、动量与 AdamW",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "数值衔接",
+      "finding": "SGD 方差、Momentum、Adam 偏差修正、AdamW 与裁剪边界已充分，不宜平均扩写。",
+      "change": "引用同一 MLP 的旧参数点梯度与 SGD 数值更新；其余原理与实验保留。",
+      "source": "content/foundations.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "numerical",
+      "title": "数值精度与标准化",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "尺度改变目标权重与 Hessian 的解释充分，包含数值稳定边界。",
+      "change": "保留归一化与条件数实验；独立片段标记 runnable 并复验。",
+      "source": "content/foundations.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "generalization",
+      "title": "泛化与验证",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "划分单位、选择偏差、增强等变关系与评估分母已形成连续解释。",
+      "change": "不新增模型与图示，保留。",
+      "source": "content/foundations.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "normalization",
+      "title": "归一化：统计轴、梯度与不变性",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "LN/RMSNorm Jacobian、epsilon 条件、BN 状态与跨样本依赖已深入且有导数核对。",
+      "change": "保留；现有独立公式验证标记 runnable 并复验，CNN 仅连接 GAP/BN 边界。",
+      "source": "content/architecture.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "residual",
+      "title": "残差连接与深层优化",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "Jacobian 乘积、奇异值/非正规例子、零初始化与 Pre/Post-Norm 的假设清楚。",
+      "change": "保留成熟推导及公平梯度对照，不用贯穿案例取代它们；独立片段复验。",
+      "source": "content/architecture.json",
+      "section_count": 9,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "attention",
+      "title": "注意力：匹配、聚合与梯度",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "主专章边界保留",
+      "finding": "QKV 双线性匹配、方差缩放、Softmax 梯度、矩形 Mask 的推导成熟；完整模型位置交由 Transformer。",
+      "change": "保留 Attention 专章；数值片段复验。连续多层模型与图示由 Transformer 分工补足，不复制专章。",
+      "source": "content/architecture.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "transformer",
+      "title": "Transformer 基础",
+      "classification": [
+        "A",
+        "B",
+        "D"
+      ],
+      "action": "专题分工",
+      "finding": "已有 QKV、SwiGLU Jacobian 与多层 Mask 理论成熟；完整两层案例、RoPE 与 Cross-Attention 图示由专门分工审查改写。",
+      "change": "本分工核对代理实现/练习，添加 embeddings 前置；完整 topic 变更与核验见 case-transformer 报告，仅计一个 canonical course。",
+      "source": "content/architecture.json",
+      "section_count": 16,
+      "review_scope": "代理元数据、原代码与练习；topic 全文由 Transformer 分工审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "embeddings",
+      "title": "Embedding 与位置编码",
+      "classification": [
+        "A",
+        "B",
+        "E"
+      ],
+      "action": "依赖调整",
+      "finding": "Embedding 梯度、位置/生成时间区别及 RoPE 恒等式已有完整机制；原前置引用 Transformer 与教学顺序相反。",
+      "change": "前置改为 attention、tensor；缓存作为后续应用链接，Transformer 再以前置 embeddings 连接。",
+      "source": "content/architecture.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "multimodal",
+      "title": "视觉编码与多模态融合",
+      "classification": [
+        "A",
+        "E"
+      ],
+      "action": "依赖与边界调整",
+      "finding": "多模态接口、条件路径与表示瓶颈已成熟；视觉预处理应先于本课。",
+      "change": "增加 vision-preprocessing 前置与正文链接；保留接口内容，不复制 CNN 的 Patch 秩分析。",
+      "source": "content/architecture.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "modules",
+      "title": "PyTorch 模块、参数与状态",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "注册、Buffer、梯度与优化器成员的区分充分，需对应完整训练对象。",
+      "change": "定位共享 TokenRegressor 的四组统计 Buffer 与参数；修正已有示例说明为 8 维输入/4 维输出。",
+      "source": "content/architecture.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "dataloader",
+      "title": "数据采样与批处理",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "采样分布、collate、有效数和泄漏已有完整解释，组批后的实际更新仍需贯通。",
+      "change": "链接同一 ToyEpisodes/collate_episodes，说明 190 个有效标量与尾批更新；旧练习保留。",
+      "source": "content/architecture.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "training-loop",
+      "title": "训练循环与指标归约",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享项目",
+      "finding": "原有更新边界、归约与评估机制成熟，但各节工程实验相对独立。",
+      "change": "复用 Linear(4,2) 建立单一 full source；Dataset→累积→CPU BF16→更新→评估→epoch 恢复→故障诊断，新增流程图与函数定位表。",
+      "source": "content/architecture.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "checkpoint",
+      "title": "保存与恢复训练状态",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "恢复验证扩展",
+      "finding": "模型/优化器/RNG/EMA/数据游标论述成熟，已有单步恢复需与真实 DataLoader 状态连接。",
+      "change": "保留旧案例，链接共同项目下一整轮顺序、梯度路径、指标和状态逐项恢复；明确 epoch_end、workers=0 范围。",
+      "source": "content/architecture.json",
+      "section_count": 9,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "gradient-accumulation",
+      "title": "梯度累积",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "同一参数点、共同分母、裁剪与随机前向等价条件解释完整。",
+      "change": "保留原对照；链接同一七条 episode 的 10/30 有效计数控制组和 SGD 梯度/参数等价。",
+      "source": "content/foundations_p0.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "mixed-precision",
+      "title": "混合精度训练",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "指数/有效数字、autocast、scaler 单位与局部高精度位置的推导充分。",
+      "change": "链接同模型 FP32/CPU BF16 梯度与实际更新；不宣称 CUDA、性能或通用误差界已验证。",
+      "source": "content/foundations_p0.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "training-diagnostics",
+      "title": "训练诊断",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "同对象故障对照",
+      "finding": "已有推理式证据链、小样本冲突标签下界及参数身份诊断成熟。",
+      "change": "同一共享模型构造漏 bias 优化器、Padding/有效 NaN 两类单因素干预；保留成熟诊断论证。",
+      "source": "content/foundations_p0.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "memory-checkpointing",
+      "title": "训练显存与重计算",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "状态与激活内存分账、逻辑保存量与实际峰值区别、重算副作用已充分。",
+      "change": "不添加第二个共享模型或 GPU 估算结论；原代码/练习保留。",
+      "source": "content/foundations_p0.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "distributed-training",
+      "title": "DDP 与全局统计",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "适配说明",
+      "finding": "全局分母推导、Sampler、no_sync、日志归约和控制流已有完整说明。",
+      "change": "连接共享 S_r/N_r 到默认 DDP 的 R*S_r/N，明确真实 Gloo 仍 environment_blocked，单进程数学对照不能替代通信测试。",
+      "source": "content/foundations_p0.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "multitask-gradients",
+      "title": "多任务梯度",
+      "classification": [
+        "A"
+      ],
+      "action": "数值正确性修复",
+      "finding": "任务梯度叠加、局部点积与长期效果区别成熟；审查发现有限坐标的直接点积/范数乘积可溢出。",
+      "change": "两种语言的原练习改为独立尺度化求余弦，拒绝非有限合成，加入 1e200/1.7e308 反例，保持题目索引及核心目的。",
+      "source": "content/foundations_p0.json",
+      "section_count": 8,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    },
+    {
+      "id": "cnn-receptive-field",
+      "title": "CNN：卷积、采样与空间表示",
+      "classification": [
+        "A",
+        "B",
+        "D",
+        "E"
+      ],
+      "action": "贯穿案例与边界调整",
+      "finding": "分组秩、感受野支持集、BN/激活/池化已有深度；几何、参数与梯度未在同网串起，Patch/空间头边界可更明确。",
+      "change": "沿现有 SmallCNN 追踪形状、参数、MAC、r/j、GAP 梯度和局部支持集；增加结构图，保留高级推导，Patch/空间读出用跨课链接定位。",
+      "source": "content/topics/cnn.json",
+      "section_count": 11,
+      "review_scope": "全文、代码、练习及局部问答审查",
+      "lead_present": true,
+      "section_leads_present": true
+    }
+  ],
+  "figures": [
+    {
+      "file": "content/figures/mlp-computation-chain.svg",
+      "purpose": "把同一 17 参数模型的前向、Loss、五组反向量与同步 SGD 更新连接；形状/参数/数值对应 manual-backprop。",
+      "original": true,
+      "editable": "SVG",
+      "xml_parsed": true,
+      "rendered": "Inkscape",
+      "visual_review": "已在 1× PNG 检查，修正两处过长训练图标签；无裁切或重叠。",
+      "sha256": "f1a84f3ba915f983db5ebd1531b32238fdcc6c8fb49c6296db2cd42b825f6a4e"
+    },
+    {
+      "file": "content/figures/cnn-small-network.svg",
+      "purpose": "同一 SmallCNN 每层形状、参数/MAC、r/j 与局部 5×5 梯度支持；区分局部感受野和 GAP 后全图依赖。",
+      "original": true,
+      "editable": "SVG",
+      "xml_parsed": true,
+      "rendered": "Inkscape",
+      "visual_review": "已在 1× PNG 检查，修正两处过长训练图标签；无裁切或重叠。",
+      "sha256": "90440e19e1f6ea4f59e965c7aa1540b11d2c9f51252239ba207dcb375e3d3d28"
+    },
+    {
+      "file": "content/figures/training-state-lifecycle.svg",
+      "purpose": "同一数据/有效集合的 S,N 如何穿过累积、精度、更新、评估及 epoch 边界恢复。",
+      "original": true,
+      "editable": "SVG",
+      "xml_parsed": true,
+      "rendered": "Inkscape",
+      "visual_review": "已在 1× PNG 检查，修正两处过长训练图标签；无裁切或重叠。",
+      "sha256": "98da358793d45f0549a22d5ba526176caef7c78f1942373f7cb27d6323092da3"
+    }
+  ],
+  "preservation": [
+    {
+      "file": "content/foundations.json",
+      "id": "tensor",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "matrix-grad",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "probability",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "mlp",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 0,
+      "knowledge_check_count_after": 0,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "activation-init",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "autograd",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "losses",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "optimization",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "numerical",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations.json",
+      "id": "generalization",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "normalization",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 4,
+      "knowledge_check_count_after": 4,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "residual",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 4,
+      "knowledge_check_count_after": 4,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "attention",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 3,
+      "knowledge_check_count_after": 3,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "transformer",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 0,
+      "knowledge_check_count_after": 0,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "embeddings",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 3,
+      "knowledge_check_count_after": 3,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "multimodal",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 3,
+      "knowledge_check_count_after": 3,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "modules",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "dataloader",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 3,
+      "knowledge_check_count_after": 3,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "training-loop",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/architecture.json",
+      "id": "checkpoint",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations_p0.json",
+      "id": "gradient-accumulation",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations_p0.json",
+      "id": "mixed-precision",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations_p0.json",
+      "id": "training-diagnostics",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations_p0.json",
+      "id": "memory-checkpointing",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations_p0.json",
+      "id": "distributed-training",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/foundations_p0.json",
+      "id": "multitask-gradients",
+      "section_ids_preserved": true,
+      "questions_count_before": 0,
+      "questions_count_after": 0,
+      "knowledge_check_count_before": 2,
+      "knowledge_check_count_after": 2,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/topics/mlp.json",
+      "id": "mlp",
+      "section_ids_preserved": true,
+      "questions_count_before": 7,
+      "questions_count_after": 7,
+      "knowledge_check_count_before": 0,
+      "knowledge_check_count_after": 0,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    },
+    {
+      "file": "content/topics/cnn.json",
+      "id": "cnn",
+      "section_ids_preserved": true,
+      "questions_count_before": 9,
+      "questions_count_after": 9,
+      "knowledge_check_count_before": 0,
+      "knowledge_check_count_after": 0,
+      "lab_ids_preserved": true,
+      "implementation_ids_preserved": true
+    }
+  ],
+  "verification": {
+    "cases": {
+      "passed": 34,
+      "failed": 0
+    },
+    "formulas_checked": 1353,
+    "unique_formulas": 1132,
+    "formula_errors": [],
+    "unmarked_candidates": 0,
+    "report": "reports/case-networks-training-validation.json",
+    "formula_report": "reports/case-networks-training-formulas.json"
+  },
+  "single_source": {
+    "lesson": "training-loop",
+    "implementation_id": "shared-training-project",
+    "canonical_source": "content/architecture.json → extraImplementations[].source",
+    "repository_runner": "content/experiments/training-shared-project.py",
+    "runner_behavior": "只读取并执行 canonical source，不维护第二份训练实现。",
+    "shared_anchor": "#/learn/training-loop?tab=code&anchor=demo-shared-training-project"
+  },
+  "sources_reviewed": [
+    "https://docs.pytorch.org/docs/2.15/amp.html",
+    "https://docs.pytorch.org/docs/2.15/notes/amp_examples.html",
+    "https://docs.pytorch.org/docs/2.15/data.html",
+    "https://docs.pytorch.org/docs/2.15/notes/randomness.html"
+  ],
+  "limitations": [
+    "真实 DDP/Gloo 通信仍为 environment_blocked；未用单进程对照冒充通过。",
+    "CPU BF16 只证明当前固定模型的数值路径，不代表 CUDA FP16/GradScaler 跳步、GPU 吞吐或显存验证。",
+    "共同 checkpoint 验证限定同环境、epoch_end、num_workers=0、无数据增强/预取，不能声称任意中途或跨环境逐比特恢复。",
+    "本分工只完成 SVG 桌面图像目视检查；移动/桌面网页、内部路由、全站回归由主分工整合验证。",
+    "CNN 的合成条纹成功率仅检查学习链路，不代表实际视觉/机器人泛化；MLP 单步降损不是对任意学习率的保证。"
+  ],
+  "source_sha256": {
+    "content/foundations.json": "0e66d63c1c75d19b21961709c970c4bfa8ee34d0e7fc880900a461f9ab3785b3",
+    "content/architecture.json": "1321a9605a2c325c190ff0deda5bea86dd569cd5b9cce20f1adc1ce06639fc8f",
+    "content/foundations_p0.json": "5ac87e487adf6a9900f738b00b086ff86a4afd3ddbbe98a755839cbba71ffcc0",
+    "content/topics/mlp.json": "328d929aadc57d185a5ad907032673a72a07e252c90bd68f3297a637c6655633",
+    "content/topics/cnn.json": "3e2e8e5466a8516b431fc5abf0f524b49ca6e648238c77a29df61f3c23a1f4b2",
+    "content/experiments/training-shared-project.py": "7b77a95f24910f295d82ca015e4afb2f4597354c13faba91b33a9c903dd44cee"
+  }
+}

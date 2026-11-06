@@ -1,0 +1,74 @@
+{
+  "review": "independent_read_only_shared_training_project",
+  "recorded_utc": "2026-11-06T16:00:50.106307+00:00",
+  "source_file": "content/architecture.json",
+  "lesson_id": "training-loop",
+  "implementation_id": "shared-training-project",
+  "source_sha256_at_review": "1e57b2062eb2908a768f2bce867f7f09857f551fac3ec12ddd1fe9975a8432fc",
+  "source_lines": 350,
+  "scope": [
+    "unequal_valid_scalar_gradient_accumulation",
+    "CPU_BF16_forward_and_FP32_reduction",
+    "checkpoint_epoch_boundary_resume"
+  ],
+  "conclusion": "No blocking implementation error identified in the three scoped mechanisms.",
+  "findings": [
+    {
+      "id": "loss_comparison_claim",
+      "location": "training-loop.sections: 损失分子、分母与样本权重",
+      "original_claim": "verify_accumulation 不仅比较 loss，也比较全部参数梯度与更新结果。",
+      "evidence": "Both train_window return values are discarded; only gradients and updated parameters are compared.",
+      "recommended_scope": "Compare gradients and updated parameters; do not claim a loss assertion."
+    },
+    {
+      "id": "selection_cast_order",
+      "location": "training-loop.sections: 有限性、裁剪与混合精度",
+      "original_claim": "输出转回 FP32 后才选择有效位。",
+      "evidence": "prediction[valid].to(compute_dtype) selects valid predictions before casting.",
+      "recommended_scope": "Select valid predictions, cast to FP32, then calculate errors and reduce."
+    },
+    {
+      "id": "all_state_comparison_claim",
+      "location": "shared-training-project.explanations: 255–279",
+      "original_claim": "递归对照下一轮之后的全部状态。",
+      "evidence": "Assertions compare result, model, optimizer and scheduler; post-continuation CPU RNG and generator states are not compared individually.",
+      "recommended_scope": "Enumerate metrics, sample order, model, optimizer and scheduler; distinguish RNG restoration from post-run RNG equality assertions."
+    },
+    {
+      "id": "output_numeric_comparison_claim",
+      "location": "content/foundations_p0.json: mixed precision shared-project paragraph",
+      "original_claim": "比较 FP32 与 CPU BF16 输出和梯度。",
+      "evidence": "Output dtype is asserted; losses and gradient relative error are recorded. No elementwise output discrepancy is measured.",
+      "recommended_scope": "Check output dtype and compare losses and gradients."
+    }
+  ],
+  "parent_fix_status": {
+    "reported_by_parent": "All four descriptions tightened without expanded tests.",
+    "independently_rechecked": false
+  },
+  "executed_probe": {
+    "execution": "Load definitions with __name__=read_only_review; one forward pass and torch.autograd.grad, no optimizer step.",
+    "device": "cpu",
+    "threads": 1,
+    "model_dtype": "float64",
+    "model_initialization_seed": 213,
+    "valid_scalar_count": 40,
+    "valid_training_scalar_count": 190,
+    "raw_parameter_gradient_norm": 2.4865735927347745,
+    "clip_threshold": 10.0,
+    "clipping_active": false,
+    "purpose": "Rule out gradient-clipping confounding in the fixed full-batch versus wrong-local-mean comparison."
+  },
+  "not_executed": [
+    "full_training_loop",
+    "CPU_BF16_rerun",
+    "checkpoint_resume_rerun",
+    "new_optimizer_step",
+    "recheck_parent_text_edits"
+  ],
+  "files_modified_during_review": [],
+  "artifact_only_followup": [
+    "reports/case-vla-independent-training-review.md",
+    "reports/case-vla-independent-training-review.json"
+  ]
+}

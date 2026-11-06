@@ -1,0 +1,76 @@
+{
+  "reviewed_sources": {
+    "score_code_sha256": "be763a3adf80417b8a4c93423dbb6f5b35e57dd12178806720d9d44f23317ec2",
+    "diffusion_code_sha256": "66df77732f567e7fe69f9092c7304349fdb90abba1b3e710fc37f7224a545bba",
+    "figure_sha256": "2be5ec97ae7c772799ade7df1b0cd3c4aefa2308dbe643130cfef3ff761e1331"
+  },
+  "extra_time_grid_checks": [
+    {
+      "path": "linear",
+      "r": 0.05,
+      "score_error": 1.1102230246251565e-16,
+      "continuity_error": 4.163336342344337e-17
+    },
+    {
+      "path": "linear",
+      "r": 0.2,
+      "score_error": 4.440892098500626e-16,
+      "continuity_error": 1.6653345369377348e-16
+    },
+    {
+      "path": "linear",
+      "r": 0.4,
+      "score_error": 1.7763568394002505e-15,
+      "continuity_error": 4.996003610813204e-16
+    },
+    {
+      "path": "linear",
+      "r": 0.75,
+      "score_error": 1.0658141036401503e-14,
+      "continuity_error": 4.440892098500626e-16
+    },
+    {
+      "path": "linear",
+      "r": 0.95,
+      "score_error": 3.552713678800501e-14,
+      "continuity_error": 5.293955920339377e-22
+    },
+    {
+      "path": "vp",
+      "r": 0.05,
+      "score_error": 4.440892098500626e-16,
+      "continuity_error": 2.7755575615628914e-17,
+      "forward_fp_error": 5.377642775528102e-16
+    },
+    {
+      "path": "vp",
+      "r": 0.2,
+      "score_error": 2.220446049250313e-16,
+      "continuity_error": 2.7755575615628914e-17,
+      "forward_fp_error": 2.220446049250313e-16
+    },
+    {
+      "path": "vp",
+      "r": 0.4,
+      "score_error": 1.1102230246251565e-16,
+      "continuity_error": 5.551115123125783e-17,
+      "forward_fp_error": 1.1102230246251565e-16
+    },
+    {
+      "path": "vp",
+      "r": 0.75,
+      "score_error": 3.552713678800501e-15,
+      "continuity_error": 2.220446049250313e-16,
+      "forward_fp_error": 6.661338147750939e-16
+    },
+    {
+      "path": "vp",
+      "r": 0.95,
+      "score_error": 6.750155989720952e-14,
+      "continuity_error": 2.271919407036514e-28,
+      "forward_fp_error": 2.220446049250313e-16
+    }
+  ],
+  "noise_endpoint_direct_velocity_finite": true,
+  "critical_issues": []
+}

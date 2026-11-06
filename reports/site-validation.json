@@ -1,0 +1,966 @@
+{
+  "html_pages": 158,
+  "lessons": 50,
+  "internal_targets_checked": 6370,
+  "errors": [],
+  "archives": [
+    {
+      "name": "embodied-ml-study-pack.zip",
+      "files": 380
+    },
+    {
+      "name": "embodied-ml-topics.zip",
+      "files": 72
+    }
+  ],
+  "pages": [
+    {
+      "path": "/404.html",
+      "ids": 6,
+      "links": 7,
+      "assets": 10
+    },
+    {
+      "path": "/guide/",
+      "ids": 7,
+      "links": 10,
+      "assets": 10
+    },
+    {
+      "path": "/",
+      "ids": 15,
+      "links": 61,
+      "assets": 10
+    },
+    {
+      "path": "/learn/action-chunk/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/action-chunk/exercise/",
+      "ids": 24,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/action-chunk/",
+      "ids": 14,
+      "links": 40,
+      "assets": 10
+    },
+    {
+      "path": "/learn/action-representation/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/action-representation/exercise/",
+      "ids": 25,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/action-representation/",
+      "ids": 15,
+      "links": 47,
+      "assets": 10
+    },
+    {
+      "path": "/learn/activation-init/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/activation-init/exercise/",
+      "ids": 23,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/activation-init/",
+      "ids": 15,
+      "links": 46,
+      "assets": 10
+    },
+    {
+      "path": "/learn/attention/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/attention/exercise/",
+      "ids": 25,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/attention/",
+      "ids": 18,
+      "links": 44,
+      "assets": 10
+    },
+    {
+      "path": "/learn/autograd/code/",
+      "ids": 10,
+      "links": 22,
+      "assets": 10
+    },
+    {
+      "path": "/learn/autograd/exercise/",
+      "ids": 23,
+      "links": 28,
+      "assets": 10
+    },
+    {
+      "path": "/learn/autograd/",
+      "ids": 22,
+      "links": 39,
+      "assets": 10
+    },
+    {
+      "path": "/learn/behavior-cloning/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/behavior-cloning/exercise/",
+      "ids": 25,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/behavior-cloning/",
+      "ids": 16,
+      "links": 47,
+      "assets": 10
+    },
+    {
+      "path": "/learn/checkpoint/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/checkpoint/exercise/",
+      "ids": 24,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/checkpoint/",
+      "ids": 16,
+      "links": 46,
+      "assets": 10
+    },
+    {
+      "path": "/learn/cnn-receptive-field/code/",
+      "ids": 16,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/cnn-receptive-field/exercise/",
+      "ids": 32,
+      "links": 33,
+      "assets": 10
+    },
+    {
+      "path": "/learn/cnn-receptive-field/",
+      "ids": 29,
+      "links": 75,
+      "assets": 11
+    },
+    {
+      "path": "/learn/conditioning-fusion/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/conditioning-fusion/exercise/",
+      "ids": 25,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/conditioning-fusion/",
+      "ids": 22,
+      "links": 46,
+      "assets": 10
+    },
+    {
+      "path": "/learn/contrastive-pretraining/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/contrastive-pretraining/exercise/",
+      "ids": 25,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/contrastive-pretraining/",
+      "ids": 16,
+      "links": 55,
+      "assets": 10
+    },
+    {
+      "path": "/learn/data-quality/code/",
+      "ids": 10,
+      "links": 25,
+      "assets": 10
+    },
+    {
+      "path": "/learn/data-quality/exercise/",
+      "ids": 25,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/data-quality/",
+      "ids": 15,
+      "links": 55,
+      "assets": 10
+    },
+    {
+      "path": "/learn/dataloader/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/dataloader/exercise/",
+      "ids": 25,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/dataloader/",
+      "ids": 15,
+      "links": 41,
+      "assets": 10
+    },
+    {
+      "path": "/learn/diffusion/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/diffusion/exercise/",
+      "ids": 26,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/diffusion/",
+      "ids": 20,
+      "links": 76,
+      "assets": 10
+    },
+    {
+      "path": "/learn/distributed-training/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/distributed-training/exercise/",
+      "ids": 23,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/distributed-training/",
+      "ids": 15,
+      "links": 42,
+      "assets": 10
+    },
+    {
+      "path": "/learn/distribution-shift/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/distribution-shift/exercise/",
+      "ids": 25,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/distribution-shift/",
+      "ids": 15,
+      "links": 42,
+      "assets": 10
+    },
+    {
+      "path": "/learn/embeddings/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/embeddings/exercise/",
+      "ids": 25,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/embeddings/",
+      "ids": 15,
+      "links": 42,
+      "assets": 10
+    },
+    {
+      "path": "/learn/evaluation/code/",
+      "ids": 10,
+      "links": 25,
+      "assets": 10
+    },
+    {
+      "path": "/learn/evaluation/exercise/",
+      "ids": 24,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/evaluation/",
+      "ids": 14,
+      "links": 42,
+      "assets": 10
+    },
+    {
+      "path": "/learn/execution-latency/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/execution-latency/exercise/",
+      "ids": 24,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/execution-latency/",
+      "ids": 23,
+      "links": 40,
+      "assets": 10
+    },
+    {
+      "path": "/learn/finetuning/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/finetuning/exercise/",
+      "ids": 25,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/finetuning/",
+      "ids": 18,
+      "links": 63,
+      "assets": 10
+    },
+    {
+      "path": "/learn/flow-matching/code/",
+      "ids": 16,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/flow-matching/exercise/",
+      "ids": 39,
+      "links": 35,
+      "assets": 10
+    },
+    {
+      "path": "/learn/flow-matching/",
+      "ids": 33,
+      "links": 76,
+      "assets": 12
+    },
+    {
+      "path": "/learn/generalization/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/generalization/exercise/",
+      "ids": 23,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/generalization/",
+      "ids": 15,
+      "links": 46,
+      "assets": 10
+    },
+    {
+      "path": "/learn/generative-policy/code/",
+      "ids": 10,
+      "links": 26,
+      "assets": 10
+    },
+    {
+      "path": "/learn/generative-policy/exercise/",
+      "ids": 26,
+      "links": 32,
+      "assets": 10
+    },
+    {
+      "path": "/learn/generative-policy/",
+      "ids": 14,
+      "links": 64,
+      "assets": 10
+    },
+    {
+      "path": "/learn/gradient-accumulation/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/gradient-accumulation/exercise/",
+      "ids": 23,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/gradient-accumulation/",
+      "ids": 27,
+      "links": 42,
+      "assets": 10
+    },
+    {
+      "path": "/learn/kv-cache-inference/code/",
+      "ids": 10,
+      "links": 25,
+      "assets": 10
+    },
+    {
+      "path": "/learn/kv-cache-inference/exercise/",
+      "ids": 24,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/kv-cache-inference/",
+      "ids": 15,
+      "links": 48,
+      "assets": 10
+    },
+    {
+      "path": "/learn/latent-variable-models/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/latent-variable-models/exercise/",
+      "ids": 23,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/latent-variable-models/",
+      "ids": 15,
+      "links": 45,
+      "assets": 10
+    },
+    {
+      "path": "/learn/losses/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/losses/exercise/",
+      "ids": 23,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/losses/",
+      "ids": 20,
+      "links": 43,
+      "assets": 10
+    },
+    {
+      "path": "/learn/matrix-grad/code/",
+      "ids": 10,
+      "links": 22,
+      "assets": 10
+    },
+    {
+      "path": "/learn/matrix-grad/exercise/",
+      "ids": 23,
+      "links": 28,
+      "assets": 10
+    },
+    {
+      "path": "/learn/matrix-grad/",
+      "ids": 17,
+      "links": 48,
+      "assets": 10
+    },
+    {
+      "path": "/learn/memory-checkpointing/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/memory-checkpointing/exercise/",
+      "ids": 23,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/memory-checkpointing/",
+      "ids": 15,
+      "links": 40,
+      "assets": 10
+    },
+    {
+      "path": "/learn/mixed-precision/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/mixed-precision/exercise/",
+      "ids": 23,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/mixed-precision/",
+      "ids": 15,
+      "links": 42,
+      "assets": 10
+    },
+    {
+      "path": "/learn/mlp/code/",
+      "ids": 16,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/mlp/exercise/",
+      "ids": 30,
+      "links": 34,
+      "assets": 10
+    },
+    {
+      "path": "/learn/mlp/",
+      "ids": 25,
+      "links": 66,
+      "assets": 11
+    },
+    {
+      "path": "/learn/modules/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/modules/exercise/",
+      "ids": 24,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/modules/",
+      "ids": 15,
+      "links": 43,
+      "assets": 10
+    },
+    {
+      "path": "/learn/multimodal/code/",
+      "ids": 12,
+      "links": 27,
+      "assets": 10
+    },
+    {
+      "path": "/learn/multimodal/exercise/",
+      "ids": 27,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/multimodal/",
+      "ids": 16,
+      "links": 73,
+      "assets": 10
+    },
+    {
+      "path": "/learn/multitask-gradients/code/",
+      "ids": 10,
+      "links": 25,
+      "assets": 10
+    },
+    {
+      "path": "/learn/multitask-gradients/exercise/",
+      "ids": 23,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/multitask-gradients/",
+      "ids": 15,
+      "links": 44,
+      "assets": 10
+    },
+    {
+      "path": "/learn/normalization/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/normalization/exercise/",
+      "ids": 26,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/normalization/",
+      "ids": 15,
+      "links": 44,
+      "assets": 10
+    },
+    {
+      "path": "/learn/numerical/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/numerical/exercise/",
+      "ids": 23,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/numerical/",
+      "ids": 15,
+      "links": 41,
+      "assets": 10
+    },
+    {
+      "path": "/learn/optimization/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/optimization/exercise/",
+      "ids": 23,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/optimization/",
+      "ids": 15,
+      "links": 46,
+      "assets": 10
+    },
+    {
+      "path": "/learn/partial-observability/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/partial-observability/exercise/",
+      "ids": 24,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/partial-observability/",
+      "ids": 14,
+      "links": 43,
+      "assets": 10
+    },
+    {
+      "path": "/learn/policy-gradient/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/policy-gradient/exercise/",
+      "ids": 26,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/policy-gradient/",
+      "ids": 17,
+      "links": 52,
+      "assets": 10
+    },
+    {
+      "path": "/learn/probability/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/probability/exercise/",
+      "ids": 23,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/probability/",
+      "ids": 28,
+      "links": 55,
+      "assets": 10
+    },
+    {
+      "path": "/learn/residual/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/residual/exercise/",
+      "ids": 26,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/residual/",
+      "ids": 16,
+      "links": 47,
+      "assets": 10
+    },
+    {
+      "path": "/learn/returns-bellman/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/returns-bellman/exercise/",
+      "ids": 24,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/returns-bellman/",
+      "ids": 25,
+      "links": 45,
+      "assets": 10
+    },
+    {
+      "path": "/learn/score-sde/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/score-sde/exercise/",
+      "ids": 25,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/score-sde/",
+      "ids": 16,
+      "links": 52,
+      "assets": 11
+    },
+    {
+      "path": "/learn/tensor/code/",
+      "ids": 10,
+      "links": 20,
+      "assets": 10
+    },
+    {
+      "path": "/learn/tensor/exercise/",
+      "ids": 23,
+      "links": 26,
+      "assets": 10
+    },
+    {
+      "path": "/learn/tensor/",
+      "ids": 15,
+      "links": 35,
+      "assets": 10
+    },
+    {
+      "path": "/learn/tokenizer-autoregressive/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/tokenizer-autoregressive/exercise/",
+      "ids": 24,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/tokenizer-autoregressive/",
+      "ids": 20,
+      "links": 45,
+      "assets": 10
+    },
+    {
+      "path": "/learn/train-infer-contract/code/",
+      "ids": 10,
+      "links": 26,
+      "assets": 10
+    },
+    {
+      "path": "/learn/train-infer-contract/exercise/",
+      "ids": 24,
+      "links": 32,
+      "assets": 10
+    },
+    {
+      "path": "/learn/train-infer-contract/",
+      "ids": 15,
+      "links": 48,
+      "assets": 10
+    },
+    {
+      "path": "/learn/training-diagnostics/code/",
+      "ids": 10,
+      "links": 24,
+      "assets": 10
+    },
+    {
+      "path": "/learn/training-diagnostics/exercise/",
+      "ids": 23,
+      "links": 30,
+      "assets": 10
+    },
+    {
+      "path": "/learn/training-diagnostics/",
+      "ids": 15,
+      "links": 44,
+      "assets": 10
+    },
+    {
+      "path": "/learn/training-loop/code/",
+      "ids": 12,
+      "links": 27,
+      "assets": 10
+    },
+    {
+      "path": "/learn/training-loop/exercise/",
+      "ids": 24,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/training-loop/",
+      "ids": 15,
+      "links": 53,
+      "assets": 11
+    },
+    {
+      "path": "/learn/transformer/code/",
+      "ids": 16,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/transformer/exercise/",
+      "ids": 40,
+      "links": 38,
+      "assets": 10
+    },
+    {
+      "path": "/learn/transformer/",
+      "ids": 26,
+      "links": 107,
+      "assets": 16
+    },
+    {
+      "path": "/learn/vision-preprocessing/code/",
+      "ids": 10,
+      "links": 23,
+      "assets": 10
+    },
+    {
+      "path": "/learn/vision-preprocessing/exercise/",
+      "ids": 24,
+      "links": 29,
+      "assets": 10
+    },
+    {
+      "path": "/learn/vision-preprocessing/",
+      "ids": 22,
+      "links": 46,
+      "assets": 10
+    },
+    {
+      "path": "/learn/vla-architecture/code/",
+      "ids": 10,
+      "links": 25,
+      "assets": 10
+    },
+    {
+      "path": "/learn/vla-architecture/exercise/",
+      "ids": 29,
+      "links": 31,
+      "assets": 10
+    },
+    {
+      "path": "/learn/vla-architecture/",
+      "ids": 18,
+      "links": 78,
+      "assets": 13
+    },
+    {
+      "path": "/practice/",
+      "ids": 7,
+      "links": 173,
+      "assets": 10
+    },
+    {
+      "path": "/topics/cnn/",
+      "ids": 0,
+      "links": 1,
+      "assets": 0
+    },
+    {
+      "path": "/topics/flow-matching/",
+      "ids": 0,
+      "links": 1,
+      "assets": 0
+    },
+    {
+      "path": "/topics/mlp/",
+      "ids": 0,
+      "links": 1,
+      "assets": 0
+    },
+    {
+      "path": "/topics/transformer/",
+      "ids": 0,
+      "links": 1,
+      "assets": 0
+    }
+  ]
+}

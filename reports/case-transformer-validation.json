@@ -1,0 +1,191 @@
+{
+  "course": "transformer",
+  "baseline": "0035390787417ffcd51de4ec0ec5636579853082",
+  "python": "3.12.14",
+  "torch": "2.15.0+cpu",
+  "device": "cpu",
+  "content_sha256": "adbd231ec69c8e66e47c1097a3d0833161456ffee4582428b43dde0e1500ab9a",
+  "checks": [
+    {
+      "id": "section-tokens-and-axes",
+      "sha256": "dbef94d79671747f9a56f4efb5dff7af6fb7fe3ea283286ea6e92d56b74f919b",
+      "returncode": 0,
+      "seconds": 1.136,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "id": "section-scaled-attention",
+      "sha256": "cff3a58a51b17e964e82f47c4c271012e44a77dc1f5d630d8e92707e19405e72",
+      "returncode": 0,
+      "seconds": 1.622,
+      "stdout": "Q/K/V 梯度最大误差: [2.7755575615628914e-17, 1.3877787807814457e-17, 0.0]\n",
+      "stderr": ""
+    },
+    {
+      "id": "section-ffn-and-gating",
+      "sha256": "d6e08eaf3499875294dea5bdf46d2bd6b0a75c23ae1a222e0c4a7cbe61071abd",
+      "returncode": 0,
+      "seconds": 1.679,
+      "stdout": "SwiGLU Jacobian 最大误差: 8.881784197001252e-16\n",
+      "stderr": ""
+    },
+    {
+      "id": "section-position-and-rope",
+      "sha256": "9b138a156f8cf8a7bca5d1c31a150996f3c0f95c3443aa3da91ec7f62cc99774",
+      "returncode": 0,
+      "seconds": 1.668,
+      "stdout": "rotated q/k: [0.8660254037844387, 0.49999999999999994] [6.123233995736766e-17, 1.0]\noriginal / relative / shifted: 0.5 0.5000000000000001 0.5000000000000003\ndistance 0,2,6,12: [1.0, 0.5, -1.0, 1.0]\n",
+      "stderr": ""
+    },
+    {
+      "id": "section-visibility-patterns",
+      "sha256": "d213511d3c4156b13f6d779bcd97840b2ea6ba656ca6ad420019be1a51f46ae1",
+      "returncode": 0,
+      "seconds": 1.622,
+      "stdout": "通过：相同投影与可见性下，更新后的表示改变了第二层读取权重。\n",
+      "stderr": ""
+    },
+    {
+      "id": "section-cross-attention",
+      "sha256": "c04a28baa6ae29c7a663c32d35aaa282b6da60bee4347235776b4acb9ad2a2c0",
+      "returncode": 0,
+      "seconds": 1.501,
+      "stdout": "S=3 weights/output: [[0.5, 0.25, 0.25], [0.25, 0.5, 0.25]] [[1.5, 1.5], [1.0, 2.5]]\nS=2 weights/output: [[0.6666666666666666, 0.3333333333333333], [0.3333333333333333, 0.6666666666666666]] [[1.3333333333333333, 1.3333333333333333], [0.6666666666666666, 2.6666666666666665]]\nsingle-key Q/K gradient maxima: 0.0 0.0\n",
+      "stderr": ""
+    },
+    {
+      "id": "section-cost-and-inference",
+      "sha256": "d9a7a2a49d28fd915bc69c61b77fb871de02b6f825a38f598e400ca8dcf73ccf",
+      "returncode": 0,
+      "seconds": 1.62,
+      "stdout": "全局 / 正确分块: [-0.46059413130568483, 3.0814812790117947] [-0.46059413130568483, 3.0814812790117947]\n直接平均局部输出的误差: 0.4215615101481398\n",
+      "stderr": ""
+    },
+    {
+      "id": "implementation-manual-mha",
+      "sha256": "3df66264bd55d13dabef6108751cc81c58a0b61972c272203f4d499cea26a8e3",
+      "returncode": 0,
+      "seconds": 1.715,
+      "stdout": "passed: forward, all six gradients, mask perturbation, batch isolation\nQ/K lengths: 3 4 ; output shape: (2, 3, 8)\n",
+      "stderr": ""
+    },
+    {
+      "id": "implementation-tiny-causal-lm",
+      "sha256": "0da3dcab68271f8533b41f2e94c9f0ca03b5644044e5d93a1c8a4ca99ed5f4d6",
+      "returncode": 0,
+      "seconds": 2.527,
+      "stdout": "TINY_LM_VALIDATION {\"block0_shapes\": {\"allowed\": [2, 1, 4, 4], \"attention_output\": [2, 4, 8], \"ffn_hidden\": [2, 4, 32], \"k\": [2, 2, 4, 4], \"merged\": [2, 4, 8], \"norm1\": [2, 4, 8], \"norm2\": [2, 4, 8], \"output\": [2, 4, 8], \"packed\": [2, 4, 24], \"per_head\": [2, 2, 4, 4], \"q\": [2, 2, 4, 4], \"residual1\": [2, 4, 8], \"scores\": [2, 2, 4, 4], \"v\": [2, 2, 4, 4], \"weights\": [2, 2, 4, 4]}, \"cache_errors\": {\"(1, 1, 1, 1)\": 4.440892098500626e-16, \"(1, 3)\": 6.661338147750939e-16, \"(2, 2)\": 0.0}, \"dimensions\": {\"B\": 2, \"D\": 8, \"H\": 2, \"T\": 4, \"layers\": 2}, \"future_input_gradient_max\": 0.0, \"greedy_sequences\": [[0, 1, 2, 3, 4], [3, 4, 5, 6, 0]], \"max_parameter_gradient_error\": 2.220446049250313e-15, \"parameter_gradient_groups\": 28, \"seed\": 19, \"synthetic_ce_after\": 0.007492298951543006, \"synthetic_ce_before\": 2.2914662556635736}\n",
+      "stderr": ""
+    },
+    {
+      "id": "implementation-layerwise-information-flow",
+      "sha256": "ea1e80a9a9b3aefdd0936a803f2399ba24bacd50b494cfcada7baf1e75c109f2",
+      "returncode": 0,
+      "seconds": 1.553,
+      "stdout": "causal future derivative: 0.0\nindirect future derivative: 0.02335226556510318\nfinite-difference error: 1.890090514655718e-12\npassed: reachability, Jacobian support, perturbation, prefix KV invariance\n",
+      "stderr": ""
+    },
+    {
+      "id": "lab-visibility-mask",
+      "sha256": "172de7e6942ed70a16f5460780368b227dbcd6a126dbec38325d34de0043eeb4",
+      "returncode": 0,
+      "seconds": 0.011,
+      "stdout": "passed: prefix isolation, bidirectional actions, causal actions, boundaries\n",
+      "stderr": ""
+    },
+    {
+      "id": "lab-safe-masked-attention",
+      "sha256": "7e452098ea72dfb34bc45adbeb4feead073282ebd6b4ced3698acd985ee915b3",
+      "returncode": 0,
+      "seconds": 1.527,
+      "stdout": "passed: selected-key oracle, gradients, empty rows, padding, broadcasting\n",
+      "stderr": ""
+    },
+    {
+      "id": "lab-cache-offset",
+      "sha256": "10a03b2192177b2e5b65a4e13155b8cd578cf0967e30dcab3cb84e9254cc85de",
+      "returncode": 0,
+      "seconds": 1.675,
+      "stdout": "passed: multi-chunk forward, gradients, history offset, immutable cache\n",
+      "stderr": ""
+    },
+    {
+      "id": "lab-multihead-self-attention",
+      "sha256": "c1aaf3df2de14a20cbc86998aef69605ba1f901b18f8675478ab36ef0e0499ab",
+      "returncode": 0,
+      "seconds": 1.555,
+      "stdout": "MHA_VALIDATION {\"checks\": [\"causal perturbation, future gradients and batch isolation\", \"padding values cannot leak; empty rows stay finite and zero\", \"all-padding output and all five input/parameter gradient groups are zero\", \"single-token analytic value readout\", \"invalid dimensions, mask dtype/shape and causal flag rejected\"], \"official_cases\": [{\"causal\": false, \"gradient_groups\": 5, \"heads\": 1, \"max_gradient_error\": 4.440892098500626e-16, \"max_output_error\": 5.551115123125783e-17, \"max_weight_error\": 8.326672684688674e-17}, {\"causal\": true, \"gradient_groups\": 5, \"heads\": 1, \"max_gradient_error\": 6.661338147750939e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 1.1102230246251565e-16}, {\"causal\": false, \"gradient_groups\": 5, \"heads\": 3, \"max_gradient_error\": 8.881784197001252e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 5.551115123125783e-17}, {\"causal\": true, \"gradient_groups\": 5, \"heads\": 3, \"max_gradient_error\": 7.771561172376096e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 1.1102230246251565e-16}], \"seed\": 71}\n",
+      "stderr": ""
+    },
+    {
+      "id": "lab-pre-ln-transformer-block",
+      "sha256": "e436bf9b00e8f16fee55881aa44d33d5e4d1c38d624dbcd9d26c0b18c58a0ad0",
+      "returncode": 0,
+      "seconds": 1.556,
+      "stdout": "BLOCK_VALIDATION {\"checks\": [\"whole-block causal perturbation, future gradients and batch isolation\", \"invalid values cannot leak through attention, norm or residual branches\", \"all-padding output and all thirteen input/parameter gradients are zero\", \"zero branches recover identity forward and identity input Jacobian\", \"FFN/epsilon and input contracts rejected when invalid\"], \"official_cases\": [{\"causal\": false, \"gradient_groups\": 13, \"max_gradient_error\": 1.1102230246251565e-15, \"max_output_error\": 4.440892098500626e-16}, {\"causal\": true, \"gradient_groups\": 13, \"max_gradient_error\": 8.881784197001252e-16, \"max_output_error\": 3.3306690738754696e-16}], \"seed\": 73}\n",
+      "stderr": ""
+    },
+    {
+      "id": "lab-rotary-position-offset",
+      "sha256": "09e45e32e6cf2a164e7a5b2356e1bba5f436ae6f33d2dfca2a55bcef974575f5",
+      "returncode": 0,
+      "seconds": 1.665,
+      "stdout": "passed: explicit rotations, norm, gradients, global offset, relative shift\n",
+      "stderr": ""
+    }
+  ],
+  "figures": [
+    {
+      "file": "content/figures/transformer-attention-flow.svg",
+      "sha256": "9919fcff81ab99da92e087ad6f7b196ad3225f7a593c79e8fc0ee798db4b5060",
+      "viewBox": "0 0 1020 810"
+    },
+    {
+      "file": "content/figures/transformer-cross-attention.svg",
+      "sha256": "53cda2cbb7da07d5b39d8b2a8a044a9e6210c4225ce0556ed016fb624569180a",
+      "viewBox": "0 0 980 750"
+    },
+    {
+      "file": "content/figures/transformer-original-encoder-decoder.svg",
+      "sha256": "eb9abe382910f97eb1ec595c1b5fbca70188d4585b228a1ea26eeb3ccf160cb3",
+      "viewBox": "0 0 1020 1020"
+    },
+    {
+      "file": "content/figures/transformer-preln-case.svg",
+      "sha256": "293e04f6337144f7fe101c3bd187749a0ae4220b522a45225588aa3836817819",
+      "viewBox": "0 0 1000 920"
+    },
+    {
+      "file": "content/figures/transformer-rope-pairs.svg",
+      "sha256": "c4f1d0d205bbd1b538b510e6ed9373c1f4324b4ee1654fa16f93c109fea60087",
+      "viewBox": "0 0 960 640"
+    },
+    {
+      "file": "content/figures/transformer-two-layer-reachability.svg",
+      "sha256": "10d3b5162adfbc5622c47203797c9ea9b3974e401c2ad711c6898badbfbb36f0",
+      "viewBox": "0 0 1020 700"
+    }
+  ],
+  "total": 16,
+  "passed": 16,
+  "math": {
+    "formula_count": 320,
+    "errors": []
+  },
+  "preservation": {
+    "section_ids_and_order": true,
+    "section_leads": true,
+    "original_five_labs": true,
+    "manual_mha_implementation": true,
+    "layerwise_information_flow_implementation": true,
+    "questions_and_pitfalls": true
+  },
+  "visual_review": {
+    "all_six_svg_xml_valid": true,
+    "all_six_rendered_with_inkscape": true,
+    "all_six_contact_sheet_reviewed": true,
+    "preln_residual_paths_rechecked_at_full_size": true,
+    "browser_layout_checked_by_this_agent": false
+  }
+}

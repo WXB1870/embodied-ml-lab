@@ -1,0 +1,359 @@
+[
+  {
+    "id": "generative-policy",
+    "number": 0,
+    "module": "posttraining",
+    "title": "生成式动作策略：ACT、Diffusion 与 Flow",
+    "subtitle": "从条件动作分布、训练目标到闭环重规划",
+    "minutes": 65,
+    "tags": [
+      "ACT",
+      "Diffusion Policy",
+      "Flow Policy",
+      "CVAE",
+      "Receding Horizon"
+    ],
+    "prerequisites": [
+      "behavior-cloning",
+      "action-chunk",
+      "latent-variable-models",
+      "diffusion",
+      "flow-matching"
+    ],
+    "objectives": [
+      "区分动作分布、条件编码、网络结构与执行协议，避免把一种 VLA 实现推广为通用结构",
+      "推导 ACT 的潜变量训练目标，解释测试时 \\(z=0\\) 与后验采样、条件均值的区别",
+      "为同一动作块构造 Diffusion 与 Flow 的正确训练目标和时间方向",
+      "使用有效位、解析采样对照和受扰动闭环，分别验证监督、数值积分与重规划接口"
+    ],
+    "why": "生成模型给出了动作分布的表示方法，策略还必须决定如何读取观测、把哪些时间点作为监督，以及生成后执行哪一段命令。这些接口一旦混淆，训练损失下降也不能证明机器人收到的是正确动作。",
+    "keyPoints": [
+      "Action Chunking 是联合预测多步动作的组织方式；ACT 是包含 CVAE 与 Transformer 的具体方法。",
+      "Diffusion 和 Flow 可以使用相同 \\([B,H,D]\\) 动作张量，但目标、时间方向与采样方程必须一致。",
+      "有效 Loss Mask 决定监督集合，不会自动修复跨位置网络对无效输入的读取。",
+      "生成迭代数 \\(N\\)、预测时域 \\(H\\) 与执行时域 \\(K\\) 是三个独立变量；计算成本还取决于模型调用次数 NFE。",
+      "解析场实验只能隔离验证数值与执行协议，不能替代真实策略训练和任务成功率评价。"
+    ],
+    "sections": [
+      {
+        "id": "conditional-action-distribution",
+        "title": "先定义策略条件与动作随机变量",
+        "body": [
+          "令 \\(k\\) 表示机器人决策时刻，\\(o_{\\le k}\\) 表示截至该时刻已获得的图像与状态，\\(l\\) 表示任务语言，\\(c_k=E(o_{\\le k},l)\\) 为条件表示。动作块 \\(A_k=[a_k,\\ldots,a_{k+H-1}]\\) 联合描述未来 \\(H\\) 个控制槽位；每个动作有 \\(D\\) 个分量，批量张量为 \\([B,H,D]\\)。这里约定第一个标签就是当前决策之后准备执行的命令。若数据集采用别的观测—命令记录顺序，必须先转换时间原点，不能只按数组长度对齐。",
+          "策略要学习的是 \\(p_\\theta(A_k\\mid c_k)\\)。固定方差单高斯回归把这一分布压缩为一个均值；潜变量、离散自回归、Diffusion 或 Flow 可以采用不同机制表达条件多模态性。使用 Transformer、CNN 或 MLP 是网络结构的选择；是否自回归、是否迭代采样则由概率分解和生成机制决定。这些维度可以组合，不能通过模型名字直接推断 Loss。",
+          "VLA 表示模型把视觉、语言与动作联系起来，并不限定动作必须是词表 token，也不限定动作头必须使用 Flow。模型可以把离散动作附在视觉语言序列后自回归生成，可以让独立动作生成器通过 Cross-Attention 读取条件，也可以使用固定前缀与双向噪声动作块。审查具体模型时，先标注输入可见性和输出随机变量，再判断对应目标。条件编码详见 [Transformer](#/learn/transformer) 与 [条件融合](#/learn/conditioning-fusion)。",
+          "以下用 \\(O\\) 表示历史观测长度，\\(H\\) 表示预测动作长度，\\(K\\) 表示每次重规划前执行的动作数，\\(N\\) 表示生成算法迭代次数。生成时间 \\(\\tau\\in[0,1]\\) 只描述噪声路径，不是机器人时间 \\(k\\)。一次生成迭代可以同时更新全部 \\(H\\) 个动作；\\(H=16\\) 并不表示生成器必须迭代 16 次。"
+        ],
+        "formula": "c_k=E(o_{\\leq k},l),\\qquad A_k=(a_k,\\ldots,a_{k+H-1})\\in\\mathbb R^{H\\times D},\\qquad A_k\\sim p_\\theta(\\cdot\\mid c_k)",
+        "comparison": {
+          "title": "动作组织、分布模型与执行方式分别判断",
+          "columns": [
+            "生成方式",
+            "主要监督或目标",
+            "单个动作块的生成"
+          ],
+          "rows": [
+            [
+              "确定性回归",
+              "按指定噪声模型解释的 L1 / L2",
+              "一次输出 \\(H\\times D\\) 个值"
+            ],
+            [
+              "ACT / 条件 VAE",
+              "重建项 + 潜变量后验到先验的 KL",
+              "给定条件与潜变量，并行读出动作查询"
+            ],
+            [
+              "Diffusion Policy",
+              "与调度器配套的噪声、数据或速度目标",
+              "多次更新整块噪声动作"
+            ],
+            [
+              "Flow Policy",
+              "概率路径上的条件速度回归",
+              "对整块动作积分 ODE"
+            ],
+            [
+              "离散动作自回归",
+              "移位后动作 token 的交叉熵",
+              "按指定顺序生成 token，再解码动作"
+            ]
+          ]
+        },
+        "takeaway": "先回答生成什么随机变量、给定哪些条件，再选择网络与执行接口。",
+        "lead": "比较动作生成方法之前，必须让它们描述同一个随机变量，并拥有可比的观测信息。动作块、历史窗口和生成迭代各有独立的时间含义。统一这些记号后，才能分清网络骨干、概率模型与执行接口的选择。"
+      },
+      {
+        "id": "act-conditional-latent-model",
+        "title": "ACT：动作块之上的条件潜变量模型",
+        "body": [
+          "动作分块本身只决定输出形状，不规定概率模型。ACT 进一步引入潜变量 \\(z\\in\\mathbb R^r\\)：\\(p_\\theta(A\\mid c)=\\int p_\\theta(A\\mid c,z)p(z)\\,dz\\)，通常取 \\(p(z)=\\mathcal N(0,I)\\)。训练时用近似后验 \\(q_\\phi(z\\mid A,s)\\) 编码示范动作块与本体状态 \\(s\\)；动作解码器则读取图像、状态、\\(z\\) 和各动作位置的查询。官方实现的后验编码器读取动作与 `qpos`，不应笼统写成所有模态都进入后验。",
+          "对数边缘似然的变分推导见 [潜变量与 VAE](#/learn/latent-variable-models)。在此取负号可得训练目标：",
+          "\\[\\mathbb E_q[-\\log p_\\theta(A\\mid c,z)]+D_{\\rm KL}(q_\\phi\\Vert p)\\]",
+          "如果重建分布是固定尺度 \\(b\\) 的独立 Laplace 分布，单坐标负对数似然为 \\(\\frac{|a-\\widehat a|}{b}+\\log(2b)\\)，因此 L1 重建具有明确的似然解释。ACT 代码使用 L1 与加权 KL；当 KL 权重 \\(\\beta\\) 不为 1、或重建项的平均方式改变时，应将其理解为相应加权的变分训练目标，不能继续宣称它等于未改动的标准 ELBO。",
+          "令 \\(q_\\phi=\\mathcal N(\\mu,\\operatorname{diag}(e^\\ell))\\)，\\(\\ell\\) 是对数方差，训练通过 \\(z=\\mu+\\exp(\\ell/2)\\odot\\epsilon\\)、\\(\\epsilon\\sim\\mathcal N(0,I)\\) 重参数化。KL 的第 \\(j\\) 项为 \\(\\frac12(\\mu_j^2+e^{\\ell_j}-1-\\ell_j)\\)：它同时惩罚均值偏离零，以及方差相对 1 过大或过小。\\(z\\) 不是一个供网络免费记住完整答案的无约束通道；KL 将其分布拉向部署可用的先验，但不能保证近似后验与先验完全匹配，也不能保证多模态示范被完整保留。",
+          "训练时后验读取示范 \\(A\\) 是变分推断的一部分；部署时没有示范答案，不能继续调用这条编码路径。ACT 的[官方模型实现](https://github.com/tonyzhaozh/act/blob/main/detr/models/detr_vae.py)在推理时明确设置 \\(z=0\\)，即标准高斯先验的均值，而非每次从先验随机采样，也不是从当前未知动作求出的后验均值。非线性解码器通常满足 \\(f(c,\\mathbb E[Z])\\ne\\mathbb E[f(c,Z)]\\)；例如 \\(f(z)=z^2\\)、\\(z\\sim\\mathcal N(0,1)\\) 时左侧为 0、右侧为 1。因此 \\(z=0\\) 不能自动被解释为“预测动作的条件均值”或“最可能动作”。",
+          "ACT、动作分块和 Temporal Ensembling 应分开理解：分块联合预测 \\(H\\) 步；CVAE 提供潜变量训练；Transformer 用查询读出动作；Temporal Ensembling 把不同时刻预测的、对应同一物理槽位的动作融合。它们可以作独立消融。融合还要求时间、坐标系与参考锚点一致，详见 [Action Chunking](#/learn/action-chunk)。",
+          "重建归约同样属于模型定义。ACT 原始 `policy.py` 将屏蔽后的 L1 在完整张量上取平均；本课演示采用有效标量均值。后者在填充比例变化时保持每个有效标量的相同归一化，前者可能随填充比例缩小重建项。两者都必须与 KL 的 \\(\\beta\\) 配套解释，不能改变分母却声称训练目标完全不变。"
+        ],
+        "formula": "\\begin{aligned}\\mathcal L_{\\rm ACT}&=\\mathbb E_{z\\sim q_\\phi}\\left[\\mathcal L_{\\rm rec}(A,f_\\theta(c,z))\\right]+\\beta D_{\\rm KL}\\left(q_\\phi\\|\\mathcal N(0,I)\\right)\\\\ z&=\\mu+\\exp(\\ell/2)\\odot\\epsilon,\\quad\\epsilon\\sim\\mathcal N(0,I)\\\\ D_{\\rm KL}&=\\frac12\\sum_{j=1}^{r}\\left(\\mu_j^2+e^{\\ell_j}-1-\\ell_j\\right)\\end{aligned}",
+        "takeaway": "ACT 的潜变量训练、并行动作查询和测试时 \\(z=0\\) 是具体设计；不能用“输出一个动作块”概括其全部机制。",
+        "lead": "联合预测一段动作，并没有指定如何表达示范中的多样性。ACT 将动作块放入条件潜变量模型，使训练时的动作信息能够指导潜在表示。沿 VAE 的后验、先验和解码器分工，可以解释它的训练目标与部署时的特定选择。"
+      },
+      {
+        "id": "diffusion-policy-objective",
+        "title": "Diffusion Policy：条件去噪对应动作联合分布",
+        "body": [
+          "先按训练统计量将物理动作转换为模型空间 \\(A\\)；归一化决定不同坐标的损失尺度，见 [动作表示](#/learn/action-representation)。对动作块采样独立标准高斯噪声 \\(\\epsilon\\)，并选择生成时间 \\(\\tau\\)，构造 \\(X_\\tau=\\alpha_\\tau A+\\sigma_\\tau\\epsilon\\)。对离散 DDPM，\\(\\alpha_\\tau\\)、\\(\\sigma_\\tau\\) 由对应噪声调度器给出；下面的最小实验使用连续余弦系数，仅用于统一接口与解析验证。",
+          "噪声预测模型接收 \\((X_\\tau,\\tau,c)\\)，输出与 \\(A\\) 相同的 \\([B,H,D]\\) 张量，监督目标为 \\(\\epsilon\\)。条件 \\(c\\) 包含可用图像历史、状态或语言；噪声加在动作变量上，并不意味着必须对观测图像也执行同一扩散过程。原始 Diffusion Policy 提供基于 CNN/U-Net 与 Transformer 的网络选项，说明去噪目标并不绑定某一种骨干。完整 DDPM 与 DDIM 推导见 [Diffusion](#/learn/diffusion)。",
+          "当 \\(\\epsilon\\) 的各坐标独立采样时，模型仍可学习相关的动作序列分布：相关性由联合条件去噪映射产生。Transformer 可以在 \\(H\\) 个噪声动作位置间双向交互；它看到的是同一噪声水平的 \\(X_\\tau\\)，而非未受噪声扰动的未来动作答案。每个生成迭代更新全部动作，不等于按物理时间顺序逐步执行或逐 token 自回归。",
+          "用两个相邻动作坐标作一个可解析例子：\\(A\\sim\\mathcal N(0,\\Sigma)\\)、\\(\\Sigma=\\left[\\begin{smallmatrix}1&0.8\\\\0.8&1\\end{smallmatrix}\\right]\\)，独立噪声 \\(\\epsilon\\sim\\mathcal N(0,I)\\)，\\(X=\\alpha A+\\sigma\\epsilon\\)，取 \\(\\alpha=0.8,\\sigma=0.6\\)。记 \\(Q=\\operatorname{Cov}(X)=\\alpha^2\\Sigma+\\sigma^2I\\)，则 \\(\\operatorname{Cov}(\\epsilon,X)=\\sigma I\\)。为求条件均值，令残差 \\(R=\\epsilon-\\sigma Q^{-1}X\\)，则 \\(\\operatorname{Cov}(R,X)=\\sigma I-\\sigma Q^{-1}Q=0\\)。R 与 X 联合 Gaussian，因此不相关意味着独立；又因 R 均值为零，\\(\\mathbb E[R\\mid X]=0\\)，于是 \\(\\mathbb E[\\epsilon\\mid X=x]=\\sigma Q^{-1}x\\)。",
+          "本例 \\(Q\\) 的非对角项不为零，其逆矩阵也有非对角项，因此第一个坐标的噪声预测会随第二个坐标的观测变化。独立的是加噪核，联合信息来自数据协方差与条件去噪映射。下面检验这个依赖及其 Jacobian；它是模型应学习的解析参照，不是一次网络训练的多峰覆盖证据。Gaussian 条件化与噪声回归的联系可结合 [Score 去噪恒等式](#/learn/score-sde?tab=theory&section=denoising-identity) 阅读。",
+          "令 \\(m_{bhi}\\) 为有效标量监督位，\\(M=\\sum_{b,h,i}m_{bhi}>0\\)。损失可写为有效集合上的平均平方误差。无效值允许是 NaN 时，实现必须先选择集合，再计算误差；把 NaN 的平方乘零不会消除污染。损失 Mask 只确定哪些输出受监督：若输入填充已经通过注意力或卷积影响有效输出，还要修复输入协议。终止后的未来是否有效往往只在训练标签中可知，不能把这种未来信息无条件交给部署时的条件编码器。",
+          "推理从噪声动作开始，用与训练参数化一致的调度器反复更新，然后反归一化并提取待执行的片段。\\(\\epsilon\\)、预测干净动作和 velocity 是不同参数化，转换依赖 \\(\\alpha_\\tau\\)、\\(\\sigma_\\tau\\) 及端点条件；调度器字段设错时，张量形状仍可能全部正确。不能只凭一次 forward 返回 \\([B,H,D]\\) 判断采样器接法无误。"
+        ],
+        "formula": "\\begin{aligned}X_\\tau&=\\alpha_\\tau A+\\sigma_\\tau\\epsilon,\\quad\\epsilon\\sim\\mathcal N(0,I)\\\\ \\mathcal L_{\\epsilon}&=\\mathbb E\\left[\\frac{1}{M}\\sum_{(b,h,i):m_{bhi}=1}\\left(\\epsilon_\\theta(X_\\tau,\\tau,c)_{bhi}-\\epsilon_{bhi}\\right)^2\\right]\\\\ M&=\\sum_{b,h,i}m_{bhi}>0\\end{aligned}",
+        "takeaway": "动作块、条件编码、预测目标和调度器需要共同定义，只有输出形状一致远远不够。",
+        "lead": "动作块也可以作为扩散模型的整体生成变量，由条件去噪逐渐恢复其中的结构。噪声坐标彼此独立，并不要求最终动作独立，关系由联合去噪网络学习。将前面扩散推导中的变量对应到动作张量后，训练目标、条件输入和采样器才能一一对齐。",
+        "code": "import torch\n\ntorch.set_default_dtype(torch.float64)\ncovariance = torch.tensor([[1., 0.8], [0.8, 1.]])\nalpha, sigma = 0.8, 0.6\nQ = alpha**2*covariance + sigma**2*torch.eye(2)\n\ndef mean_noise(x):\n    return sigma*torch.linalg.solve(Q, x)\n\nx = torch.tensor([0.4, -0.2], requires_grad=True)\njacobian = torch.autograd.functional.jacobian(mean_noise, x)\nexpected = sigma*torch.linalg.solve(Q, torch.eye(2))\ntorch.testing.assert_close(jacobian, expected)\nassert abs(jacobian[0, 1].item()) > 0.1\nx_changed = x.detach() + torch.tensor([0., 1.])\nchange = mean_noise(x_changed) - mean_noise(x.detach())\ntorch.testing.assert_close(change, expected[:, 1])\nclean_mean = alpha*covariance @ torch.linalg.solve(Q, x)\ntorch.testing.assert_close(alpha*clean_mean + sigma*mean_noise(x), x)\nprint(\"noise-prediction Jacobian:\", jacobian.tolist())\nprint(\"coordinate 1 changes when only coordinate 2 changes:\", change[0].item())\n",
+        "codeExplanation": "动作向量只有两个坐标，因此联合 Gaussian 的条件均值可直接用线性求解得到。Autograd 检查非对角 Jacobian，最后验证条件期望仍满足加噪等式 \\(\\alpha\\mathbb E[A\\mid X]+\\sigma\\mathbb E[\\epsilon\\mid X]=X\\)。实际序列可把 \\(H\\times D\\) 坐标展平理解，网络则用时序结构近似更复杂的非线性条件均值。"
+      },
+      {
+        "id": "flow-policy-time-conventions",
+        "title": "Flow Policy：相同张量，另一套时间与目标",
+        "body": [
+          "使用噪声到数据的线性路径时，令 \\(Z\\sim\\mathcal N(0,I)\\)、\\(\\tau\\sim\\operatorname{Uniform}(0,1)\\)，\\(X_\\tau=(1-\\tau)Z+\\tau A\\)，条件速度 \\(U=A-Z\\)。模型 \\(v_\\theta(X_\\tau,\\tau,c)\\) 通过有效位上的平方误差学习条件速度的回归解。最优回归解是给定 \\(X_\\tau\\)、\\(\\tau\\)、\\(c\\) 后的条件期望，而不是记忆某次配对端点的唯一速度；其与边缘连续性方程的关系见 [Flow Matching](#/learn/flow-matching)。",
+          "推理固定本次观测条件 \\(c\\)，令 \\(X_0=Z\\)，对 \\(\\frac{dX_\\tau}{d\\tau}=v_\\theta(X_\\tau,\\tau,c)\\) 从 0 积分到 1，得到整个动作块。若使用 Euler，每个步通常调用一次速度网络；Heun 的预测—校正通常调用两次。生成步数 \\(N\\) 与神经网络调用次数 NFE 应分开报告。减少 \\(N\\) 会同时改变离散化误差与时延，不能在未测量的情况下保证任务成功率单调变化。",
+          "时间方向属于接口，不属于模型名字。OpenPI 的[π₀ 官方代码](https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models/pi0.py)使用 \\(X_t=tZ+(1-t)A\\)、目标 \\(Z-A\\)，并在采样时从 \\(t=1\\) 走向 \\(t=0\\)。它与本课令 \\(\\tau=1-t\\) 的路径一致，但 \\(\\frac{dX}{d\\tau}=-\\frac{dX}{dt}\\)，速度符号与积分方向必须同时转换。只替换公式中的时间输入而保留旧 target 或正负步长，会得到不同甚至反向的流。",
+          "Flow Policy 可以接在独立条件编码器后，也可以让动作 token 读取视觉语言前缀。若固定前缀在所有层都不读取随 \\(\\tau\\) 变化的动作或时间调制，它的 \\(K\\)/\\(V\\) 可能复用；若存在上游依赖，下一次积分时缓存已不等价。这个结论来自计算依赖关系，不来自“同一张图像”这个表面事实，详见 [KV Cache](#/learn/kv-cache-inference) 和 Transformer 的多层信息流实验。",
+          "训练得到一个速度回归器，不会自动给出可直接调用的 \\(\\log\\pi(A\\mid c)\\)。如需做含概率比的策略优化，必须额外定义密度计算、扩展采样路径或适合该模型的目标。将负的 Flow MSE 当作动作 log-prob 会改变算法；这一限制在 [策略梯度](#/learn/policy-gradient) 中展开。"
+        ],
+        "formula": "\\begin{aligned}X_\\tau&=(1-\\tau)Z+\\tau A,\\qquad U=A-Z\\\\ \\mathcal L_{\\rm FM}&=\\mathbb E\\left[\\frac1M\\sum_{m_{bhi}=1}\\left(v_\\theta(X_\\tau,\\tau,c)_{bhi}-U_{bhi}\\right)^2\\right]\\\\ t&=1-\\tau,\\quad \\frac{dX}{dt}=Z-A,\\quad \\frac{dX}{d\\tau}=A-Z\\end{aligned}",
+        "takeaway": "阅读代码时同时核对路径端点、训练 target 和采样方向，不能仅根据变量名 \\(t\\) 推断约定。",
+        "lead": "保持相同条件与动作块接口，还可以改用速度回归建立生成过程。Flow Policy 的训练目标来自所选路径的时间导数，不能从输出形状或变量名称判断。把端点、速度和积分方向放在一起检查，能够识别不同仓库之间表面相似的时间约定。"
+      },
+      {
+        "id": "receding-horizon-protocol",
+        "title": "从动作分布到 Receding Horizon 执行",
+        "body": [
+          "在理想同步协议下，决策 \\(k\\) 先收集观测、构造 \\(c_k\\) 并生成 \\(A_k\\)，执行前 \\(K\\) 个命令，然后重新读取环境并预测新的动作块。\\(K\\le H\\)，剩余旧动作可以丢弃，也可以按明确的缓冲、时间戳和融合协议处理。物理状态在执行中改变，因此新的 \\(c_{k+K}\\) 与旧条件通常不同；重规划使策略能利用这一反馈，而不仅是重复调用相同生成器。",
+          "动作片段的起点由训练窗口决定。Diffusion Policy 某些官方实现把预测窗口起点放在观测历史的较早时刻，所以提取待执行片段时使用 `start=O−1`；它不是所有策略统一的公式。本课定义 \\(A_k\\) 从当前待执行命令开始，因此提取 `[:K]`。两种写法可以表示相同物理时间，只要各自的数据窗口一致；盲目复制 `O−1` 会在后一种约定下丢掉真正应该执行的命令。",
+          "相对动作还要保留参考语义。若每个动作是相对生成时刻末端位姿的目标偏移，消费第二项时不能改成相对最新位姿；若每项是单个控制周期的增量，则需要按时间累积。新的观测或坐标变换不会自动修正已经生成的动作语义。时间戳和参考锚点的完整讨论见 [动作分块](#/learn/action-chunk) 与 [动作表示](#/learn/action-representation)。",
+          "\\(K\\) 较小提供更频繁的反馈，但增加生成调用，并可能使多模态策略在重规划间切换模式；\\(K\\) 较大减少重算，却让后续命令依赖更旧的观测。生成延迟又会让动作返回时部分槽位已经过期。应把 NFE、端到端延迟、动作队列和成功率放在同一实验协议中分析，而不是把更短 \\(K\\) 或更少 \\(N\\) 当作无条件改进。",
+          "下面的闭环实验故意省略时延、执行器动态与安全约束，只使用二维积分器 \\(p\\leftarrow p+a\\)。在第二次命令后施加固定扰动，比较 \\(K=1\\) 与 \\(K=4\\) 的下一次动作是否利用了新状态。它验证的是反馈更新机制；真实系统的延迟与评估协议应继续阅读执行和评估章节。"
+        ],
+        "formula": "A_k=G_\\theta(Z,c_k),\\qquad (a_k,\\ldots,a_{k+K-1})=A_k[0:K],\\qquad c_{k+K}=E(o_{\\leq k+K},l)",
+        "takeaway": "闭环的关键是用新观测重新条件化；正确采样之后还必须正确解释时间和动作语义。",
+        "lead": "一个动作分布只有经过观测、生成、解码和消费，才成为与环境交互的策略。执行前几步后重新预测，使模型能够使用动作已经造成的新状态。这里先建立同步协议，再讨论窗口起点和延迟怎样改变实际执行含义。"
+      },
+      {
+        "id": "oracle-experiment-derivation",
+        "title": "解析对照：先隔离采样误差，再检查执行",
+        "body": [
+          "要区分模型误差、数值误差与执行协议错误，可以先替换为已知正确的条件生成场。设动作分布为 \\(A\\mid c\\sim\\mathcal N(\\mu(c),s^2I)\\)，本实验 \\(s=0.15\\)；\\(\\mu(c)\\) 是对二维目标的指数衰减增量序列。设 \\(Z\\) 与 \\(A\\) 条件独立，则线性 Flow 路径的均值为 \\(\\tau\\mu\\)，方差为 \\(q_\\tau=(1-\\tau)^2+\\tau^2s^2\\)。由联合高斯的条件期望，\\(\\operatorname{Cov}(A-Z,X_\\tau\\mid c)=\\tau s^2-(1-\\tau)\\)，除以 \\(q_\\tau\\) 后得到下面的解析速度。",
+          "这个速度的 ODE 精确解为 \\(X_\\tau=\\tau\\mu+\\sqrt{q_\\tau}Z\\)，因为对它求导得到 \\(\\mu+\\frac{q_\\tau^\\prime}{2q_\\tau}(X_\\tau-\\tau\\mu)\\)，恰好等于条件速度。因此末端样本为 \\(\\mu+sZ\\)，可以逐样本衡量数值积分误差，而不必把某个训练模型的输出当作真值。这里 \\(s>0\\) 使 \\(q_\\tau\\) 在整个区间为正，避免退化端点。",
+          "Diffusion 对照使用 \\(\\alpha_\\tau=\\cos(\\pi\\tau/2)\\)、\\(\\sigma_\\tau=\\sin(\\pi\\tau/2)\\)，由数据到噪声正向演化，采样则从 1 走向 0。令 \\(r_\\tau=\\alpha_\\tau^2s^2+\\sigma_\\tau^2\\)，联合高斯给出：",
+          "\\[\\mathbb E[\\epsilon\\mid X_\\tau]=\\frac{\\sigma_\\tau}{r_\\tau}(X_\\tau-\\alpha_\\tau\\mu)\\]",
+          "，以及：",
+          "\\[\\mathbb E[A\\mid X_\\tau]=\\mu+\\frac{\\alpha_\\tau s^2}{r_\\tau}(X_\\tau-\\alpha_\\tau\\mu)\\]",
+          "确定性 DDIM 以较小时间 \\(u\\) 的系数组合这两个估计：\\(X_u=\\alpha_u\\widehat A+\\sigma_u\\widehat\\epsilon\\)。代码直接使用两个条件均值，避免在 \\(\\alpha_\\tau=0\\) 端点用 \\(\\frac{X_\\tau-\\sigma_\\tau\\widehat\\epsilon}{\\alpha_\\tau}\\) 除零。",
+          "两种连续极限在这个各向同性高斯实验中都将同一 \\(Z\\) 送到 \\(\\mu+sZ\\)。有限步数时路径与算法不同，可以分别比较 \\(N=16\\) 和 \\(N=64\\) 对解析末端的误差；Heun 每步两次场评估，DDIM 每步一次估计，因此这不是同等算力下的模型优劣比较。换成学到的非线性场后，误差还受近似精度与路径光滑性影响，不能从这个例子推出更高阶方法在任何步数下都更好。",
+          "代码第一部分确实对两个小网络各执行一次优化，验证训练 target、有效梯度和参数更新；后面的采样与闭环显式使用解析场，不声称一次更新已经学会策略。损失测试中的无效 target 被设为 NaN，而网络输入保持有限。闭环部分进一步固定初始噪声为零，专门选择该高斯例子的均值轨迹，以免采样随机性掩盖观测更新的影响。"
+        ],
+        "formula": "\\begin{aligned}q_\\tau&=(1-\\tau)^2+\\tau^2s^2\\\\ v^*(x,\\tau,c)&=\\mu+\\frac{\\tau s^2-(1-\\tau)}{q_\\tau}(x-\\tau\\mu)\\\\ X_\\tau&=\\tau\\mu+\\sqrt{q_\\tau}\\,Z,\\quad X_1=\\mu+sZ\\\\ r_\\tau&=\\alpha_\\tau^2s^2+\\sigma_\\tau^2\\\\ \\widehat\\epsilon&=\\frac{\\sigma_\\tau}{r_\\tau}(X_\\tau-\\alpha_\\tau\\mu),\\quad\\widehat A=\\mu+\\frac{\\alpha_\\tau s^2}{r_\\tau}(X_\\tau-\\alpha_\\tau\\mu)\\end{aligned}",
+        "takeaway": "解析对照让每项误差有独立参照：先验证监督接口，再验证数值路径，最后验证闭环反馈。",
+        "lead": "完整策略失败时，学习误差与执行错误往往同时出现。用一个已知解析分布替换学习模型，可以保留采样和闭环接口，同时获得独立参照。这个实验先检查生成器是否按定义运输分布，再检查重规划是否利用新观测。"
+      },
+      {
+        "id": "training-and-diagnostic-links",
+        "title": "把后训练问题定位到具体机制",
+        "body": [
+          "若换成解析场仍无法在无扰动条件下执行预定轨迹，优先检查切片起点、动作单位、参考系、反归一化与执行时序；增加模型容量不解决这些协议错误。若解析场正确、学习场错误，再检查小数据过拟合、条件是否被模型使用、噪声目标及数值范围。如果离线预测正常但受扰动闭环失效，则需分析状态分布偏移、观测年龄和反馈周期。每一步替换都在排除一组具体假设。",
+          "SFT 或行为克隆说明数据和监督问题，LoRA、部分解冻与全量微调说明参数更新范围。无论选择哪种更新方式，都必须保留原动作生成器的输入、目标与采样语义；详见 [微调与 PEFT](#/learn/finetuning)。改模型时应分别验证条件梯度、有效输出梯度、一次实际参数变化和保存恢复，不以 `requires_grad=True` 代替更新证据。",
+          "本课的统一接口不要求不同策略使用完全相同的超参数。公平比较应固定数据划分、动作语义、可用观测和任务评价协议，并分别记录训练预算、采样 NFE、延迟与执行 \\(K\\)。ACT、Diffusion 和 Flow 在此提供不同建模选择，不能由一个二维高斯数值实验排名。更复杂的策略优化也必须先说明奖励、访问的数据分布和是否具有所需策略密度。"
+        ],
+        "takeaway": "用可解释的替换实验逐项定位误差，才能把模型训练和真实闭环表现联系起来。",
+        "lead": "不同策略共享部分工程接口，也保留各自的概率目标与采样假设。诊断时应逐层替换条件编码、生成场和执行协议，观察哪个替换消除了错误。这样才能把后训练范围、损失设计和闭环失败联系到明确的原因。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "observation history",
+        "shape": "\\([B,O,D_{\\rm obs}]\\)",
+        "meaning": "截至本次决策可用的历史；实际图像可另带视角、通道与空间轴"
+      },
+      {
+        "name": "condition \\(c\\)",
+        "shape": "\\([B,C]\\) 或 \\([B,L_c,C]\\)",
+        "meaning": "向量条件或带有效位的条件 token；由具体架构确定"
+      },
+      {
+        "name": "clean / noisy action",
+        "shape": "\\([B,H,D]\\)",
+        "meaning": "相同动作块的干净标签、噪声状态与模型输出"
+      },
+      {
+        "name": "generation time",
+        "shape": "\\([B]\\) → \\([B,1,1]\\)",
+        "meaning": "每个样本的生成时间；沿动作时间与坐标广播"
+      },
+      {
+        "name": "valid scalar mask",
+        "shape": "\\([B,H,D]\\)",
+        "meaning": "时间有效位与坐标有效位的交集，用于监督归约"
+      },
+      {
+        "name": "executed prefix",
+        "shape": "\\([B,K,D],\\ K\\le H\\)",
+        "meaning": "按本课时间原点提取的当前待执行片段"
+      }
+    ],
+    "code": {
+      "title": "统一动作目标、解析采样与受扰动重规划实验",
+      "source": "\"\"\"Conditional action objectives and closed-loop interfaces; CPU, no robot library.\nThe Gaussian samplers below are analytic oracles, not trained robot policies.\n\"\"\"\nimport math\nimport torch\nfrom torch import nn\n\ntorch.manual_seed(47)\ntorch.set_num_threads(1)\ndtype = torch.float64\nB, O, H, D = 3, 2, 4, 2\nhistory = torch.randn(B, O, D, dtype=dtype) * 0.2\ngoal = torch.tensor([[0.7,-0.5],[-0.2,0.4],[0.1,0.8]], dtype=dtype)\ncondition = torch.cat([history.flatten(1), goal], dim=-1)\n\n\ndef mean_plan(position, goal, horizon=H, gain=0.35):\n    # Each action is a displacement for one fixed control period.\n    decay = (1-gain) ** torch.arange(horizon, dtype=position.dtype)\n    return gain * (goal-position)[:, None, :] * decay[None, :, None]\n\n\ndef masked_mse(prediction, target, valid):\n    if prediction.shape != target.shape or valid.shape != target.shape or valid.dtype != torch.bool:\n        raise ValueError('expected matching [B,H,D] tensors and boolean validity')\n    if not bool(valid.any()):\n        raise ValueError('no supervised action coordinates')\n    p, y = prediction[valid], target[valid]  # select before subtracting / squaring\n    if not bool(torch.isfinite(p).all() & torch.isfinite(y).all()):\n        raise ValueError('nonfinite value at a supervised coordinate')\n    return (p-y).square().mean()\n\n\nclass ActionField(nn.Module):\n    def __init__(self, condition_dim):\n        super().__init__()\n        self.net = nn.Sequential(nn.Linear(H*D+condition_dim+1, 32),\n                                 nn.SiLU(), nn.Linear(32, H*D))\n\n    def forward(self, state, time, cond):\n        joined = torch.cat([state.flatten(1), time[:, None], cond], dim=-1)\n        return self.net(joined).reshape(-1, H, D)\n\n\n# 1. The same action shape supports different targets and different time directions.\nclean = mean_plan(history[:, -1], goal) + 0.15 * torch.randn(B,H,D,dtype=dtype)\nnoise = torch.randn_like(clean)\ntime = torch.tensor([0.2,0.5,0.8],dtype=dtype)\nt = time[:, None, None]\nvalid_time = torch.tensor([[1,1,1,1],[1,1,0,0],[1,1,1,0]],dtype=torch.bool)\nvalid_dim = torch.tensor([[1,1],[1,1],[1,0]],dtype=torch.bool)\nvalid = valid_time[..., None] & valid_dim[:, None, :]\nflow_state, flow_target = (1-t)*noise+t*clean, clean-noise\nalpha, sigma = (math.pi*t/2).cos(), (math.pi*t/2).sin()\ndiffusion_state, diffusion_target = alpha*clean+sigma*noise, noise\nfor name, state, target in [('flow',flow_state,flow_target),\n                             ('diffusion',diffusion_state,diffusion_target)]:\n    model = ActionField(condition.shape[-1]).to(dtype)\n    c = condition.detach().clone().requires_grad_()\n    prediction = model(state, time, c)\n    prediction.retain_grad()\n    # Nonfinite ignored targets are a loss-interface test; model inputs are finite.\n    labels = torch.where(valid, target, torch.full_like(target,float('nan')))\n    loss = masked_mse(prediction, labels, valid)\n    optimizer = torch.optim.AdamW(model.parameters(),lr=1e-3,weight_decay=0.0)\n    old = model.net[-1].weight.detach().clone()\n    loss.backward()\n    assert bool(torch.isfinite(c.grad).all()) and c.grad.norm() > 0\n    assert torch.equal(prediction.grad[~valid],torch.zeros_like(prediction.grad[~valid]))\n    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())\n    optimizer.step()\n    assert not torch.equal(old, model.net[-1].weight)\n    print(name,'one-step loss:',round(loss.item(),6),'target shape:',tuple(target.shape))\n\n# 2. Fixed condition: both samplers target N(mean, data_std^2 I).\n#    This oracle isolates numerical integration from network approximation.\nmu = mean_plan(history[:, -1],goal)\ndata_std = 0.15\nz = torch.randn_like(mu)\n\n\ndef velocity(x, t, mean):\n    variance = (1-t)**2 + (t*data_std)**2\n    coefficient = (-(1-t)+t*data_std**2) / variance\n    return mean + coefficient*(x-t*mean)\n\n\ndef sample_flow(mean, initial_noise, steps):\n    x, dt = initial_noise.clone(), 1.0/steps\n    for index in range(steps):\n        t = index*dt\n        first = velocity(x,t,mean)\n        second = velocity(x+dt*first,t+dt,mean)\n        x = x+0.5*dt*(first+second)  # Heun: two evaluations per step\n    return x\n\n\ndef sample_ddim(mean, initial_noise, steps):\n    x = initial_noise.clone()\n    for index in range(steps,0,-1):\n        t, s = index/steps, (index-1)/steps\n        a, b = math.cos(math.pi*t/2), math.sin(math.pi*t/2)\n        next_a, next_b = math.cos(math.pi*s/2), math.sin(math.pi*s/2)\n        variance = a*a*data_std**2+b*b\n        # Posterior means under this Gaussian test distribution.\n        eps_hat = b/variance*(x-a*mean)\n        clean_hat = mean+(a*data_std**2/variance)*(x-a*mean)\n        # This form also works at a=0 without division by a.\n        x = next_a*clean_hat+next_b*eps_hat  # deterministic DDIM, eta=0\n    return x\n\n\nexact = mu+data_std*z  # analytic endpoint for these isotropic Gaussian paths\nerrors = {}\nfor name, sampler in [('flow-Heun',sample_flow),('DDIM',sample_ddim)]:\n    errors[name] = []\n    for steps in (16,64):\n        estimate = sampler(mu,z,steps)\n        error = (estimate-exact).square().mean().sqrt().item()\n        errors[name].append(error)\n        print(name,'steps:',steps,'oracle endpoint RMSE:',round(error,7))\n    assert errors[name][1] < errors[name][0]\n# Do not interpret the two rows as an equal-compute benchmark: Heun uses 2N calls.\n\n# 3. Replanning changes which observations condition the next block.\n#    Zero initial noise deliberately selects the oracle's mean trajectory here.\n\ndef rollout(commit, steps=12):\n    position = torch.tensor([[-0.8,0.4]],dtype=dtype)\n    target = torch.tensor([[0.7,-0.5]],dtype=dtype)\n    trajectory, calls, clock = [position.clone()], 0, 0\n    while clock < steps:\n        mean = mean_plan(position,target)\n        plan = sample_flow(mean,torch.zeros_like(mean),16)\n        calls += 1\n        for action in plan[0,:min(commit,steps-clock)]:\n            position = position+action[None]\n            if clock == 1:  # one declared disturbance, after the second command\n                position = position+torch.tensor([[-0.5,0.3]],dtype=dtype)\n            trajectory.append(position.clone())\n            clock += 1\n    return torch.cat(trajectory), calls\n\n\nfrequent, calls1 = rollout(1)\nsparse, calls4 = rollout(4)\ntarget = goal[0]\n# At the first command after the disturbance, only K=1 has observed it.\nassert (frequent[3]-target).norm() < (sparse[3]-target).norm()\nprint('replanning calls K=1 / K=4:',calls1,calls4)\nprint('post-disturbance error K=1 / K=4:',\n      round((frequent[3]-target).norm().item(),6),round((sparse[3]-target).norm().item(),6))\nprint('passed: targets, valid-loss gradients, oracle samplers and receding horizon')\n",
+      "explanations": [
+        {
+          "lines": "1–42",
+          "text": "固定种子、CPU float64，条件由两帧二维状态与目标组成。`mean_plan` 给出固定控制周期的增量动作；`masked_mse` 先选有效坐标再计算误差。ActionField 只用于检验条件、时间与动作轴的训练连接。"
+        },
+        {
+          "lines": "45–73",
+          "text": "同一 clean/noise 构造 Flow 与 Diffusion 的不同输入和 target。时间与坐标有效位组成 \\([B,H,D]\\)，无效 NaN 只出现在 Loss 标签；两个网络各完成一次反传与 AdamW 更新，并检查条件梯度、无效输出零梯度与实际参数变化。"
+        },
+        {
+          "lines": "75–122",
+          "text": "从这里改用明确写出的解析高斯场，不使用刚才的一步训练模型。Flow 的 Heun 与确定性 DDIM 各自从同一噪声生成，分别对照精确末端 \\(\\mu+sZ\\)。64 步误差下降是这个固定实验的事实；调用次数不同，不能解释成模型性能排名。"
+        },
+        {
+          "lines": "124–153",
+          "text": "二维积分器中每项动作都是一次位移，第二次执行后施加固定扰动。\\(K=1\\) 会在下一命令前读到新状态，\\(K=4\\) 仍播放旧动作块。使用零噪声是为了隔离反馈时机，真实随机采样策略不应据此一律把噪声设为零。"
+        }
+      ],
+      "expected": "断言验证有效监督、梯度与参数更新。固定种子下，Flow-Heun 的解析末端 RMSE 从约 0.0031192（16 步）降到 0.0002315（64 步）；DDIM 从约 0.0425212 降到 0.0114388。12 次物理执行分别触发 12 次和 3 次重规划；扰动后下一命令的目标误差约为 0.859409 与 1.063493。这些是合成解析例的输出，不代表真实策略训练、成功率或同算力比较。"
+    },
+    "exercise": {
+      "title": "从对数方差计算 ACT 的高斯 KL",
+      "runtime": "python",
+      "prompt": "实现 `diagonal_gaussian_kl(mu, logvar)`。输入等长、非空的数值列表，分别表示均值 \\(\\mu\\) 和对数方差 \\(\\ell\\)；返回 \\(\\mathcal N(\\mu,\\operatorname{diag}(e^\\ell))\\) 到 \\(\\mathcal N(0,I)\\) 的 KL 总和。输入长度不符或包含非有限值时抛出 `ValueError`。注意 `logvar` 是对数方差，不是对数标准差。",
+      "starter": "import math\n\ndef diagonal_gaussian_kl(mu, logvar):\n    # TODO: 按维度求 KL，再求和\n    raise NotImplementedError\n",
+      "solution": "import math\n\ndef diagonal_gaussian_kl(mu, logvar):\n    if not mu or len(mu) != len(logvar):\n        raise ValueError('expected equal, nonempty vectors')\n    if not all(math.isfinite(x) for x in list(mu)+list(logvar)):\n        raise ValueError('nonfinite distribution parameter')\n    return 0.5 * sum(m*m + math.exp(v) - 1.0 - v for m,v in zip(mu,logvar))\n",
+      "tests": "assert diagonal_gaussian_kl([0.,0.], [0.,0.]) == 0.\n# In one dimension, mean=1 and standard deviation=2.\nexpected = 0.5 * (4.0-math.log(4.0))\nassert math.isclose(diagonal_gaussian_kl([1.], [math.log(4.)]), expected)\nassert math.isclose(diagonal_gaussian_kl([-1.], [math.log(4.)]), expected)\n# Independent dimensions contribute additively.\nassert math.isclose(diagonal_gaussian_kl([1.,-1.], [0.,0.]), 1.)\nfor mu, lv in [([],[]), ([0.],[0.,0.]), ([float('nan')],[0.])]:\n    try:\n        diagonal_gaussian_kl(mu,lv)\n        raise AssertionError('invalid parameters must be rejected')\n    except ValueError:\n        pass\nprint('passed: prior equality, variance convention and independent-coordinate KL')\n",
+      "hints": [
+        "标准差为 2 时，方差为 4，`logvar` 应是 log(4)。",
+        "零均值单位方差应得到 0；\\(\\mu\\) 的正负不改变到标准正态的 KL。"
+      ],
+      "explanation": "独立高斯的 log-density 之差在 \\(q\\) 下取期望后，每维得到 \\(\\frac12(\\mu^2+\\sigma^2-1-\\log\\sigma^2)\\)。使用 `exp(logvar)` 还原方差；重参数化时才使用 `exp(logvar/2)`。本题只计算分布 KL，不含 Batch 平均、重建分母或 \\(\\beta\\)，这些归约应由训练目标另行指定。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 `training_pair(actions, noise, time, family)` 与 `masked_policy_mse(pred, target, valid)`。actions/noise 为相同形状的有限浮点 \\([B,H,D]\\)，time 为 \\([B]\\) 且在 [0,1]；family 为 flow 或 diffusion。Flow 使用噪声→数据直线，Diffusion 使用 \\(\\alpha=\\cos(\\pi\\tau/2)\\)、\\(\\sigma=\\sin(\\pi\\tau/2)\\) 并预测噪声。Loss 的 valid 为布尔 \\([B,H,D]\\)，先选有效位再计算 MSE；空监督、非有限有效值和非法形状应报错。",
+      "starter": "import math\nimport torch\n\ndef training_pair(actions, noise, time, family):\n    raise NotImplementedError\n\ndef masked_policy_mse(pred, target, valid):\n    raise NotImplementedError\n",
+      "solution": "import math\nimport torch\n\ndef training_pair(actions, noise, time, family):\n    if (actions.ndim != 3 or actions.shape != noise.shape\n            or time.shape != actions.shape[:1]):\n        raise ValueError('shape mismatch')\n    if not all(bool(torch.isfinite(x).all()) for x in (actions, noise, time)):\n        raise ValueError('nonfinite training input')\n    if bool(((time < 0) | (time > 1)).any()):\n        raise ValueError('time outside [0,1]')\n    t = time[:, None, None]\n    if family == 'flow':\n        return (1-t)*noise+t*actions, actions-noise\n    if family == 'diffusion':\n        return (math.pi*t/2).cos()*actions+(math.pi*t/2).sin()*noise, noise\n    raise ValueError('unknown family')\n\ndef masked_policy_mse(pred, target, valid):\n    if (pred.ndim != 3 or pred.shape != target.shape\n            or valid.shape != pred.shape or valid.dtype != torch.bool):\n        raise ValueError('shape or mask type mismatch')\n    if not bool(valid.any()):\n        raise ValueError('no supervised coordinates')\n    p, y = pred[valid], target[valid]\n    if not bool(torch.isfinite(p).all() & torch.isfinite(y).all()):\n        raise ValueError('nonfinite supervised coordinate')\n    return (p-y).square().mean()\n",
+      "tests": "torch.manual_seed(59)\na = torch.randn(2,3,2,dtype=torch.float64)\nz = torch.randn_like(a)\nt = torch.tensor([0.,1.],dtype=torch.float64)\nxf, uf = training_pair(a,z,t,'flow')\nxd, eps = training_pair(a,z,t,'diffusion')\ntorch.testing.assert_close(xf[0],z[0])\ntorch.testing.assert_close(xf[1],a[1])\ntorch.testing.assert_close(xd[0],a[0])\ntorch.testing.assert_close(xd[1],z[1])\ntorch.testing.assert_close(uf,a-z)\ntorch.testing.assert_close(eps,z)\n# Interior scalar example: a=2,z=-2,t=1/4 gives flow x=-1,target=4.\none = torch.tensor([[[2.]]],dtype=torch.float64)\nstate, target = training_pair(one,-one,torch.tensor([.25]),'flow')\ntorch.testing.assert_close(state,-one/2)\ntorch.testing.assert_close(target,2*one)\np = torch.tensor([[[1.,3.],[float('nan'),float('nan')]]],requires_grad=True)\ny = torch.tensor([[[0.,1.],[float('nan'),float('nan')]]])\nvalid = torch.tensor([[[True,True],[False,False]]])\nloss = masked_policy_mse(p,y,valid)\ntorch.testing.assert_close(loss,torch.tensor((1.**2+2.**2)/2))\nloss.backward()\ntorch.testing.assert_close(p.grad,torch.tensor([[[1.,2.],[0.,0.]]]))\nbad_calls = [lambda: training_pair(a,z,torch.tensor([-1.,.5]),'flow'),\n             lambda: training_pair(a,z,t,'unknown'),\n             lambda: training_pair(a,z,t[:,None],'flow'),\n             lambda: masked_policy_mse(p,y,torch.zeros_like(valid)),\n             lambda: masked_policy_mse(p,torch.full_like(y,float('nan')),valid),\n             lambda: masked_policy_mse(p,y,valid.float())]\nfor fn in bad_calls:\n    try:\n        fn()\n        raise AssertionError('invalid input must be rejected')\n    except ValueError:\n        pass\nprint('passed: endpoint direction, interior target, analytic gradient and invalid supervision')\n",
+      "hints": [
+        "先按 family 写出端点：Flow 在 0 是噪声，在 1 是数据；本题 Diffusion 正向约定相反。",
+        "把 \\([B]\\) 时间扩为 \\([B,1,1]\\)，避免错误广播到动作轴。",
+        "无效 NaN 需要在减法前排除，手算有效坐标的梯度可同时检查分母与 Mask。"
+      ],
+      "explanation": "同一输入形状并不意味着相同监督。端点测试排除时间方向错误，内部标量例检查速度 target；手算损失与梯度排除有效分母或屏蔽阶段错误。这里仅定义噪声构造与损失，不提供自动选择采样器的逻辑；部署仍要使用相应生成方程。"
+    },
+    "pitfalls": [
+      {
+        "title": "把 ACT 等同于一次预测多步动作",
+        "detail": "分块只规定输出组织。ACT 还包含条件潜变量训练、并行查询与特定推理选择；这些组成部分应分别理解和消融。"
+      },
+      {
+        "title": "把 \\(z=0\\) 当成任意解码器的条件均值",
+        "detail": "非线性函数与期望通常不交换。零潜变量是具体推理策略，不是动作条件均值或 MAP 的通用公式。"
+      },
+      {
+        "title": "沿用变量 \\(t\\)，却反转路径而没有改 target",
+        "detail": "检查 \\(t=0\\)、\\(t=1\\) 各对应什么分布，再对实际路径求导。时间反向时速度与积分步长要一致变换。"
+      },
+      {
+        "title": "把训练未来有效位直接提供给在线条件",
+        "detail": "回合何时结束可能尚不可知。区分 Loss 的监督有效位与部署确实可获取的输入有效位。"
+      },
+      {
+        "title": "把解析场的数值输出当成学到策略的结果",
+        "detail": "本课只有一次优化接口验证，采样和闭环使用已知高斯场。网络近似、真实多模态数据与任务成功率需要另外训练和评价。"
+      },
+      {
+        "title": "固定 \\(N\\)，却忽略 NFE 和动作时间",
+        "detail": "Heun 通常每步两次模型调用；不同模型单次调用成本也不同。\\(H\\)、\\(K\\)、\\(N\\)、时延和控制周期应分别记录。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "ACT 原论文：Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware",
+        "url": "https://arxiv.org/abs/2304.13705"
+      },
+      {
+        "title": "ACT 官方模型：后验编码、重参数化与零潜变量推理",
+        "url": "https://github.com/tonyzhaozh/act/blob/main/detr/models/detr_vae.py"
+      },
+      {
+        "title": "ACT 官方损失：L1、Padding 归约与 KL 权重",
+        "url": "https://github.com/tonyzhaozh/act/blob/main/policy.py"
+      },
+      {
+        "title": "Diffusion Policy 原论文：联合动作生成与滚动执行",
+        "url": "https://arxiv.org/abs/2303.04137"
+      },
+      {
+        "title": "Diffusion Policy 官方图像策略：条件、时间窗口与执行切片",
+        "url": "https://github.com/real-stanford/diffusion_policy/blob/main/diffusion_policy/policy/diffusion_unet_image_policy.py"
+      },
+      {
+        "title": "OpenPI 官方 π₀ 模型：反向时间约定与前缀缓存",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models/pi0.py"
+      },
+      {
+        "title": "Flow Matching for Generative Modeling",
+        "url": "https://arxiv.org/abs/2210.02747"
+      },
+      {
+        "title": "DDIM：Denoising Diffusion Implicit Models",
+        "url": "https://arxiv.org/abs/2010.02502"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "ACT 训练时后验读取了示范动作，但部署设置 \\(z=0\\)。这是否必然是标签泄漏？\\(z=0\\) 是否就是最可能动作？",
+        "answer": [
+          "后验读取示范是变分训练的一部分；部署去掉后验路径，使用先验或指定潜变量，是该模型的生成协议。真正的问题是训练与部署潜变量分布是否足够匹配，而不是一看到训练编码器使用标签就断定实现错误。必须检查部署没有继续读取未知动作。",
+          "\\(z=0\\) 是标准高斯先验的均值。通过非线性动作解码器后，它不必等于动作的条件均值，也不必是动作密度最大处。应将其描述为 ACT 采用的确定性推理选择，并通过实际任务评估；KL 不能为这一点提供无条件性能保证。"
+        ],
+        "codeFocus": "`diagonal_gaussian_kl`；ACT 官方 `detr_vae.py` 的训练与推理分支。",
+        "acceptance": [
+          "区分训练后验、部署先验与未知动作输入。",
+          "能用非线性函数的简单反例否定 \\(f(\\mathbb E[Z])=\\mathbb E[f(Z)]\\)。"
+        ]
+      },
+      {
+        "question": "一个实现把 \\(X_t\\) 从 \\((1-t)Z+tA\\) 改成 \\(tZ+(1-t)A\\)，但保持监督目标为 \\(A-Z\\) 并从 \\(t=1\\) 积分到 \\(t=0\\)，会发生什么？",
+        "answer": [
+          "新的路径对 \\(t\\) 的导数是 \\(Z-A\\)。保留旧 target 会让模型学习反号速度；再以负 dt 从 1 积分到 0，二者不匹配。输入端点看似正确，训练目标和生成方程却不再对应。",
+          "写出两个端点、对路径求导，再同步改变 target 与积分方向。代码中的端点测试只能检查 \\(X_t\\) 的方向，仍需用内部时刻的已知速度或解析末端检验完整组合。"
+        ],
+        "codeFocus": "`training_pair` 的 Flow 分支及 oracle velocity/`sample_flow` 的末端对照。",
+        "acceptance": [
+          "正确写出新速度 \\(Z-A\\)。",
+          "解释为何 shape 或端点测试不足以独立证明采样正确。"
+        ]
+      },
+      {
+        "question": "为什么模型返回 \\(H\\) 步正确动作后，执行 `[:K]` 与 `[O−1:O−1+K]` 不能随意互换？",
+        "answer": [
+          "数组位置需要对应绝对物理时间。若标签起点就是当前待执行命令，前 \\(K\\) 步应从 0 开始；若预测窗口包含历史对齐的动作，当前槽位可能在 `O−1`。切片的正确性依赖窗口起点，而非某个模型名字。",
+          "构造带明确时间编号的单条轨迹，记录每个图像、状态与动作的采集/生效时刻，核对当前观测生成的首条命令。闭环还应处理生成期间已经过期的槽位与动作参考锚点。"
+        ],
+        "codeFocus": "rollout 的 `mean_plan` 与 `plan[:commit]`；与 action-chunk 的编号窗口实验配合。",
+        "acceptance": [
+          "说明两种切片各自成立的时间约定。",
+          "提出以物理时间而非 shape 验证接口的办法。"
+        ]
+      }
+    ],
+    "lead": "生成模型能够表示多种可能的动作，但一个可执行策略还必须说明条件来自何时、输出包含哪些命令，以及何时重新观察环境。ACT、Diffusion 与 Flow 采用不同的分布表示和训练目标，却都要回答这些接口问题。本章承接动作表示、时间对齐和生成建模，在统一的动作块记号下分析各类策略，再通过解析采样与闭环对照区分模型、求解器和执行协议的影响。"
+  }
+]

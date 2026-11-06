@@ -1,0 +1,272 @@
+{
+  "scope": "Root-owned 12 lessons only; other review reports cover remaining 37 lessons.",
+  "course_count": 12,
+  "sections": 104,
+  "records": [
+    {
+      "id": "contrastive-pretraining",
+      "title": "图文对比学习",
+      "source": "content/architecture_p0.json",
+      "status": "mechanism-expanded",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "从向量范数的微分推导单位化 Jacobian；加入双向对比损失的 2×2 算例。",
+      "retained": "保留假负例、多正样本和冻结编码器的成熟分析。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "id": "tokenizer-autoregressive",
+      "title": "分词、自回归与标签对齐",
+      "source": "content/architecture_p0.json",
+      "status": "introductions-and-reviewed",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "重写章节导入并为每节建立问题衔接。",
+      "retained": "保留动作离散化误差、自回归条件分解、标签右移与采样代码；未扩展成 tokenizer 百科。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "id": "kv-cache-inference",
+      "title": "KV Cache 与增量计算",
+      "source": "content/architecture_p0.json",
+      "status": "mechanism-expanded",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "添加 P=3、Q=2 时非方形缓存 Mask 的显式允许矩阵，说明全局位置与局部 tril 的差别。",
+      "retained": "保留缓存有效性、GQA/MQA 内存估算及逐 token 对照实现。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "id": "vision-preprocessing",
+      "title": "视觉预处理与坐标变换",
+      "source": "content/architecture_p0.json",
+      "status": "introductions-and-reviewed",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "逐节补充几何变换、数值契约与训练部署一致性的引导。",
+      "retained": "保留已充分展开的 resize/crop 坐标变换、像素归一化与数据泄漏分析。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "id": "conditioning-fusion",
+      "title": "条件注入：拼接、FiLM 与 AdaLN",
+      "source": "content/architecture_p0.json",
+      "status": "introductions-and-reviewed",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "在拼接、Cross-Attention 和调制之前建立条件输入的作用与比较依据。",
+      "retained": "保留多层动态条件、掩码与条件丢弃实验。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "id": "partial-observability",
+      "title": "部分观测与记忆",
+      "source": "content/vla_p0.json",
+      "status": "mechanism-expanded-and-reordered",
+      "sections": 7,
+      "chapter_introduction": true,
+      "section_introductions": 7,
+      "changes": "先解释相同位置但速度不同的状态混叠，再介绍 belief；补充两状态 Bayes 更新、PyTorch GRU 门方程及逐参数梯度复核。",
+      "retained": "保留有限历史与完整 belief 的区别及 padding/reset 工程边界。",
+      "section_order": [
+        "0",
+        "2",
+        "1",
+        "3",
+        "4",
+        "5",
+        "6"
+      ]
+    },
+    {
+      "id": "distribution-shift",
+      "title": "分布偏移与 DAgger",
+      "source": "content/vla_p0.json",
+      "status": "introductions-and-reviewed",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "以训练采样分布与闭环访问分布的差别串联各节。",
+      "retained": "保留 occupancy、误差累积与数据聚合条件的既有推导，未作机器人性能外推。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    {
+      "id": "returns-bellman",
+      "title": "回报与 Bellman 方程",
+      "source": "content/vla_p0.json",
+      "status": "mechanism-expanded",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "通过条件期望分解推导 Bellman 递推；两状态链的闭式解、线性求解和折扣和互相验证。",
+      "retained": "保留 TD、GAE 与终止/截断等成熟内容。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "added-0",
+        "5",
+        "6"
+      ]
+    },
+    {
+      "id": "policy-gradient",
+      "title": "策略梯度",
+      "source": "content/vla_p0.json",
+      "status": "mechanism-expanded",
+      "sections": 10,
+      "chapter_introduction": true,
+      "section_introductions": 10,
+      "changes": "展开轨迹似然与 score-function 推导，解释删去过去奖励的条件；穷举两步轨迹验证 reward-to-go；加入 PPO 四种分支手算表。",
+      "retained": "保留基线无偏性、连续密度和重要性采样限制。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9"
+      ]
+    },
+    {
+      "id": "execution-latency",
+      "title": "动作执行与延迟",
+      "source": "content/vla_p0.json",
+      "status": "introductions-and-reviewed",
+      "sections": 7,
+      "chapter_introduction": true,
+      "section_introductions": 7,
+      "changes": "建立规划时刻、观测时间戳、执行频率与延迟之间的连续叙事。",
+      "retained": "保留闭环对齐、异步执行与队列示例；没有把模拟时间误差包装成实机结果。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+      ]
+    },
+    {
+      "id": "train-infer-contract",
+      "title": "训练与推理一致性",
+      "source": "content/vla_p0.json",
+      "status": "introductions-and-reviewed",
+      "sections": 8,
+      "chapter_introduction": true,
+      "section_introductions": 8,
+      "changes": "以恢复训练目标对应的推理计算为主线补齐所有导入。",
+      "retained": "保留 checkpoint、统计量、接口契约与 fresh-process 恢复的既有验证。",
+      "section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "end-to-end-experiment"
+      ]
+    },
+    {
+      "id": "transformer",
+      "title": "Transformer：注意力、残差与序列建模",
+      "source": "content/topics/transformer.json",
+      "status": "mechanism-expanded-and-reordered",
+      "sections": 16,
+      "chapter_introduction": true,
+      "section_introductions": 16,
+      "changes": "从 QKV 匹配→缩放与手算→多头→FFN→Block 再到信息流；补齐 Block 前向和张量形状、重复层重新形成注意力的验证；Teacher Forcing 移到 Encoder/Decoder 后。",
+      "retained": "保留协方差缩放、Softmax Jacobian、多层泄漏、KV Cache 与完整手写练习。将 QK 的秩进阶分析后移并去重；LN Jacobian 通过正文链接复用。",
+      "section_order": [
+        "tokens-and-axes",
+        "qkv-projections",
+        "scaled-attention",
+        "heads-and-output",
+        "ffn-and-gating",
+        "block-and-normalization",
+        "position-and-rope",
+        "mask-contract",
+        "visibility-patterns",
+        "padding-and-empty",
+        "cross-attention",
+        "encoder-decoder-families",
+        "teacher-forcing-and-loss",
+        "kv-cache",
+        "cost-and-inference",
+        "reading-vla-code"
+      ]
+    }
+  ],
+  "experiment_evidence": "quality-root-experiments.json",
+  "verification_limits": [
+    "数值验证为 CPU 上的教学算例，不证明任意参数或真实机器人任务的表现。",
+    "保留课程的未修改代码由全站 source-hash 验证流程检查；本报告不把旧实验重复计为新增。"
+  ]
+}

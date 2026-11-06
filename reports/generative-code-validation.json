@@ -1,0 +1,83 @@
+[
+  {
+    "id": "latent-variable-models",
+    "case": "demo",
+    "passed": true,
+    "seconds": 2.304944882998825,
+    "output": "ELBO gaps: [1.3640921133162367, 0.24109261871216658, 0.7432098041378068, 0.012998217488306207, 0.20371021479907253]\npathwise gradients equal the analytic expectation gradients\nencoder max mean/log-variance error: 1.1102230246251565e-16 4.489439930921435e-10\npassed: ELBO identity, pathwise gradients and exact-posterior recovery\n",
+    "source_sha256": "15d53d2580d65615b228cfa739cee5b524078ce74963afc3000527d8b61ea364"
+  },
+  {
+    "id": "latent-variable-models",
+    "case": "python",
+    "passed": true,
+    "seconds": 0.013570773997344077,
+    "output": "passed: event-axis sum, log-variance convention and invalid inputs\n",
+    "source_sha256": "7b07af1be16ff381921c78608b3461e942ea552c4b9a69b866664f6c9f5816b4"
+  },
+  {
+    "id": "latent-variable-models",
+    "case": "torch",
+    "passed": true,
+    "seconds": 1.6293983420000586,
+    "output": "passed: distribution reference, axis counterexample and gradcheck\n",
+    "source_sha256": "5a8a08aa7f621eb2e055ec4d3b89b01831aa9d6cc0db0af5b69115c45ba549bb"
+  },
+  {
+    "id": "score-sde",
+    "case": "demo",
+    "passed": true,
+    "seconds": 1.5915686640000786,
+    "output": "score, conditional-mean and velocity identities passed\nFokker-Planck max error: 1.6479873021779667e-17\nODE continuity max error: 5.551115123125783e-17\nstationary Gaussian: ODE drift is zero; reverse SDE still has OU drift\n",
+    "source_sha256": "661f55c7aea18b0dca4c6f13ac131f960ea9b01cde5d57d1043b1fc6737efa42"
+  },
+  {
+    "id": "score-sde",
+    "case": "python",
+    "passed": true,
+    "seconds": 0.010575421998510137,
+    "output": "passed: reverse clock, different score coefficients and sqrt(h) noise\n",
+    "source_sha256": "478b6db4944fb7c231d9e4ac7fe2ce83cae294a27c5f52657b92f65d58b945a1"
+  },
+  {
+    "id": "score-sde",
+    "case": "torch",
+    "passed": true,
+    "seconds": 1.5153761389992724,
+    "output": "passed: non-square dimensions, parameter conversion, loss weights and gradients\n",
+    "source_sha256": "d1a05778c3fad454534ed0142f652307b82bef24c8f7260a60d3ca2f5be98580"
+  },
+  {
+    "id": "diffusion",
+    "case": "ddpm_posterior_checks",
+    "passed": true,
+    "output": "posterior variance: 0.09170305676855894\nmax mean difference: 1.1102230246251565e-16\npassed: Gaussian product, epsilon mean and clean-boundary variance\n",
+    "source_sha256": "7c234abe4c413468e7d615fe3c1747baffb41665d65e9e890289d6caba8ec3d1"
+  },
+  {
+    "id": "diffusion",
+    "case": "ddpm_elbo_weight_checks",
+    "passed": true,
+    "output": "time weight: 0.1860857483128225 fixed covariance constant: 0.033128169368716986\npassed: KL equals weighted epsilon MSE plus a theta-independent constant\n",
+    "source_sha256": "81ce61d27a5aebaf28c93a9b61aceba829e6344136762aee8dcde0bafccac514"
+  },
+  {
+    "id": "flow-matching",
+    "case": "topic:conditional-mixture",
+    "passed": true,
+    "source_sha256": "d073e24ff939b10d2c708a9c83611a3079831be7f10421f7559e85d1a36a0800",
+    "seconds": 4.896874833997572,
+    "probe": {
+      "before_mse": 2.4930944442749023,
+      "after_mse": 1.2641465663909912,
+      "oracle_target_mse": 1.2173534631729126,
+      "learned_to_oracle_field_mse": 0.03903840854763985
+    },
+    "reference_check": {
+      "learned_512_to_1024_rms": 4.985554824088467e-06,
+      "oracle_1024_to_2048_rms": 2.6106449695362244e-06
+    },
+    "model_flow_rms": 0.14688722789287567,
+    "evidence": "content/experiments/fm-mixture-evidence.json"
+  }
+]

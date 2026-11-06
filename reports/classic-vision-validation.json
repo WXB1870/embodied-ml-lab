@@ -1,0 +1,33 @@
+{
+  "scope": "multimodal course only",
+  "torch": "2.15.0+cpu",
+  "device": "CPU",
+  "cases": [
+    {
+      "case": "existing-demo",
+      "status": "passed",
+      "sha256": "521f4720b6ff791b2c384a9aa0fb632ed406e732187c475cd7cc05b52877e1f4",
+      "stdout": "视觉 / 查询 / 分类 logits: torch.Size([2, 16, 24]) torch.Size([2, 1, 24]) torch.Size([2, 2])\n冻结边界、可训练梯度和文本条件路径检查通过\n"
+    },
+    {
+      "case": "existing-exercise",
+      "status": "passed",
+      "sha256": "d44276e854d12a2f4d00b0162296fcbac474d46da3432dce41aae08df1f5af6b",
+      "stdout": "通过：顺序、半开区间、空视角与输入不变\n"
+    },
+    {
+      "case": "existing-pytorch-exercise",
+      "status": "passed",
+      "sha256": "7fe08b2254020c0baea3a47a0083e2ee677335f4a7aa4f28b01f9eec25c4f755",
+      "stdout": "passed: per-example denominator, analytic gradient and ignored nonfinite padding\n"
+    },
+    {
+      "case": "visual-token-contract",
+      "status": "passed",
+      "sha256": "a6775e61ae0297e1ebdd76eea8e641724cc0a5b94cf40acf95b5d8204d22fad6",
+      "stdout": "registers=0: tokens=(2, 7, 8), grid=(2, 8, 2, 3)\nregisters=4: tokens=(2, 11, 8), grid=(2, 8, 2, 3)\npassed: spatial order, prefix gradient exclusion, layout errors, LayerNorm vs L2\n"
+    }
+  ],
+  "model_downloads": false,
+  "limits": "Synthetic interface and gradient verification; no pretrained visual quality benchmark."
+}

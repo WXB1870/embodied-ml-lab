@@ -1,0 +1,141 @@
+{
+  "checked_at": "2026-11-06T16:34:54.817475+00:00",
+  "baseline_commit": "e484e552085dc1610291b10fa5a11bfbc5fa515f",
+  "scope": {
+    "retained_lessons": 50,
+    "changed_lessons": [
+      {
+        "id": "cnn-receptive-field",
+        "title": "CNN：卷积、采样与空间表示"
+      },
+      {
+        "id": "transformer",
+        "title": "Transformer：注意力、残差与序列建模"
+      },
+      {
+        "id": "vision-preprocessing",
+        "title": "视觉预处理与坐标变换"
+      },
+      {
+        "id": "multimodal",
+        "title": "视觉编码器与多模态融合"
+      },
+      {
+        "id": "contrastive-pretraining",
+        "title": "图文预训练：CLIP 与 SigLIP"
+      },
+      {
+        "id": "diffusion",
+        "title": "Diffusion：DDPM、目标参数化与 DDIM"
+      },
+      {
+        "id": "finetuning",
+        "title": "微调与 LoRA"
+      },
+      {
+        "id": "policy-gradient",
+        "title": "策略梯度"
+      },
+      {
+        "id": "data-quality",
+        "title": "示教数据与采样"
+      }
+    ],
+    "new_courses": 0,
+    "new_theory_sections": 5,
+    "new_experiments": 1,
+    "new_open_ended_exercises": 6
+  },
+  "source_sha256": {
+    "content/architecture.json": "de983ac9f389fe1ad664477a0103a406f5572f6763e3817be64e63c073acbe10",
+    "content/architecture_p0.json": "e320417aaf2e41beac7f1fedbae4e3e063a1af5920622fbd2f49d6576c8c7f94",
+    "content/topics/cnn.json": "ee903c998949ec1a14d2be4fe4a2189d4f2914f0948a19cc4c7b3801a423769f",
+    "content/topics/transformer.json": "ea5a4b590c9344f15319cb1c46debebdaeab16ceff182b0124d69c894eb406e1",
+    "content/vla.json": "9714ada166545287cc8887aaf26eb12c9a041964ef5e3c6b63830b24bf2d260c",
+    "content/vla_p0.json": "0a18be6380c95fb7aece3dd988c086e2a0898c1853c0a9c3607d184723fda370"
+  },
+  "code": {
+    "regular_total": 152,
+    "regular_passed": 151,
+    "regular_failed": 0,
+    "environment_blocked": 1,
+    "regular_reused_unchanged": 150,
+    "core_topic_total": 29,
+    "core_topic_passed": 29,
+    "new_experiment": "multimodal / implementation:visual-token-contract",
+    "new_experiment_passed": true,
+    "note": "Unchanged sources retain prior executed results by SHA-256; the new experiment was actually executed. Agents separately reran six CLIP/preprocessing cases and four multimodal cases. Real pretrained-weight evaluations and quantized GPU training were not performed."
+  },
+  "static": {
+    "lessons": 50,
+    "theory_sections": 442,
+    "chapter_introductions": 50,
+    "section_introductions": 442,
+    "formula_occurrences": 4969,
+    "unique_formulas": 2671,
+    "formula_errors": 0,
+    "unmarked_math_candidates": 0,
+    "math_render_regressions": 17,
+    "html_pages": 158,
+    "internal_targets": 6370,
+    "route_renderer_checks": 250,
+    "git_diff_check_passed": true
+  },
+  "browser": {
+    "search": "SigLIP resolves new course, section and preprocessing entries",
+    "code_copy": {
+      "characters": 2425,
+      "function_present": true,
+      "gradient_assertion_present": true
+    },
+    "mobile": {
+      "clip-frame": {
+        "documentWidth": 375,
+        "formulaErrors": 0,
+        "tables": [
+          {
+            "container": "table-wrap",
+            "containerWidth": 337,
+            "contentWidth": 337
+          },
+          {
+            "container": "detail-body table-wrap",
+            "containerWidth": 335,
+            "contentWidth": 335
+          }
+        ],
+        "viewport": 375
+      },
+      "vision-frame": {
+        "documentWidth": 375,
+        "formulaErrors": 0,
+        "tables": [
+          {
+            "container": "table-wrap",
+            "containerWidth": 337,
+            "contentWidth": 355
+          },
+          {
+            "container": "detail-body table-wrap",
+            "containerWidth": 335,
+            "contentWidth": 335
+          }
+        ],
+        "viewport": 375
+      }
+    },
+    "mobile_method": "390px same-origin iframe with 375px content width; CSS layout check, not physical-device emulation",
+    "desktop_screenshot": "reports/classic-works-desktop.png",
+    "temporary_qa_page_removed": true
+  },
+  "review_fixes": [
+    "Scoped patch-feature reading to ViT variants of CLIP/SigLIP",
+    "Linked CLIP normalization implementation directly in text",
+    "Qualified file-based data splitting according to preserved group boundaries",
+    "Included final sentinel in T5 objective exercise"
+  ],
+  "limits": [
+    "The existing multi-process DDP demo remains environment_blocked (socket initialization); no distributed execution claim.",
+    "Published-paper mechanisms and offline tensor contracts were verified; no pretrained model ranking, closed-loop robot comparison or QLoRA hardware benchmark is claimed."
+  ]
+}

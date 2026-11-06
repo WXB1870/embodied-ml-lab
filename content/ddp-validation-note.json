@@ -1,0 +1,7 @@
+{
+  "lesson": "distributed-training",
+  "case": "demo",
+  "status": "environment_blocked",
+  "reason": "当前执行环境禁止创建 Gloo 所需的本机 TCP 通信 socket；file:// rendezvous 也仍需该通信。",
+  "output_excerpt": "dist.init_process_group(\"gloo\", init_method=\"file://...\", rank=rank, world_size=2) -> RuntimeError: gloo/transport/tcp/device.cc:189: Operation not permitted"
+}

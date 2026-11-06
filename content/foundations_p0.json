@@ -1,0 +1,1655 @@
+[
+  {
+    "id": "gradient-accumulation",
+    "number": 29,
+    "module": "training",
+    "title": "梯度累积",
+    "subtitle": "让不同长度的微批次，真正等价于同一个训练目标。",
+    "minutes": 105,
+    "tags": [
+      "梯度累积",
+      "有效 Batch",
+      "有效元素分母",
+      "梯度裁剪"
+    ],
+    "prerequisites": [
+      "autograd",
+      "losses",
+      "optimization"
+    ],
+    "objectives": [
+      "推导不等长微批次对应的全局平均损失与梯度。",
+      "写出清零、累积、裁剪、更新和调度的正确边界。",
+      "用完整批次作为数值参照，验证参数更新等价性。"
+    ],
+    "why": "长序列和多模态输入常需要分块计算来控制激活内存。梯度累积只有在目标分母、更新边界与数值处理一致时，才保持预期的有效批次含义。",
+    "sections": [
+      {
+        "title": "梯度可加的前提：同一参数点、同一目标",
+        "body": [
+          "设一个完整批次的目标为 \\(L=\\frac1N\\sum_i\\ell_i\\)。微分的线性性允许把样本分成多个微批次，分别计算它们对同一组参数的梯度，再相加。这里关键是所有微批次前向都使用相同参数，且每项损失带有与完整目标一致的系数。若每个微批次都 optimizer.step，后面的梯度是在另一参数点计算，已经变成多次小批更新，不再是同一次大批梯度。",
+          "梯度累积主要减少同时驻留的激活，不会按同样比例减少参数、梯度和优化器状态。一个微批次反向完成后，它的图可以释放，叶子参数上的 .grad 保留数值供后续相加。通常无需 retain_graph=True，因为每个微批次都是新的前向图。把所有微批 loss 保留到最后一次 backward，可能仍然保留全部激活，失去预期的内存优势。",
+          "理解累积时先写出完整目标，再设计分块过程；不要先套 loss/K 模板再解释它平均了什么。样本数、有效 token 数、动作维度与权重都可能影响分母，尤其是机器人轨迹长短不同的情况。"
+        ],
+        "formula": "\\nabla_\\theta\\frac{\\sum_k S_k(\\theta)}{N}=\\sum_k\\nabla_\\theta\\frac{S_k(\\theta)}{N}",
+        "example": {
+          "title": "相同两个样本，更新顺序可以改变结果",
+          "steps": [
+            "令 \\(L_1(\\theta)=\\frac12(\\theta-1)^2\\)、\\(L_2(\\theta)=\\frac12(\\theta+1)^2\\)，从 \\(\\theta=0\\) 开始。两项在同一点的梯度分别为 −1 和 +1，平均梯度为 0，因此一次累积更新仍为 0。",
+            "若改成两个 SGD 小步，每步学习率 0.1，先用 \\(L_1\\) 得到 \\(\\theta=0.1\\)，再用 \\(L_2\\) 的当前梯度 1.1 得到 \\(\\theta=-0.01\\)。",
+            "把顺序反过来，结果为 +0.01。即使把每个小步学习率改为 0.05，仍分别得到 −0.0025 或 +0.0025，而累积更新仍为 0。"
+          ],
+          "conclusion": "逐微批 step 会在新的参数点重新求梯度；把学习率按微批数缩小，也不能普遍恢复一次大批更新。"
+        },
+        "id": "0",
+        "lead": "分块前向能降低同时保留的激活数量，但是否得到同一个更新，需要先回到完整批次的数学目标。梯度可加性只适用于同一参数点和同一组系数，这两个条件决定了累积与多次小步训练的区别。"
+      },
+      {
+        "title": "为什么 loss 除以累积次数只在特定条件下成立",
+        "body": [
+          "若每个微批次都有相同的有效元素数 n，且其局部损失 \\(L_k\\) 都是这些元素的平均，完整目标为 \\(\\frac1K\\sum_k L_k\\)，因此每次反向前除 K 正确。若 \\(n_k\\) 不同，正确目标则为 \\(\\frac{\\sum_k n_kL_k}{\\sum_k n_k}\\)。把局部均值直接平均，等于让微批次等权，而不是让元素等权；最后一个不足大小的批次尤其容易触发这个错误。",
+          "一种直接实现是先知道本次更新所有微批次的总有效数 N，将每个未归约误差和 \\(S_k\\) 除 N 后 backward。若目标分母只依赖数据而不依赖参数，也可先累计误差和对应的梯度，再在更新前按同一 N 缩放梯度。后一种方式与 AMP、DDP 和裁剪组合时必须明确顺序，不能先裁剪局部梯度再期望恢复完整目标。"
+        ],
+        "example": {
+          "title": "不等长微批次不能简单二等分",
+          "steps": [
+            "微批次 A 有 2 个有效元素，平均梯度为 10；B 有 6 个有效元素，平均梯度为 2。",
+            "完整有效元素平均梯度为 \\(\\frac{2\\times10+6\\times2}{8}=4\\)。",
+            "两个局部均值各除 2 再相加得到 6，方向可能相同但更新幅度和任务权重已经错误。"
+          ],
+          "conclusion": "有效元素不等时，用真实计数加权，而不是固定累积次数。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "有效 Batch 大小只按样本条数估算",
+          "explanation": "不同轨迹包含的有效监督数量可以相差很大；样本 Batch 与元素 Batch 不一定等价。",
+          "check": "同时记录每次更新的样本数、有效时间步和有效标量数，并手算两块不等长输入。"
+        },
+        "id": "1",
+        "lead": "确认梯度可以相加之后，还要确定每一块应乘什么系数。局部 mean 已经除过自己的元素数，只有各块计数相同时才能再简单平均；变长监督需要从完整分母重新推导。"
+      },
+      {
+        "title": "清零、反向、更新与尾批的边界",
+        "body": [
+          "一个累积周期开始前清零梯度；周期内多次 forward/backward；周期结束执行一次更新；再为下一个周期清零。若在每个微批次开头 zero_grad，前面的累积会被丢掉。若周期结束忘记清零，旧梯度会混入下一次更新。最好用显式的 optimizer_step 和 micro_step 计数，避免把这些边界隐藏在复杂循环条件里。",
+          "数据迭代结束时可能剩下不足 K 个微批次。可以按实际有效数完成这一更新，或者按预先声明的协议丢弃；不能仍固定除 K，却宣称与当前剩余数据的均值等价。空监督微批次可以对分子和计数贡献零，但整个更新全无效时必须明确跳过策略。日志、scheduler 和 checkpoint 的保存位置也要对应这个更新边界。",
+          "如果中途恢复训练，需要知道是否允许在累积周期内部保存。只保存模型和优化器而不保存已累计梯度、计数与数据位置，会丢失半个更新。更简单的协议是在完整 step 边界保存，并在文档中明确这一点。"
+        ],
+        "id": "2",
+        "lead": "正确的系数必须配合正确的状态边界才能实现累积。清零、反向和更新分别发生在周期中的不同位置，尾批和断点恢复也必须说明自己属于哪个周期，避免丢失或重复一部分梯度。"
+      },
+      {
+        "title": "裁剪是非线性操作，应在完整梯度形成后进行",
+        "body": [
+          "全局范数裁剪将最终梯度按同一比例缩放。一般有 \\(\\operatorname{clip}(g_1)+\\operatorname{clip}(g_2)\\ne\\operatorname{clip}(g_1+g_2)\\)，所以逐微批次裁剪再累积，会改变更新方向与大小。正确顺序通常是完成全部反向、还原 AMP 缩放、必要的全局归约，再对完整参数集合裁剪一次，最后 step。",
+          "裁剪参数集合也应一致。若只裁剪某一小头，却把总梯度范数当作整个模型统计，会误判训练稳定性。对于分片优化器或特殊分布式结构，全局范数如何得到需要对应实现；这里的公式以同一进程可访问全部目标梯度为基础。检测到 NaN/Inf 时，应定位来源，而不是让 max_norm 成为掩盖非法数值的手段。"
+        ],
+        "example": {
+          "title": "局部裁剪会改变结果",
+          "steps": [
+            "一维微梯度为 \\(g_1=2\\)、\\(g_2=-1\\)，阈值为 0.5。",
+            "分别裁剪后为 0.5 和 -0.5，相加得到 0。",
+            "先求和得到 1，再裁剪得到 0.5。"
+          ],
+          "conclusion": "一次完整更新与逐块裁剪是两个不同算法。"
+        },
+        "focus": {
+          "kind": "常用",
+          "title": "记录裁剪前范数与真实参数位移",
+          "explanation": "裁剪是否频繁触发、是否压制了正常信号，需要实际统计。",
+          "check": "在固定累积周期内比较裁剪前后梯度，并确认只在周期末调用一次。"
+        },
+        "id": "3",
+        "lead": "可加性来自微分的线性，而梯度裁剪本身是非线性变换。将裁剪放到分块前后会产生不同结果，因此需要先形成目标要求的完整梯度，再决定如何限制它的范数。"
+      },
+      {
+        "title": "AMP 累积必须保持同一个缩放因子",
+        "body": [
+          "使用 GradScaler 时，整个有效批次的梯度要在同一缩放因子下累加。如果第一个微批次后就 unscale，再累加第二个缩放后的梯度，两者单位不同，无法得到正确总梯度。类似地，在周期中途 update 改变缩放因子，会让不同微批次乘上不同倍数。缩放检查、跳步和尺度更新应与完整有效批次对齐。",
+          "通常每个微批次用同一个 scaler.scale(loss_part).backward，在周期末 unscale_ 一次，裁剪后 scaler.step，再 scaler.update。每个 optimizer 的 unscale_ 不能在一次更新之间重复调用。若一个周期出现非有限梯度，跳过的是这次完整更新；scheduler 是否前进应遵守实际更新计数协议，并记录跳步事件。",
+          "梯度缩放只处理数值范围，不会自动修复错误的 loss_part 分母。应先在 FP32 下证明累积等价，再引入 AMP 并用合理容差比较；否则数学归约错误与低精度差异会混在一起。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "在微批次末尾调用 scaler.update",
+          "explanation": "这样可能使同一 .grad 中混入不同单位的梯度。",
+          "check": "把 unscale、clip、step、update 与清零放到同一个明确的更新边界。"
+        },
+        "id": "4",
+        "lead": "混合精度为梯度增加了一个临时数值尺度，累积又把多次反向结果放到同一缓冲区。只有各项使用同一单位，最后一次还原才有意义；缩放器的状态边界因此必须与完整更新对齐。"
+      },
+      {
+        "title": "DDP 累积还多了进程维度",
+        "body": [
+          "普通 DDP 会在进程间平均梯度。若各 rank 和微批次有效数不同，平均本地均值不等于全局有效元素均值。应先得到全局有效数 N，并按 DDP 的平均行为对本地误差和缩放；在默认平均梯度协议下，本地反向目标可写为 \\(\\frac{\\mathrm{world\\_size}\\,S_{\\mathrm{local}}}{N}\\)，使平均后回到全局目标。自定义通信 hook 或不同归约方式需要重新推导。",
+          "为了减少通信，可在前几个微批次使用 no_sync，并在最后一次前向与反向恢复同步。no_sync 的上下文需要包含 forward，不能只包 backward。所有 rank 必须以一致的顺序参与所需集合通信；某个进程没有本地有效元素，也不能无协调地跳过同步。这里应先追求正确更新，再考虑通信优化。"
+        ],
+        "id": "5",
+        "lead": "多进程训练在微批次之外增加了另一层平均。为了保持同一全局目标，必须同时计算进程间和微批次间的有效元素数，并把通信约定纳入局部损失系数的推导。"
+      },
+      {
+        "title": "大批次与累积为何可能仍不完全相同",
+        "body": [
+          "数学上的梯度加法等价假定每个样本的前向行为不随分块变化。训练态 BatchNorm 使用微批统计，分块后统计不同，因此不一定等价于一次大批前向。Dropout 随机 Mask、数据增强、批内对比负样本和其他跨样本运算也会改变目标。把损失分母修正正确，是必要条件，但并非所有模型的大批等价充分条件。",
+          "浮点累加顺序还会带来小数值差异。验证可先选择没有跨样本状态和随机性的模型，使用 float64，关闭或固定随机因素，比较 loss、逐参数梯度与更新后的参数；确认基础目标一致后，再逐项加入真实结构。若差异来自有意的微批统计，应记录这一边界，而不是不断放宽容差掩盖原因。"
+        ],
+        "id": "6",
+        "lead": "分母与更新时机一致，只能保证已经定义好的可加目标得到同样求导。若前向本身依赖批内统计或批内样本交互，分块就会改变函数，需要另行分析这一结构性差异。"
+      },
+      {
+        "title": "用一次完整更新做端到端对照",
+        "body": [
+          "示例用不等长、带 Mask 的微批次复现完整批次更新。首先复制同一初始模型和优化器状态，随后分别走整批与分块路径，最终逐元素比较参数。只比较最终 loss 太弱：两个错误实现也可能得到接近的标量；比较梯度更直接，而参数对照还能发现 step 次数和优化器状态边界错误。",
+          "扩展检查时覆盖最后不足 K 的尾批、某一微批次全无效、不同动作维数以及权重不等的样本。日志同时报告误差和、有效数、微批次数、同步次数与优化步数。确认这些计数和目标定义一致后，再调节累积次数以适应显存或吞吐，而不是把更大的名义 Batch 直接当作更好的训练方案。",
+          "保存实验配置时明确哪些操作在微批级、哪些在更新级：增强与前向通常在微批级，裁剪、optimizer.step、按步学习率与 scaler.update 通常在更新级。这样才能让后续改动、断点恢复和分布式扩展保持可解释。",
+          "本章的局部梯度对照继续保留；完整组批后的验证统一在[共同训练项目](#/learn/training-loop?tab=code&anchor=demo-shared-training-project)的 `verify_accumulation`。同一个 TokenRegressor 和七条 episode 分成有效数 10、30 的两批，正确反传是 S₁/40 与 S₂/40；控制组故意对局部 mean 再平均。除了所有梯度，还对照一次 SGD 后的参数。这一等价不含 BN、Dropout 或批间随机交互，不能推广为任意网络逐比特相同。"
+        ],
+        "id": "7",
+        "lead": "各项等价条件最终需要在一次完整更新中同时成立。复制同一模型和优化器状态，逐项比较整批与分块的梯度及参数，比只观察两条相似损失曲线更直接，也能发现计数边界上的错误。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "微批次输入",
+        "shape": "[bₖ, D]",
+        "meaning": "bₖ 可以不同；参数在累积窗口内不变。"
+      },
+      {
+        "name": "误差与有效位",
+        "shape": "[bₖ, A]",
+        "meaning": "本例按有效动作标量平均，不按微批次数平均。"
+      },
+      {
+        "name": "全部梯度",
+        "shape": "[P]（概念上展平）",
+        "meaning": "全局范数横跨所有被裁剪参数。"
+      }
+    ],
+    "code": {
+      "title": "用不等长、带 Mask 的微批次复现完整批次更新",
+      "source": "import copy\nimport torch\nfrom torch import nn\n\ntorch.manual_seed(29)\n# STEP 1: 固定模型和数据，两个模型从相同参数开始\nmodel = nn.Linear(3, 2).double()\nreference = copy.deepcopy(model)\nx = torch.randn(7, 3, dtype=torch.float64)\ny = torch.randn(7, 2, dtype=torch.float64)\nvalid = torch.tensor([[1,1],[1,0],[0,1],[1,1],[0,0],[1,0],[1,1]], dtype=torch.bool)\ntotal = int(valid.sum())\nwindows = [slice(0, 3), slice(3, 5), slice(5, 7)]\nopt = torch.optim.SGD(model.parameters(), lr=0.1)\nref_opt = torch.optim.SGD(reference.parameters(), lr=0.1)\n\n# STEP 2: 每个微批次都除以整个窗口的有效元素总数\nref_opt.zero_grad(set_to_none=True)\nfull_loss = (reference(x) - y).square()[valid].sum() / total\nfull_loss.backward()\nopt.zero_grad(set_to_none=True)\nfor part in windows:\n    errors = (model(x[part]) - y[part]).square()\n    local_loss = errors[valid[part]].sum() / total\n    local_loss.backward()\nfor p, q in zip(model.parameters(), reference.parameters()):\n    torch.testing.assert_close(p.grad, q.grad, atol=1e-12, rtol=1e-12)\n\n# STEP 3: 累积结束再裁剪和更新，比较最终参数\nnorm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.3)\nref_norm = nn.utils.clip_grad_norm_(reference.parameters(), max_norm=0.3)\ntorch.testing.assert_close(norm, ref_norm)\nopt.step()\nref_opt.step()\nfor p, q in zip(model.parameters(), reference.parameters()):\n    torch.testing.assert_close(p, q, atol=1e-12, rtol=1e-12)\nprint('各微批次有效元素:', [int(valid[s].sum()) for s in windows])\nprint('总有效元素:', total, '裁剪前范数:', round(norm.item(), 6))\nprint('通过：累积梯度和更新后的参数均与完整批次一致')\n",
+      "explanations": [
+        {
+          "lines": "1–16",
+          "text": "使用 float64 降低求和次序带来的误差，且不引入 BatchNorm、Dropout。三个微批次的有效元素数分别是 4、2、3。"
+        },
+        {
+          "lines": "17–28",
+          "text": "完整批次和每个微批次共用分母 total=9。zero_grad 只在窗口开始调用；逐参数核对尚未裁剪的梯度。"
+        },
+        {
+          "lines": "29–39",
+          "text": "clip_grad_norm_ 返回裁剪前范数。两个模型都只更新一次，再检查所有参数相等；这验证了训练行为而不只是损失数字。"
+        }
+      ],
+      "expected": "输出有效元素 [4, 2, 3]、总数 9；梯度及一次 SGD 更新的等价性断言全部通过。"
+    },
+    "exercise": {
+      "title": "把微批次平均梯度还原成全局平均",
+      "prompt": "grads[k] 是第 k 个微批次已经按有效元素平均的梯度向量，counts[k] 是其有效元素数。实现 weighted_gradient，返回全局有效元素等权的梯度。counts 为非负整数；总数为零或输入长度、向量宽度不一致时抛出 ValueError。",
+      "runtime": "python",
+      "starter": "def weighted_gradient(grads, counts):\n     # TODO: 恢复各微批次梯度总和，再按全局有效数平均\n     raise NotImplementedError('请实现 weighted_gradient')\n",
+      "solution": "def weighted_gradient(grads, counts):\n     if not grads or len(grads) != len(counts):\n         raise ValueError('长度不一致或无微批次')\n     width = len(grads[0])\n     if width == 0 or any(len(g) != width for g in grads):\n         raise ValueError('梯度宽度不一致')\n     if any(not isinstance(n, int) or n < 0 for n in counts):\n         raise ValueError('计数应为非负整数')\n     total = sum(counts)\n     if total == 0:\n         raise ValueError('没有有效元素')\n     return [sum(g[d] * n for g, n in zip(grads, counts)) / total\n             for d in range(width)]\n",
+      "tests": "assert weighted_gradient([[2, 4], [8, -2]], [3, 1]) == [3.5, 2.5]\nassert weighted_gradient([[999, 999], [4, -6]], [0, 2]) == [4, -6]\nassert weighted_gradient([[1], [7], [4]], [2, 1, 3]) == [3.5]\nfor gs, ns in [([[1]], [0]), ([[1], [2, 3]], [1, 1]), ([[1]], [-1]), ([[1]], [])]:\n    try:\n        weighted_gradient(gs, ns)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('应拒绝无效计数或形状')\nprint('通过：不等计数、零权重和输入边界')\n",
+      "hints": [
+        "先乘 counts，恢复每组梯度的有效元素总和。",
+        "分母是 sum(counts)，不是 len(grads)；零计数组不贡献梯度。"
+      ],
+      "explanation": "梯度可按求和线性组合，但不同微批次 mean 的权重由其真实分母决定。本题将梯度视为已给定的有限向量，只练习统计权重；真实训练需保证这些梯度在同一组参数上计算。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 accumulate_gradients(model, microbatches)。microbatches 是非空列表，每项为 (x, y, valid)，其中 y 和布尔 valid 同形状且数值有限。仅在 valid 为 True 的标量上计算全局 MSE，累积到 model 参数 .grad，返回总有效数；不更新参数。即使某一微批次没有有效元素也要正确处理；总有效数为零时抛出 ValueError。",
+      "starter": "import torch\n\ndef accumulate_gradients(model, microbatches):\n    # TODO: 窗口开始清零，各微批次 sum 除以全局有效数\n    raise NotImplementedError('请实现 accumulate_gradients')\n",
+      "solution": "import torch\n\ndef accumulate_gradients(model, microbatches):\n    total = sum(int(valid.sum()) for _, _, valid in microbatches)\n    if total == 0:\n        raise ValueError('没有有效元素')\n    model.zero_grad(set_to_none=True)\n    for x, y, valid in microbatches:\n        error = (model(x) - y).square()\n        (error[valid].sum() / total).backward()\n    return total\n",
+      "tests": "import copy\ntorch.manual_seed(290)\nmodel = torch.nn.Linear(2, 1).double()\nreference = copy.deepcopy(model)\nx = torch.randn(6, 2, dtype=torch.float64)\ny = torch.randn(6, 1, dtype=torch.float64)\nvalid = torch.tensor([[1], [0], [0], [1], [1], [1]], dtype=torch.bool)\nparts = [slice(0, 1), slice(1, 3), slice(3, 6)]\nbatches = [(x[s], y[s], valid[s]) for s in parts]\nbefore = [p.detach().clone() for p in model.parameters()]\nassert accumulate_gradients(model, batches) == 4\n((reference(x) - y).square()[valid].mean()).backward()\nfor p, q, old in zip(model.parameters(), reference.parameters(), before):\n    torch.testing.assert_close(p.grad, q.grad, atol=1e-12, rtol=1e-12)\n    torch.testing.assert_close(p, old)\ntry:\n    accumulate_gradients(model, [(x, y, torch.zeros_like(valid))])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('应拒绝全无效窗口')\nprint('PyTorch 通过：不等微批次与零有效微批次的累积')\n",
+      "hints": [
+        "先遍历列表得到全部 valid.sum()，再开始反传。",
+        "对空索引结果做 sum 仍可得到带计算图的零损失；不能在每个循环里清零。"
+      ],
+      "explanation": "测试故意包含有效数为 1、0、3 的微批次，能识别平均每组 mean 或最后一组覆盖前面梯度的错误。函数只写梯度，参数更新和裁剪由调用方在窗口结束后执行；输入中的 NaN 仍需在进入误差运算前处理。"
+    },
+    "pitfalls": [
+      {
+        "title": "每次 backward 前都 zero_grad",
+        "detail": "这只保留最后一个微批梯度。明确一个周期的起止，周期前清零、周期末一次更新。"
+      },
+      {
+        "title": "不等有效长度仍固定 loss/K",
+        "detail": "这会让微批等权而非有效元素等权。累计真实有效数，以完整目标分母缩放每一块。"
+      },
+      {
+        "title": "逐微批裁剪或提前 unscale",
+        "detail": "裁剪非线性，提前还原还会混合不同梯度单位。全部累积完成后，再统一还原和裁剪。"
+      },
+      {
+        "title": "只比较 loss 就宣称等价",
+        "detail": "需对照逐参数梯度、一次更新和优化器状态；同时排除 BatchNorm、随机采样和批内交互的差异。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "PyTorch：AMP 梯度累积与裁剪",
+        "url": "https://docs.pytorch.org/docs/stable/notes/amp_examples.html"
+      },
+      {
+        "title": "PyTorch：clip_grad_norm_",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.utils.clip_grad_norm_.html"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "为什么 loss / accumulation_steps 有时仍然算错？",
+        "answer": [
+          "该写法默认窗口内各微批次 mean 的统计分母相同。如果有效动作数分别为 4、2、3，直接平均三个 mean 会让第二组的单个元素权重更大。",
+          "演示每个微批次使用 errors[valid].sum()/total，且 total=9。检查完整批次梯度能定位权重问题；存在 BatchNorm 或不同随机前向时，还要区分数学平均错误和模型本身的批次依赖。",
+          "还需保持窗口内参数不变。\\(L_1=\\frac12(\\theta-1)^2\\) 与 \\(L_2=\\frac12(\\theta+1)^2\\) 在 \\(\\theta=0\\) 的平均梯度为零，逐微批更新却会产生与顺序有关的非零结果。对 BatchNorm、对比学习中跨样本目标或随机前向，还要分别检查是否真的对应同一个完整批次函数。"
+        ],
+        "codeFocus": "演示 STEP 2；accumulate_gradients 的 total 与 backward。",
+        "acceptance": [
+          "能为不等有效数写出正确分母。",
+          "能指出累积与完整批次等价所需的参数、模型条件。"
+        ]
+      },
+      {
+        "question": "为什么必须在累积完成后裁剪？能否把裁剪阈值当作参数位移上限？",
+        "answer": [
+          "裁剪函数不是线性的，\\(\\operatorname{clip}(g_1)+\\operatorname{clip}(g_2)\\) 通常不等于 \\(\\operatorname{clip}(g_1+g_2)\\)。先汇总才能根据本次训练目标的完整梯度决定统一缩放比例。",
+          "演示在两个模型的全部梯度核对后才调用 clip_grad_norm_。对于无额外项的普通 SGD，位移与学习率乘裁剪后梯度相关；Adam 的预条件、动量或权重衰减会改变这个关系，阈值不能直接解释为最终参数位移。"
+        ],
+        "codeFocus": "演示 STEP 3；clip_grad_norm_ 的返回值是裁剪前范数。",
+        "acceptance": [
+          "能说明逐微批次裁剪为何改变结果。",
+          "能区分梯度范数和优化器实际参数位移。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "梯度累积要求各微批次在同一参数点求导，并使用同一个完整目标分母。",
+      "loss/K 只在微批有效权重相同等条件下等价。",
+      "裁剪、AMP unscale/step/update 和按步调度应对齐完整更新。",
+      "BatchNorm、批内对比和随机因素可能破坏大批等价，必须单独说明。"
+    ],
+    "lead": "显存限制常使完整训练批次无法同时完成前向，梯度累积试图通过分块计算得到同一个更新。它是否等价，取决于损失是否可加、参数是否保持不变，以及各块使用了怎样的分母。本章从微分的线性性推导累积规则，再处理不等长样本、尾批、裁剪和精度缩放。掌握这些条件后，才能区分节省激活内存的实现变化与真正改变了优化目标的算法变化。"
+  },
+  {
+    "id": "mixed-precision",
+    "number": 30,
+    "module": "engineering",
+    "title": "混合精度训练",
+    "subtitle": "分清数值范围、舍入精度，以及 loss scaling 真正改变了什么。",
+    "minutes": 100,
+    "tags": [
+      "AMP",
+      "BF16",
+      "FP16",
+      "GradScaler"
+    ],
+    "prerequisites": [
+      "numerical",
+      "gradient-accumulation"
+    ],
+    "objectives": [
+      "解释 FP16、BF16 与 FP32 在数值范围和精度上的差异。",
+      "写出 autocast、反缩放、裁剪和更新的正确顺序。",
+      "能识别低精度溢出、梯度下溢与不可比的精度实验。"
+    ],
+    "why": "多模态模型训练常使用混合精度。理解表示范围、算子精度和梯度缩放，才能判断异常来自数据、公式、更新边界还是具体硬件实现。",
+    "sections": [
+      {
+        "title": "范围与精度分别由指数和尾数控制",
+        "body": [
+          "浮点格式包含符号、指数和有效数字。指数决定数量级范围，有效数字决定相邻可表示值之间的距离。FP16 最大有限值为 65504；BF16 与 FP32 的指数范围相近，但有效数字明显更少。因此 BF16 缓解了不少范围问题，却不等于有 FP32 的局部精度。",
+          "在 [1,2) 区间，BF16 相邻可表示数的间距为 \\(2^{-7}=0.0078125\\)，FP16 为 \\(2^{-10}\\)，FP32 为 \\(2^{-23}\\)；可以用 torch.finfo(dtype).eps 核对。间距会随数的量级改变，这不是所有数都具有同一绝对误差界。1.001 转成 BF16 会被舍入成 1，之后再转回 FP32 仍是 1。",
+          "下溢、溢出与舍入需要分开处理。梯度缩放可使某些小梯度在反向中落到更易表示的范围，但不能找回前向已经舍掉的残差，也不能修复先前产生的 Inf。若参数本身以低精度存储，过小的更新还可能被加法舍入吞掉；保留 FP32 参数和合适精度的优化器状态，解决的是另一段计算路径。",
+          "autocast 选择哪些算子使用低精度，收益取决于设备、内核、形状和数据传输。dtype 打印可以核对计算边界，实际精度、速度和显存则要在目标环境测量。"
+        ],
+        "id": "0",
+        "lead": "降低浮点位数并不是均匀地降低所有数值的精度，位数如何分给指数和有效数字决定了不同误差。先看具体格式可表示的范围和间距，才能解释为什么 BF16 与 FP16 会在不同位置失效。"
+      },
+      {
+        "title": "autocast 按算子选择 dtype，不等于 model.half",
+        "body": [
+          "autocast 在上下文中依据算子规则选择计算精度；某些矩阵乘法可以用低精度，某些敏感操作会保持或提升精度。模型参数可以继续以 FP32 保存，反向梯度与优化器状态也有各自的 dtype。手动将整个模型 half 会改变参数存储和更多运算，不能把它当作 autocast 的同义写法。",
+          "推荐的基础模式是在 autocast 中执行前向和 loss 计算，再在外部反向。不要为追求统一而反复手动 cast 中间张量，否则可能破坏算子策略或引入额外拷贝。自定义算子、未覆盖的操作和跨上下文输入需要检查实际 dtype；某个张量显示 float32，也不代表前面的所有乘加都使用了 FP32 精度。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "查看关键算子的输入、输出和参数 dtype",
+          "explanation": "混合精度是计算路径的配置，不能只检查模型权重一个 dtype。",
+          "check": "在最小例子中打印线性层输出、loss、参数与梯度 dtype，核对实际精度边界。"
+        },
+        "id": "1",
+        "lead": "不同算子对范围与精度的需求不同，整张网络没有必要统一使用同一种计算类型。autocast 提供按算子划定的边界，而参数存储与优化器状态仍需单独理解，不能由一个输出 dtype 推断全部过程。"
+      },
+      {
+        "title": "梯度缩放为何能保护小梯度",
+        "body": [
+          "设原损失为 L，乘上正缩放因子 s 后，反向得到 \\(s\\nabla L\\)；若在更新前除以 s，数学目标保持不变。放大后的梯度可能落入低精度更容易表示的范围，减轻下溢。缩放因子太大又会导致梯度溢出，因此动态缩放器会根据有限性检查调整。这个机制保护的是数值表示，不会增强模型的信息或改变正确目标。",
+          "缩放不能修复前向阶段已经产生的 NaN/Inf。比如输入过大使矩阵乘法先溢出，或者 log 接收非法值，后续无论怎样缩放 loss 都无法恢复正确中间结果。BF16 常因指数范围较宽而不需要与 FP16 相同的缩放策略，但也不能据此宣称任何 BF16 模型都不会出现非有限值。"
+        ],
+        "formula": "\\nabla_\\theta(sL)=s\\nabla_\\theta L,\\qquad g=\\frac{\\nabla_\\theta(sL)}s",
+        "example": {
+          "title": "缩放与还原的数值含义",
+          "steps": [
+            "原始梯度假设为 \\(10^{-8}\\)，缩放因子 \\(s=2^{16}=65536\\)。",
+            "缩放后梯度约为 \\(6.55\\times10^{-4}\\)，落到更容易表示的量级。",
+            "优化前除以 65536 才回到原本梯度；若忘记还原，相当于大幅改变更新尺度。"
+          ],
+          "conclusion": "正确缩放不应改变优化问题，只改变中间数值的表示范围。"
+        },
+        "id": "2",
+        "lead": "反向链条中的很小数值可能在低精度中消失，即使最终需要的梯度仍有意义。利用求导对常数缩放的线性性，可以临时放大这条链条，再在更新前还原；这一推导也明确了它无法修复的前向问题。"
+      },
+      {
+        "title": "unscale、裁剪与 step 的正确顺序",
+        "body": [
+          "如果在缩放梯度上按原阈值裁剪，就相当于把真实梯度阈值缩小了 s 倍。应先完成反向，再 scaler.unscale_(optimizer)，然后对真实梯度裁剪，再 scaler.step 和 scaler.update。一次更新中对同一 optimizer 只应 unscale 一次；多个优化器则要明确每个参数由哪个优化器管理。",
+          "scaler.step 会检查其管理的梯度是否存在非有限值，并可能跳过实际 optimizer.step。日志中看到调用过 scaler.step，不足以证明参数发生更新。应记录跳步事件、缩放因子与真实参数位移；按更新步设计的学习率日程也要协调。连续跳步通常值得排查前向尺度或梯度异常，不能把“没有崩溃”当作有效学习。"
+        ],
+        "example": {
+          "title": "在缩放梯度上裁剪的后果",
+          "steps": [
+            "真实梯度范数为 2，缩放因子为 1024，看到的范数为 2048。",
+            "若直接裁剪到 1，再除以 1024，真实梯度只剩 \\(\\frac1{1024}\\)。",
+            "先还原成范数 2，再裁剪到 1，才是原先设定的阈值。"
+          ],
+          "conclusion": "裁剪阈值有单位，必须与梯度所处的缩放状态一致。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "在 unscale 之前按真实阈值裁剪",
+          "explanation": "这会严重削弱梯度，甚至让训练看似稳定但几乎不更新。",
+          "check": "记录还原前后范数，确认裁剪使用的是实际梯度尺度。"
+        },
+        "id": "3",
+        "lead": "缩放后的梯度与原目标梯度具有不同数值单位，任何依赖绝对范数的操作都必须使用正确单位。由此可以推出还原、裁剪和更新的顺序，而不是只记住一段固定的 AMP 模板。"
+      },
+      {
+        "title": "累积和多任务不能混入不同缩放单位",
+        "body": [
+          "一个有效批次内累积的所有梯度需要使用相同缩放因子。中途 unscale 或 update 会使 .grad 混合不同比例，无法再通过一次除法恢复。应在完整累积后才执行有限性检查、还原、裁剪和更新。同样，若多个损失共同训练一组参数，它们的相对权重应先按目标定义好，再按一致规则缩放。",
+          "autograd.grad 返回的梯度不一定存放在 optimizer 管理的 .grad 内，scaler.unscale_(optimizer) 不会自动处理这些返回值。做梯度惩罚或梯度范数诊断时，应明确返回的是缩放梯度还是原梯度，并按所需数学目标自行还原。误把缩放后的诊断值解释为真实任务强度，会导致权重判断失真。",
+          "排查这种组合问题时，先在 FP32、单任务、无累积条件下建立正确参照，再逐项开启低精度、累积和梯度诊断。一次启用全部机制时，即使最终 loss 变化，也难以确定是哪一处改变了计算含义。"
+        ],
+        "id": "4",
+        "lead": "多个微批次或损失共同作用于同一参数时，缩放单位还必须在贡献之间保持一致。额外调用 autograd.grad 返回的张量也可能绕开优化器的还原流程，需要沿每一条梯度路径核对。"
+      },
+      {
+        "title": "敏感运算可以局部使用更高精度",
+        "body": [
+          "平方误差的残差、均值方差、概率归一化或很长序列的加和，可能对精度更敏感。可以在明确边界把相关输入转为 FP32，使用稳定公式计算，再继续后续路径。局部提升应依据对照结果，而不是对整个模型无差别禁用低精度。需要注意 cast 的位置：若低精度残差已经舍入为零，再转 float 不会恢复丢失的差异。",
+          "类似地，低精度前向输出即使随后做 FP32 loss，也仍带有前面算子的舍入误差；这通常是混合精度设计的一部分，但必须评估是否可接受。比较模型时可同时检查 loss、若干激活、逐参数梯度与一次更新，找出误差首次显著增长的位置。单独要求所有元素逐位等于 FP32 不现实，单独要求“最终有限”又太弱。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "结果转成 float 就以为整段计算获得了 FP32 精度",
+          "explanation": "cast 只能转换当前已存储的数，不能恢复之前舍入或溢出的信息。",
+          "check": "把精度提升放在敏感运算之前，并对照提升前后的中间值及梯度。"
+        },
+        "code": "import torch\n\nprediction = torch.tensor([1.001], dtype=torch.float32)\ntarget = torch.tensor([1.000], dtype=torch.float32)\nresidual_fp32 = prediction - target\nresidual_after_cast = prediction.bfloat16().float() - target.bfloat16().float()\nassert residual_fp32.item() > 0.0009\nassert residual_after_cast.item() == 0.\nassert torch.finfo(torch.bfloat16).eps == 2**-7\nprint(\"before rounding:\", residual_fp32.item())\nprint(\"after BF16 rounding:\", residual_after_cast.item())",
+        "codeExplanation": "两条路径最终都用 FP32 相减，但第二条的两个输入已经先被 BF16 舍入为同一个数，所以残差为零。若要保留这段差异，必须在信息丢失前保留更高精度；仅把最终 loss 转成 float 或增大 GradScaler 倍数都无法恢复它。",
+        "id": "5",
+        "lead": "当误差集中在少量敏感算子时，可以只提高这些边界的计算精度。关键在于精度提升必须发生在信息丢失之前；转回更宽的格式不能恢复已经被低精度舍去的差值。",
+        "codeKind": "runnable"
+      },
+      {
+        "title": "如何区分前向溢出、反向下溢与真实优化问题",
+        "body": [
+          "前向出现 Inf/NaN 时，先检查输入、预激活、归约和 loss；loss 有限而梯度非有限时，重点检查局部导数、缩放倍数和不稳定反向算子；梯度有限却参数不动时，再检查优化器、跳步、学习率和更新是否小于参数可表示间距。不同现象应对应不同实验，不能一概归结为显卡精度不够。",
+          "对照实验固定相同权重、样本和随机因素，分别执行 FP32 与混合精度路径。若 FP32 也失败，应优先修复数学与管线；若只有混合精度失败，逐层定位首次分歧，检查范围与算子策略。记录每次修改的证据，如恢复有限梯度、降低相对误差或改善实际更新，而不是只记录“换 BF16 后好了”。",
+          "对梯度极小但有限的情况，还需比较优化前后参数是否真的改变。仅检查 isfinite 不会发现更新在参数存储精度下被舍入掉；参数差与预期更新量对照能够补上这个盲区。"
+        ],
+        "id": "6",
+        "lead": "非有限输出、极小梯度和参数不动是不同现象，可能发生在不同计算阶段。固定输入和状态后逐段比较 FP32 与低精度路径，可以找到首次分歧，并据此选择公式、尺度或精度上的修复。"
+      },
+      {
+        "title": "验证范围、性能测量与保存恢复",
+        "body": [
+          "配套代码提供可执行的 CPU BF16 autocast 教学路径和清楚的 CUDA FP16 分支。CPU 检查能验证代码结构、dtype 与梯度关系，但不能证明某张 GPU 的吞吐、内核支持或数值表现。硬件性能应在目标环境固定批次形状、进行预热和同步计时，同时测峰值内存与有效样本吞吐。",
+          "保存训练状态时，除了权重与优化器，还要保存启用的 GradScaler 状态，避免恢复后无说明地改变尺度历史。记录 autocast dtype、关键精度例外和 loss 的归约方式。改变这些设置之后，重新检查固定样本的一步更新与独立验证表现；“同样的权重文件”不意味着所有数值路径都保持不变。",
+          "混合精度成功的证据是目标模型在可接受误差和任务指标下获得实际资源收益。训练不稳定、频繁跳步或额外 cast 开销过大时，应先定位瓶颈与数值问题，再决定在哪些模块使用低精度。",
+          "性能对照应避免被首次内核初始化、编译或文件读取主导。固定预热次数、测量区间与同步方式，记录训练完整 step 而非只测一个矩阵乘法。只有模型指标与资源收益同时可接受时，才构成这项精度配置的实际收益。",
+          "为了把精度放回同一训练任务，可运行[共同训练项目](#/learn/training-loop?tab=code&anchor=demo-shared-training-project)的 `verify_cpu_amp` 和 `train_window(cpu_amp=True)`。它从同一初值核对 FP32 与 CPU BF16 的输出 dtype，并比较 loss 与梯度，检查 FP32 参数与 loss 归约，并实际执行一次更新。程序打印的误差只是固定小模型的观察，断言不构成 BF16 的普遍误差界；CUDA FP16、GradScaler 溢出跳步与 GPU 延迟不在本次 CPU 验证范围内。"
+        ],
+        "id": "7",
+        "lead": "数值对照通过只是采用混合精度的一个条件，还需要在目标硬件上确认资源收益。保存精度配置与缩放器状态则保证后续恢复沿用同一计算协议，避免将不同数值路径误认为相同实验。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "模型参数",
+        "shape": "FP32 [out, in]",
+        "meaning": "本例保留 FP32 权重，autocast 不等于永久转换参数。"
+      },
+      {
+        "name": "线性层输出",
+        "shape": "BF16 [B, A]",
+        "meaning": "CPU autocast 下矩阵运算的输出示例。"
+      },
+      {
+        "name": "MSE 与参数梯度",
+        "shape": "FP32 标量 / 参数形状",
+        "meaning": "以实际 dtype 打印核查，不凭名称猜测。"
+      }
+    ],
+    "code": {
+      "title": "CPU BF16 autocast 与可读的 CUDA FP16 分支",
+      "source": "import torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(30)\n# STEP 1: 本次固定运行 CPU；CUDA 分支需有可用 GPU\ndevice_type = 'cpu'  # 本地有 GPU 时可改为 'cuda'\ndtype = torch.bfloat16 if device_type == 'cpu' else torch.float16\nmodel = nn.Linear(4, 2).to(device_type)\nx = torch.randn(8, 4, device=device_type)\ny = torch.randn(8, 2, device=device_type)\noptimizer = torch.optim.SGD(model.parameters(), lr=0.05)\nscaler = torch.amp.GradScaler('cuda', enabled=(device_type == 'cuda'))\nbefore = model.weight.detach().clone()\n\n# STEP 2: 前向自动选精度；反传、反缩放与裁剪在外部\noptimizer.zero_grad(set_to_none=True)\nwith torch.autocast(device_type=device_type, dtype=dtype):\n    prediction = model(x)\n    loss = F.mse_loss(prediction, y)\nscaler.scale(loss).backward()\nscaler.unscale_(optimizer)\ngrad_norm = nn.utils.clip_grad_norm_(model.parameters(), 1.0)\nscaler.step(optimizer)\nscaler.update()\nassert torch.isfinite(loss)\nassert all(torch.isfinite(p.grad).all() for p in model.parameters())\nassert not torch.equal(before, model.weight)\nprint('参数 / 输出 / 损失 dtype:', model.weight.dtype, prediction.dtype, loss.dtype)\nprint('裁剪前范数:', round(float(grad_norm), 6))\n\n# STEP 3: 单独观察范围与精度，避免把 BF16 当作更精确的 FP16\nvalues = torch.tensor([1e5, 1e-8, 1.001], dtype=torch.float32)\nfp16 = values.to(torch.float16).float()\nbf16 = values.to(torch.bfloat16).float()\nassert torch.isinf(fp16[0]) and fp16[1] == 0\nassert torch.isfinite(bf16).all() and bf16[1] > 0\nprint('原数值:', values.tolist())\nprint('FP16 还原:', fp16.tolist())\nprint('BF16 还原:', bf16.tolist())\nprint('本例只验证 CPU BF16；CUDA 分支需要在 GPU 上另行验证')\n",
+      "explanations": [
+        {
+          "lines": "1–15",
+          "text": "device_type 固定为 cpu，参数和数据按设备放置。CPU 路径禁用 scaler；CUDA 路径才启用 FP16 梯度缩放，当前环境未运行该分支。"
+        },
+        {
+          "lines": "16–31",
+          "text": "autocast 覆盖前向和损失；unscale_ 必须先于 clip_grad_norm_。示例核查实际 dtype、有限梯度和参数变化，未以 CPU 结果宣称 GPU 性能。"
+        },
+        {
+          "lines": "32–41",
+          "text": "1e5 在 FP16 转换时溢出，1e-8 下溢为零；BF16 保留它们的量级，但 1.001 会受到更粗尾数的舍入。"
+        }
+      ],
+      "expected": "CPU 输出权重 FP32、预测 BF16、MSE FP32；一次更新完成。FP16 示例出现 inf 与 0，BF16 对相应量级保持有限非零值。"
+    },
+    "exercise": {
+      "title": "先反缩放，再做全局范数裁剪",
+      "prompt": "实现 unscale_and_clip(scaled_grad, scale, max_norm)，输入为非空的有限数列表，返回 (真实裁剪前范数, 裁剪后梯度列表)。scale 必须为有限正数，max_norm 为有限非负数；输入非法时抛 ValueError。零梯度应保持为零。只用标准库。反缩放结果或其范数超出浮点有限范围时，也应抛 ValueError。",
+      "runtime": "python",
+      "starter": "def unscale_and_clip(scaled_grad, scale, max_norm):\n     # TODO: 先除以 scale，再按真实梯度的 L2 范数统一缩放\n     raise NotImplementedError('请实现 unscale_and_clip')\n",
+      "solution": "import math\n\ndef unscale_and_clip(scaled_grad, scale, max_norm):\n    if not scaled_grad or not math.isfinite(scale) or scale <= 0:\n        raise ValueError('缩放尺度必须为正数')\n    if not math.isfinite(max_norm) or max_norm < 0:\n        raise ValueError('阈值必须为非负数')\n    if any(not math.isfinite(x) for x in scaled_grad):\n        raise ValueError('梯度必须有限')\n    grad = [x / scale for x in scaled_grad]\n    if any(not math.isfinite(x) for x in grad):\n        raise ValueError('反缩放结果超出浮点有限范围')\n    norm = math.hypot(*grad)\n    if not math.isfinite(norm):\n        raise ValueError('梯度范数超出浮点有限范围')\n    factor = min(1.0, max_norm / norm) if norm else 1.0\n    return norm, [x * factor for x in grad]\n",
+      "tests": "norm, grad = unscale_and_clip([24, 32], 8, 2.5)\nassert abs(norm - 5) < 1e-12 and grad == [1.5, 2.0]\nassert unscale_and_clip([3, 4], 1, 10) == (5.0, [3.0, 4.0])\nassert unscale_and_clip([0, 0], 16, 0) == (0.0, [0.0, 0.0])\nfor args in [([1], 0, 1), ([1], 1, -1), ([float('inf')], 1, 1), ([1e308], 1e-308, 1.0), ([1.7e308, 1.7e308], 1, 1)]:\n    try:\n        unscale_and_clip(*args)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('应拒绝非法输入')\nprint('通过：反缩放顺序、阈值和零梯度')\n",
+      "hints": [
+        "[24,32] 除以 8 得到 [3,4]，真实范数为 5。",
+        "只需一个统一比例；不要分别将每个坐标截断到区间。"
+      ],
+      "explanation": "按坐标截断与全局范数裁剪是不同操作。本题省略实现中的极小稳定常数，以展示准确几何关系；输入被约定为有限值，真实 GradScaler 还负责检测非有限梯度和动态调整尺度。即使输入各项有限，除法和范数也可能溢出。本题显式拒绝这些情况，避免再做 inf×0 得到 NaN；这与真正 GradScaler 的检测和跳步策略不是同一个完整实现。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 scaled_train_step(loss, optimizer, scaler, parameters, max_norm)：清零梯度、缩放反传、反缩放、全局裁剪、缩放器驱动更新，返回裁剪前范数。loss 已由前向构建；parameters 是参数列表。本题用真实 CPU GradScaler 测试更新顺序，并不代表运行过 CUDA。",
+      "starter": "import torch\n\ndef scaled_train_step(loss, optimizer, scaler, parameters, max_norm):\n    # TODO: 正确排列 zero_grad、backward、unscale、clip、step、update\n    raise NotImplementedError('请实现 scaled_train_step')\n",
+      "solution": "import torch\n\ndef scaled_train_step(loss, optimizer, scaler, parameters, max_norm):\n    optimizer.zero_grad(set_to_none=True)\n    scaler.scale(loss).backward()\n    scaler.unscale_(optimizer)\n    norm = torch.nn.utils.clip_grad_norm_(parameters, max_norm)\n    scaler.step(optimizer)\n    scaler.update()\n    return norm\n",
+      "tests": "torch.manual_seed(300)\np = torch.nn.Parameter(torch.tensor([3.0, 4.0]))\nq = torch.nn.Parameter(p.detach().clone())\nopt = torch.optim.SGD([p], lr=0.1)\nref = torch.optim.SGD([q], lr=0.1)\nscaler = torch.amp.GradScaler('cpu', init_scale=128.0)\nnorm = scaled_train_step(p.square().sum() / 2, opt, scaler, [p], 2.5)\nref.zero_grad(set_to_none=True)\n(q.square().sum() / 2).backward()\nref_norm = torch.nn.utils.clip_grad_norm_([q], 2.5)\nref.step()\ntorch.testing.assert_close(norm, torch.tensor(5.0))\ntorch.testing.assert_close(norm, ref_norm)\ntorch.testing.assert_close(p, q)\ntorch.testing.assert_close(p, torch.tensor([2.85, 3.8]), atol=1e-6, rtol=1e-6)\nassert scaler.is_enabled()\nprint('PyTorch 通过：真实 CPU 缩放器、反缩放后裁剪与更新')\n",
+      "hints": [
+        "unscale_ 在 clip_grad_norm_ 之前，且每个优化器每次更新只调用一次。",
+        "使用 scaler.step(optimizer) 和 scaler.update()，不要额外再调用 optimizer.step()。"
+      ],
+      "explanation": "测试使用 128 倍 loss scaling，能识别先裁剪再反缩放的错误：那会把真实梯度压得过小。已知梯度 [3,4] 的范数为 5，裁剪后约为 [1.5,2]，因此 SGD 更新应约为 [2.85,3.8]。这里测试的是单次更新；累积训练应把清零与 scaler 更新移到整个窗口的边界。"
+    },
+    "pitfalls": [
+      {
+        "title": "将所有参数手动 half 当作 AMP",
+        "detail": "这改变了参数存储和更多计算路径。先使用明确的 autocast/GradScaler 配置，检查实际 dtype 与数值边界。"
+      },
+      {
+        "title": "梯度缩放能修复前向 NaN",
+        "detail": "缩放发生在 loss 之后，无法恢复已经非法的中间值。沿前向寻找第一个非有限算子。"
+      },
+      {
+        "title": "scaler.step 被调用就算完成更新",
+        "detail": "缩放器可能跳过 step。记录有限性、尺度、真实参数位移和学习率计数。"
+      },
+      {
+        "title": "CPU 路径通过即证明 CUDA 可靠",
+        "detail": "不同硬件和内核有不同精度与性能特征。保留 CPU 教学验证范围，在目标 GPU 上再检查相同测试和性能。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "PyTorch：Automatic Mixed Precision",
+        "url": "https://docs.pytorch.org/docs/stable/amp.html"
+      },
+      {
+        "title": "PyTorch：AMP examples",
+        "url": "https://docs.pytorch.org/docs/stable/notes/amp_examples.html"
+      },
+      {
+        "title": "PyTorch：torch.finfo 与浮点精度属性",
+        "url": "https://docs.pytorch.org/docs/2.15/type_info.html"
+      },
+      {
+        "title": "PyTorch：Numerical accuracy",
+        "url": "https://docs.pytorch.org/docs/2.15/notes/numerical_accuracy.html"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "autocast 与 model.half() 为什么不能互换？",
+        "answer": [
+          "autocast 在作用域内按算子和设备规则选择运算精度，常规用法保留 FP32 参数。model.half() 则直接转换模块的浮点参数和缓冲区，改变了存储类型及后续运算条件。",
+          "演示同时打印权重、预测与损失的 dtype，展示一条计算链可以混合多种精度。CPU BF16 路径只验证流程；CUDA 的精度、速度和显存必须单独测量，不能由这个打印结果推断。",
+          "还要区分参数存储与已发生的计算。把低精度输出 .float() 只转换当前值，不会重新执行前面的矩阵乘法；1.001→BF16→FP32 已经变成 1。判断是否需要局部 FP32 时，应定位信息第一次丢失的位置。"
+        ],
+        "codeFocus": "演示 STEP 1–2 的参数放置、autocast 作用域与 dtype 输出。",
+        "acceptance": [
+          "能分别指出参数存储精度和算子计算精度。",
+          "能解释为什么需要打印损失和梯度的实际 dtype。"
+        ]
+      },
+      {
+        "question": "如果 scaler 的尺度是 128，先裁剪再 unscale 会发生什么？",
+        "answer": [
+          "裁剪看到的是放大了 128 倍的梯度。如果它触发统一缩放，再除以 128，就把真实梯度范数压到了原阈值的约 \\(\\frac1{128}\\)，训练步长会错误缩小。",
+          "PyTorch 练习以真实梯度 [3,4]、阈值 2.5 核查更新；正确参数约为 [2.85,3.8]。累积时还须在窗口内维持同一尺度，所有反传结束后只 unscale 一次。"
+        ],
+        "codeFocus": "scaled_train_step 中 unscale_ → clip_grad_norm_ → scaler.step 的顺序。",
+        "acceptance": [
+          "能算出示例的裁剪前范数与正确更新。",
+          "能说明累积窗口内 scaler.update 的位置。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "BF16 与 FP16 的范围和精度不同，16 位不是一个统一行为。",
+      "autocast 按算子选精度，不等于把整个模型 half。",
+      "先 unscale 再裁剪，累积周期中保持同一缩放因子。",
+      "保存缩放器状态，并在目标硬件核验数值与吞吐。"
+    ],
+    "lead": "低精度计算能够减少部分存储和运算成本，但它也改变了哪些数值差异能够被表示。混合精度需要在计算收益与误差之间设置清楚的边界，而非把模型整体转换为一种较小的数据类型。本章从浮点格式解释舍入、下溢与溢出，再推导损失缩放及其与累积、裁剪的顺序关系。每项机制都与 FP32 参照联系起来，用于判断误差来自前向、反向还是实际参数更新。"
+  },
+  {
+    "id": "training-diagnostics",
+    "number": 31,
+    "module": "engineering",
+    "title": "训练诊断",
+    "subtitle": "从“loss 不降”走到可重复、可定位的具体证据。",
+    "minutes": 105,
+    "tags": [
+      "梯度诊断",
+      "小样本拟合",
+      "参数更新",
+      "数值异常"
+    ],
+    "prerequisites": [
+      "autograd",
+      "training-loop",
+      "mixed-precision"
+    ],
+    "objectives": [
+      "沿数据、计算图、梯度和优化器逐层收集证据。",
+      "区分无梯度、零梯度、非有限梯度与未更新参数。",
+      "设计小样本拟合和单变量对照，判断能排除什么问题。"
+    ],
+    "why": "输入、监督、计算图和优化器分别可能出错。用同一初始状态构造只改变一个因素的对照，才能判断损失异常来自哪里。",
+    "sections": [
+      {
+        "title": "把训练拆成一条可检查的证据链",
+        "body": [
+          "训练曲线不变只是现象，原因可能发生在数据、预处理、前向、损失、反向或更新。先建立顺序明确的证据链：样本和标签是否对应，模型看到的输入是否正确，预测是否依赖预期条件，loss 是否表达目标，参数是否收到梯度，优化器是否真正修改了这些参数。每一步都应有一个可以观察或断言的结果。",
+          "优先检查最早出现异常的位置。例如输入已经全零，后面的梯度图再完整也不能恢复缺失信息；目标被错位但模型能记住它，loss 可能下降得很好。不要把“能运行”“loss 有限”“有非零梯度”当作同一层次的正确性证明。将这些事实分开记录，能避免因一个指标正常就过早排除整条管线。",
+          "最小复现应保留引发问题的形状、Mask、模式和目标定义，同时去掉无关数据加载、日志服务和分布式组件。缩小系统是为了减少解释变量，不能把触发错误的条件一并删掉，再宣称原问题已消失。"
+        ],
+        "id": "0",
+        "lead": "从最终损失倒推整个训练系统，往往会同时产生许多无法区分的解释。更有效的起点是把训练分成可观察的依赖链，为每个环节准备支持或反驳某个假设的证据，再定位首次出现异常的位置。"
+      },
+      {
+        "title": "先审查一条样本，再审查一个 Batch",
+        "body": [
+          "在进入模型前检查原始样本与预处理后的 Tensor：值域、单位、通道顺序、类别编码、时间偏移、有效位和字段顺序。对图像可视化增强后输入，对序列列出时间戳与对应目标。将样本 ID 一直保留到 loss 计算，可以判断 shuffle、collate 或窗口切片是否错配。一个 shape 正确的 Batch 仍可能由不属于同一时刻的数据组成。",
+          "再查看同一 Batch 内是否存在重复样本、全无效样本、异常长序列或权重集中。用简单基线比较目标难度：连续目标的常数均值、分类的多数类或均匀概率，可以帮助发现训练效果是否仅达到平凡预测。基线只能参照，不能替代任务含义；若标签泄漏，复杂模型和基线都可能得到误导性结果。",
+          "可以再做标签置乱对照：在明确独立验证的前提下，随机打乱训练标签后，模型不应仍保持原先的样本外识别能力。若结果几乎不变，应检查目标是否被读取、指标是否使用真实标签、划分是否泄漏，以及模型是否仅利用类别频率。这个实验用于排查监督与评估管线，不是评价正式模型的最终方案。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "保留可追踪的样本 ID 与数据约定",
+          "explanation": "否则最终错误难以回溯到原始轨迹和具体变换。",
+          "check": "抽取一个样本贯通 Dataset、collate、模型输入和 loss，逐项对照同一 ID。"
+        },
+        "id": "1",
+        "lead": "模型只能学习实际进入它的数值，标签含义不会因为文件命名正确而自动保持。先检查一条可解释样本，再检查采样与拼接后的批次，可以将原始数据问题与批处理引入的错误分开。"
+      },
+      {
+        "title": "预测与 loss 的合理数量级如何检查",
+        "body": [
+          "对已知输入和简单参数设置预测输出。例如把线性分类器权重与偏置清零，会得到相同 logits，单标签 K 类交叉熵应为 log K；回归模型输出零时，MSE 应等于目标平方的平均。这样的基准比经验判断“loss 大约应该是 1”更可靠，因为它来自当前目标的明确定义。",
+          "检查 loss 时将分项、误差和与有效数分别打印。总 loss 不变可能是某一项下降而另一项上升，也可能是显示精度不足；loss 突然缩小可能来自 Mask 大量丢失监督，而非预测改善。随机生成目标或噪声重采样会带来不可约波动，应区分单次 batch 误差、固定探针误差和真实独立验证误差。"
+        ],
+        "example": {
+          "title": "用均匀分类器检查接口",
+          "steps": [
+            "四类 logits 全为 0，Softmax 概率均为 \\(\\frac14\\)。",
+            "无类别权重、无特殊归约的单标签交叉熵应为 \\(-\\log\\frac14=\\log4\\approx1.3863\\)。",
+            "若结果明显不同，先检查标签类型、重复 Softmax、ignore_index 与类别权重。"
+          ],
+          "conclusion": "确定性基准能把 loss 解释从猜测变成可复查计算。"
+        },
+        "id": "2",
+        "lead": "输入与标签对应之后，还需要确认损失确实衡量了所声明的误差。选取能手算预测的参数配置，可以得到确定的损失基准，进而判断异常数量级来自目标难度还是接口与归约错误。"
+      },
+      {
+        "title": "固定小批次实验能证明什么，不能证明什么",
+        "body": [
+          "固定少量样本、初始化与随机因素，让模型反复拟合相同目标，是检查管线可学习性的有效方法。先关闭不必要增强和 Dropout，使用明确的损失分母与可解释输出范围；对简单合成目标，应该观察到预测和参数沿正确方向变化。若无法拟合，应优先排查图、标签、优化器与容量，而不是先上更大数据。",
+          "固定实验失败时，还要区分“该模型没有实现可拟合关系”与“给定输入根本不能区分标签”。例如两条输入完全相同，目标却分别为 −1 和 +1，则任何确定性预测 \\(c\\) 的平均平方误差都是 \\(\\tfrac12[(c+1)^2+(c-1)^2]=1+c^2\\)，下界为 1。增大确定性网络不能消除这个矛盾；应检查条件是否缺失、标签是否错配，或者任务本身是否需要分布式预测。这是[条件均值分解](#/learn/probability?tab=theory&section=2)在诊断中的具体用途。",
+          "但错误标签、泄漏输入和错误单位也可能被记住，因此小批拟合通过不证明语义正确或泛化良好。生成模型如果不断重采噪声和时间，训练对象并非固定样本，损失也可能有不可约方差。需要固定完整的条件—噪声—目标三元组做最小过拟合检查，再恢复真实随机训练协议，两种结果分开解释。",
+          "少量样本的过拟合速度还受容量和目标复杂度影响，不能要求任意模型都在几步内归零。最小实验的意义是为某个假设提供对照证据，而不是建立一个所有任务必须达到的统一 loss 阈值。"
+        ],
+        "id": "5",
+        "lead": "在语义与损失基准得到确认后，可以暂时移除数据变化，检验训练链路能否拟合一组固定目标。通过与失败分别排除的假设不同；这个实验应放在泛化判断之前，也不能被当作语义正确性的证明。",
+        "comparison": {
+          "title": "固定小批次结果如何改变下一步假设",
+          "columns": [
+            "观察",
+            "能够支持的判断",
+            "下一项区分实验"
+          ],
+          "rows": [
+            [
+              "手算 loss 基准不符",
+              "目标或接口尚未得到确认，暂不应归因于容量",
+              "逐项对照输出、标签移位、有效集合与分母"
+            ],
+            [
+              "基准正确，但简单且可表示的合成目标也拟合失败",
+              "图连接、更新配置或数值路径仍有问题",
+              "比较梯度是否存在、优化器成员与实际参数位移"
+            ],
+            [
+              "合成目标能拟合，真实固定批次不能拟合",
+              "基本链路可工作，但未证明真实数据语义或容量充分",
+              "检查相同输入的冲突标签、缺失条件、输出约束及任务难度"
+            ],
+            [
+              "固定真实批次能拟合，独立验证较差",
+              "该有限集合可学习，泛化问题仍未解决",
+              "统一 train/eval 统计口径，再检查划分、分布覆盖与正则化"
+            ]
+          ]
+        },
+        "code": "import torch\nfrom torch import nn\n\ntorch.manual_seed(41)\ntarget = torch.tensor([[-1.], [1.]], dtype=torch.float64)\n\ndef fit_fixed(x):\n    model = nn.Linear(1, 1, dtype=torch.float64)\n    with torch.no_grad():\n        model.weight.zero_()\n        model.bias.zero_()\n    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)\n    for _ in range(80):\n        optimizer.zero_grad(set_to_none=True)\n        loss = (model(x) - target).square().mean()\n        loss.backward()\n        optimizer.step()\n    with torch.no_grad():\n        prediction = model(x)\n        return float((prediction - target).square().mean()), prediction\n\nrepresentable_loss, _ = fit_fixed(target.clone())\nconflicting_loss, prediction = fit_fixed(torch.ones_like(target))\nassert representable_loss < 1e-12\ntorch.testing.assert_close(prediction[0], prediction[1])\ntorch.testing.assert_close(torch.tensor(conflicting_loss), torch.tensor(1.0))\nprint(\"可表示目标的 MSE:\", representable_loss)\nprint(\"同输入冲突标签的 MSE:\", conflicting_loss)\n",
+        "codeExplanation": "两个实验使用相同线性模型、零初始化、优化器和更新次数，仅改变输入是否包含区分标签的信息。后一个实验达到可证明的 MSE 下界，说明“未归零”本身不能证明训练代码错误；前一个阈值只用于这个明确的合成线性问题。",
+        "codeKind": "runnable"
+      },
+      {
+        "title": "把 None、零梯度和非有限梯度分开定位",
+        "body": [
+          "参数 grad=None 可能因为它没有参与当前损失、被 detach、处于冻结状态，或检查时机不对。全零梯度则可能来自激活截断、损失局部平坦、相互抵消或无效监督；Inf/NaN 又是另一类数值异常。检查应放在 backward 后、下一次 zero_grad 前，并明确是叶子参数还是未 retain_grad 的中间激活。",
+          "使用 autograd.grad、retain_grad 或局部 hook 可以观察某段依赖，但不应无目的地对所有激活保存完整梯度。先沿期望路径选几个边界，判断信号在哪一处第一次消失。若上游模块之前有可训练参数，冻结模块内部仍可能需要输入梯度；误用 no_grad 就会留下后面有梯度、前面无梯度的典型分界。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "梯度审计只输出一个全局范数",
+          "explanation": "全局非零可以掩盖某个关键分支完全没有梯度。",
+          "check": "按模块记录 None 数量、有限性、范数和有效参数量，再定位首次异常边界。"
+        },
+        "id": "3",
+        "lead": "若固定小批次仍无法学习，应进一步查看监督信号沿计算图如何传播。没有梯度、零梯度和非有限梯度支持不同假设，只有保留这种区分，局部观察才会缩小排查范围。"
+      },
+      {
+        "title": "有梯度但不更新：检查优化器与执行边界",
+        "body": [
+          "参数参与求导和参与优化器是两种成员关系。新模块漏加参数组、替换了参数对象、学习率为零或 AMP 跳步，都可能导致有梯度却没有位移。优化器中还可能保留已不再使用的旧参数。应比较参数 ID，而不仅比较名称，并在 step 前后保存 detach().clone() 的快照来测量实际变化。",
+          "如果位移非零但训练仍异常，再检查是否更新了正确对象、是否每次 forward 重新创建层、是否加载 checkpoint 后又覆盖参数、是否验证仍引用旧模型。测量相对位移 \\(\\frac{\\lVert\\Delta\\theta\\rVert_2}{\\lVert\\theta\\rVert_2+\\varepsilon}\\) 有助于比较不同层，但接近零参数时要解释分母；不要仅按一个统一比例判断所有层应具有相同学习速度。"
+        ],
+        "example": {
+          "title": "两种表面相似的失败",
+          "steps": [
+            "断图案例：主干输出 detach，后面分类器仍有梯度，但主干 grad=None，且主干不移动。",
+            "漏加优化器案例：分类器有非零梯度，optimizer.param_groups 却不包含它，分类器位移为零。",
+            "两者最终都可能表现为 loss 改善有限，修复位置却分别是计算图和参数组。"
+          ],
+          "conclusion": "同时观察图连接、优化器成员与实际位移，才能分清原因。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "把 optimizer.step 的调用次数当作有效更新次数",
+          "explanation": "缩放器跳步、零学习率和遗漏参数都可能使调用不产生预期更新。",
+          "check": "对目标参数记录前后差值、实际 lr、in_optimizer 和 AMP 有限性结果。"
+        },
+        "id": "4",
+        "lead": "反向信号存在，只能说明求导路径连通，不能证明优化器执行了预期更新。比较参数对象的成员关系与 step 前后的位移，可以把断图之外的故障定位到更新阶段。"
+      },
+      {
+        "title": "诊断日志、异常检测与性能剖析各有职责",
+        "body": [
+          "数值异常可用有限值检查、局部 hook 或 autograd 异常检测定位；训练速度与内存瓶颈需要 profiler、同步计时和分配统计。高耗时不等于梯度错误，低吞吐也可能来自数据读取或频繁 CPU/GPU 同步。不要把每一步大量 item()、打印和全模型梯度拷贝加入正式训练后，再用被诊断工具拖慢的结果判断性能。",
+          "日志保存标量或 detach 后的小摘要，避免不断保留带图 GPU 张量。定期抽样记录比每步保存全部激活更适合长期训练。发现异常时保存能重放问题的最小样本、配置、随机状态和错误信息，并减少无关输出。清晰的日志应该让人回答一个假设，而不是产生更多无法解释的曲线。"
+        ],
+        "id": "6",
+        "lead": "当异常位置已经缩小，观测工具应服务于一个明确问题。数值检查追踪错误值，性能剖析追踪时间与内存，而日志应保留可重放证据；无目的地记录全部张量可能反过来改变系统行为。"
+      },
+      {
+        "title": "用单因素修复和回归测试结束排查",
+        "body": [
+          "配套代码在同一数据与初始化上构造正确、断图和漏加优化器三条路径，并用不同断言识别。修复时只改变对应因素，再重放完全相同输入，确认异常证据消失且预期更新恢复。若同时更换学习率、模型、数据和损失，即使训练改善，也无法知道真正原因，更难判断后续是否会复发。",
+          "将反例保留成小回归测试：比如新模块必须出现在 optimizer 中、冻结区之前的 Adapter 必须有梯度、有效零标签不能被 Mask 掉。测试应检验业务上重要的计算约定，不需要把实现每一行复制一遍。修复训练链路后，再恢复独立验证、真实增强和闭环评估，确认局部改动没有引入新的目标偏差。",
+          "一个完整诊断报告应包含现象、假设、控制变量、支持或反驳证据、修复以及剩余边界。比起“调了一下就正常”，这种记录能帮助下一次快速识别相似故障，也能把经验变成可复用的知识。",
+          "对于恢复后才出现的训练退化，保存加载前后的同一输入、模型状态和随机状态，对比下一次前向、梯度与更新。若前向已不同，先查模式、预处理与权重；前向相同而更新不同，再查优化器状态、scheduler、AMP 与累积边界。按首次分歧分层定位，能避免从整个训练曲线倒推所有可能原因。",
+          "诊断应尽量复用已经出现故障的同一个训练对象。[共同训练项目](#/learn/training-loop?tab=code&anchor=demo-shared-training-project)保留正常 Dataset、Mask 和 4→2 模型，只在 `verify_optimizer_diagnosis` 中漏掉 bias 的优化器成员；观察到非零 bias 梯度但零参数位移。另一个 `verify_masks` 只改变无效区或有效标签，用输入不变性与主动拒绝区分 Padding 处理错误。每个实验只改变一个假设，避免换一个模型后损失下降却无法解释原来的问题。"
+        ],
+        "id": "7",
+        "lead": "定位故障还需要一个闭环：只修改对应因素，再重放同一输入，确认预期机制恢复。将最小反例转为回归检查，可以保留这次诊断的因果证据，并防止相同错误在后续结构调整中重新出现。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "参数与梯度",
+        "shape": "每个 named_parameter 对应同形状梯度",
+        "meaning": "None、全零、非有限值属于不同状态。"
+      },
+      {
+        "name": "参数变化",
+        "shape": "\\(\\lVert\\theta_{\\mathrm{after}}-\\theta_{\\mathrm{before}}\\rVert_2\\)",
+        "meaning": "在同一实际更新前后比较，不能用 grad 存在替代。"
+      },
+      {
+        "name": "最小批次",
+        "shape": "固定 [B,D] 与 [B,A]",
+        "meaning": "固定样本与配置，把随机波动从初始排查中移除。"
+      }
+    ],
+    "code": {
+      "title": "复现断图与漏加优化器两种失败",
+      "source": "import torch\nfrom torch import nn\n\ntorch.manual_seed(31)\nx = torch.randn(6, 3)\ny = 2 * x[:, :1] - x[:, 1:2]\n# STEP 1: 三种实验共享初始化与数据，控制唯一故障因素\ndef run_case(mode):\n    torch.manual_seed(310)\n    model = nn.ModuleDict({'trunk': nn.Linear(3, 4), 'head': nn.Linear(4, 1)})\n    params = list(model['trunk'].parameters()) if mode == 'omit_head' else list(model.parameters())\n    optimizer = torch.optim.SGD(params, lr=0.05)\n    members = {id(p) for group in optimizer.param_groups for p in group['params']}\n    before = {name: p.detach().clone() for name, p in model.named_parameters()}\n    model.zero_grad(set_to_none=True)\n    hidden = torch.tanh(model['trunk'](x))\n    if mode == 'detach_trunk':\n        hidden = hidden.detach()\n    prediction = model['head'](hidden)\n    loss = (prediction - y).square().mean()\n    assert torch.isfinite(loss)\n    loss.backward()\n    optimizer.step()\n    # STEP 2: 同时观察图连接、优化器成员和真实位移\n    rows = {}\n    for name, p in model.named_parameters():\n        grad = p.grad\n        rows[name] = {'in_optimizer': id(p) in members,\n                      'has_grad': grad is not None,\n                      'finite_grad': bool(torch.isfinite(grad).all()) if grad is not None else None,\n                      'delta': float((p.detach() - before[name]).norm())}\n    return rows\n\n# STEP 3: 用有针对性的断言区分三种训练状态\nfor mode in ['correct', 'detach_trunk', 'omit_head']:\n    report = run_case(mode)\n    print(mode, report)\n    if mode == 'correct':\n        assert all(r['has_grad'] and r['in_optimizer'] and r['delta'] > 0 for r in report.values())\n    elif mode == 'detach_trunk':\n        assert not report['trunk.weight']['has_grad']\n        assert report['trunk.weight']['in_optimizer']\n        assert report['trunk.weight']['delta'] == 0\n    else:\n        assert report['head.weight']['has_grad']\n        assert not report['head.weight']['in_optimizer']\n        assert report['head.weight']['delta'] == 0\nprint('通过：断图和漏加优化器产生不同证据，不能混为一谈')\n",
+      "explanations": [
+        {
+          "lines": "1–23",
+          "text": "每个 case 重置相同种子。detach_trunk 切断主干梯度，omit_head 则保留完整计算图但只把主干参数交给优化器。"
+        },
+        {
+          "lines": "24–33",
+          "text": "在一次 step 前后保存参数副本，分别查询梯度是否存在、是否有限，以及参数对象是否属于优化器。grad 存在不会自动意味着更新。"
+        },
+        {
+          "lines": "34–48",
+          "text": "正常案例所有参数更新；断图案例主干无梯度；漏加案例头部有梯度但不更新。断言围绕真正的故障差异，不用 loss 是否下降替代。"
+        }
+      ],
+      "expected": "三个案例依次打印逐参数证据；断图主干 has_grad=False，漏加的头部 has_grad=True 但 in_optimizer=False 且 delta=0。"
+    },
+    "exercise": {
+      "title": "根据证据分类，而不是猜根因",
+      "prompt": "实现 classify_records(records)，返回字典，键为 missing_optimizer、no_gradient、nonfinite_gradient、zero_gradient，对应按字母排序的参数名列表。每条记录含 name、trainable、in_optimizer 和 grad（None 或非空数列表）。只诊断 trainable=True 的记录；类别允许重叠，但非有限梯度不归入 zero_gradient。",
+      "runtime": "python",
+      "starter": "def classify_records(records):\n     # TODO: 区分 None、全零与非有限值；冻结参数不计入异常\n     raise NotImplementedError('请实现 classify_records')\n",
+      "solution": "import math\n\ndef classify_records(records):\n    report = {key: [] for key in ['missing_optimizer', 'no_gradient', 'nonfinite_gradient', 'zero_gradient']}\n    for item in records:\n        if not item['trainable']:\n            continue\n        name, grad = item['name'], item['grad']\n        if not item['in_optimizer']:\n            report['missing_optimizer'].append(name)\n        if grad is None:\n            report['no_gradient'].append(name)\n        elif any(not math.isfinite(v) for v in grad):\n            report['nonfinite_gradient'].append(name)\n        elif all(v == 0 for v in grad):\n            report['zero_gradient'].append(name)\n    return {key: sorted(names) for key, names in report.items()}\n",
+      "tests": "records = [\n    dict(name='good', trainable=True, in_optimizer=True, grad=[1, -2]),\n    dict(name='missing', trainable=True, in_optimizer=False, grad=None),\n    dict(name='zero', trainable=True, in_optimizer=True, grad=[0, 0]),\n    dict(name='nan', trainable=True, in_optimizer=True, grad=[float('nan'), 1]),\n    dict(name='frozen', trainable=False, in_optimizer=False, grad=None)]\nassert classify_records(records) == {'missing_optimizer':['missing'], 'no_gradient':['missing'],\n                                    'nonfinite_gradient':['nan'], 'zero_gradient':['zero']}\nassert classify_records([]) == {k: [] for k in classify_records(records)}\nprint('通过：状态区分、重叠分类和冻结参数排除')\n",
+      "hints": [
+        "grad is None 不能用 if not grad 来替代；零列表和缺失是两种语义。",
+        "先检查 trainable，再分别检查优化器成员关系和梯度状态。"
+      ],
+      "explanation": "同一个参数可以既没进入优化器又没有梯度，所以用允许重叠的证据列表。输出是后续排查线索，不是自动根因判定；例如条件分支中当前未使用的参数，无梯度可能完全符合设计。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 audit_gradients(model, optimizer)，在 backward 后、清零前检查所有 requires_grad=True 的参数。返回 missing_optimizer、no_gradient、nonfinite_gradient、zero_gradient 四个按参数名称排序的列表；不改变梯度、参数或优化器。检查结果用于描述参数状态，不直接判定训练是否失败。",
+      "starter": "import torch\n\ndef audit_gradients(model, optimizer):\n    # TODO: 用参数对象 id 判断优化器成员；检查 None、有限性和零范数\n    raise NotImplementedError('请实现 audit_gradients')\n",
+      "solution": "import torch\n\ndef audit_gradients(model, optimizer):\n    report = {k: [] for k in ['missing_optimizer', 'no_gradient', 'nonfinite_gradient', 'zero_gradient']}\n    members = {id(p) for group in optimizer.param_groups for p in group['params']}\n    for name, p in model.named_parameters():\n        if not p.requires_grad:\n            continue\n        if id(p) not in members:\n            report['missing_optimizer'].append(name)\n        if p.grad is None:\n            report['no_gradient'].append(name)\n        elif not bool(torch.isfinite(p.grad).all()):\n            report['nonfinite_gradient'].append(name)\n        elif bool((p.grad == 0).all()):\n            report['zero_gradient'].append(name)\n    return {key: sorted(names) for key, names in report.items()}\n",
+      "tests": "torch.manual_seed(310)\nmodel = torch.nn.ParameterDict({name: torch.nn.Parameter(torch.ones(2))\n                               for name in ['good', 'zero', 'nan', 'missing', 'frozen']})\nmodel['frozen'].requires_grad_(False)\nmodel['good'].grad = torch.tensor([1.0, -1.0])\nmodel['zero'].grad = torch.zeros(2)\nmodel['nan'].grad = torch.tensor([float('nan'), 1.0])\nopt = torch.optim.SGD([model['good'], model['zero'], model['nan']], lr=0.1)\nbefore = model['good'].grad.clone()\nresult = audit_gradients(model, opt)\nassert result == {'missing_optimizer':['missing'], 'no_gradient':['missing'],\n                  'nonfinite_gradient':['nan'], 'zero_gradient':['zero']}\ntorch.testing.assert_close(model['good'].grad, before)\nassert model['missing'].grad is None\nprint('PyTorch 通过：真实参数、优化器成员与四类梯度状态')\n",
+      "hints": [
+        "不能用张量的 == 判断参数是否在列表中，使用 id 建立成员集合。",
+        "先排除 grad is None，再对梯度做 isfinite 和全零判断。"
+      ],
+      "explanation": "测试人为赋予不同梯度状态，隔离验证诊断器本身；演示源码另用真实前向反向复现两种错误。检查器不执行 backward 或 step，因此不会干扰正在排查的计算图。冻结参数跳过，避免把预期状态报告成故障。"
+    },
+    "pitfalls": [
+      {
+        "title": "看到 loss 下降就停止检查",
+        "detail": "泄漏或错误目标也能被优化。核对样本语义、预处理和独立验证，而不只检查训练曲线。"
+      },
+      {
+        "title": "有梯度就认定参数在学习",
+        "detail": "还需检查优化器成员、实际学习率、跳步和 step 前后位移。"
+      },
+      {
+        "title": "生成训练重采随机量，却要求固定小批 loss 归零",
+        "detail": "重新采样改变监督，可能有不可约方差。最小过拟合应先固定完整随机三元组，再恢复真实协议。"
+      },
+      {
+        "title": "长期保存所有带图激活和 loss",
+        "detail": "会延长图和设备张量生命周期，制造内存增长与性能扰动。日志保存 detach 后的必要摘要，按需抽样诊断。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "PyTorch：Autograd 异常检测与计算图",
+        "url": "https://docs.pytorch.org/docs/stable/autograd.html"
+      },
+      {
+        "title": "PyTorch：Profiler recipe",
+        "url": "https://docs.pytorch.org/tutorials/recipes/recipes/profiler_recipe.html"
+      },
+      {
+        "title": "PyTorch：Optimizer zero_grad",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "为什么 requires_grad=True、grad 非零、参数更新，是三个不同问题？",
+        "answer": [
+          "requires_grad 控制是否追踪求导，grad 是本次反向得到的结果，参数更新还要求它进入优化器并实际执行有效 step。条件分支、detach、学习率和 AMP 都可能让三者不同。",
+          "演示的 omit_head 保留头部梯度，但优化器只有主干参数，所以头部位移为零。审计时还应区分 None 和全零，并确认检查时机位于 backward 后、下一次清零前。"
+        ],
+        "codeFocus": "run_case 的 members、before 快照与 delta；audit_gradients。",
+        "acceptance": [
+          "能用漏加参数案例说明三者差异。",
+          "能说出至少一个合法的 grad=None 场景。"
+        ]
+      },
+      {
+        "question": "训练 loss 不下降时，为什么先做固定小批次实验？它不能证明什么？",
+        "answer": [
+          "固定数据和随机因素，可以减少排查变量，直接检查监督、图连接与更新是否能驱动学习。若简单合成目标都无法拟合，应优先修复计算或优化问题。",
+          "这个实验不证明实际任务泛化，也不能自动排除数据泄漏或坐标错误。应记录修复前后相同样本的预测、分项损失与参数变化，再用独立场景和闭环指标验证外部效果。",
+          "还需要检查可拟合性的前提。若相同输入对应 −1 与 +1 的冲突标签，确定性 MSE 的最小值就是 1；此时不归零可能由缺失条件或目标多样性造成，应先区分这一情况与断图、漏加优化器等实现故障。"
+        ],
+        "codeFocus": "原理页固定批次的可表示／冲突标签对照，以及代码页 run_case 的正确／断图／漏加参数组对照。",
+        "acceptance": [
+          "能给出固定样本、配置与对照的排查步骤。",
+          "能区分管线可学习性与部署泛化证据。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "沿数据→前向→loss→梯度→优化器→参数位移逐段建立证据。",
+      "None、零、非有限梯度是不同现象，检查时机与参数范围要明确。",
+      "固定小批次验证可学习性，不证明标签语义与泛化。",
+      "每次只修一个假设，并将能区分错误的反例留下来。"
+    ],
+    "lead": "训练失败往往只留下一个笼统现象，例如损失不降、梯度异常或恢复后退化；相同现象却可能来自完全不同的环节。有效诊断需要把这些候选原因变成可以区分的假设。本章沿数据、目标、计算图和更新建立证据链，先用可手算基准及固定小批次缩小范围，再根据梯度和参数位移定位故障。目标是得到能够复现、反驳和回归验证的解释，而不只是积累调整超参数的经验。"
+  },
+  {
+    "id": "memory-checkpointing",
+    "number": 32,
+    "module": "engineering",
+    "title": "训练显存与重计算",
+    "subtitle": "先知道内存花在哪里，再决定减 Batch、冻结还是重计算。",
+    "minutes": 100,
+    "tags": [
+      "显存估算",
+      "激活重计算",
+      "Checkpointing",
+      "内存生命周期"
+    ],
+    "prerequisites": [
+      "autograd",
+      "mixed-precision"
+    ],
+    "objectives": [
+      "按参数、梯度、优化器状态和激活拆解训练内存。",
+      "正确使用非重入 activation checkpoint 并核对梯度。",
+      "区分逻辑保存量、实际张量内存与缓存预留内存。"
+    ],
+    "why": "冻结大骨干、只训练小头不一定消除全部激活开销；若上游 Adapter 仍需梯度，冻结层中仍可能保留反向路径。理解显存组成，可以让你为长图像序列和动作分块选择真正有效的优化。",
+    "sections": [
+      {
+        "title": "训练内存由哪些对象组成",
+        "body": [
+          "训练内存至少包括参数、梯度、优化器状态、为反向保存的激活、当前输入输出和算子临时工作区。若参数、梯度和 Adam 的两个矩都以 FP32 保存，仅这四项就约为 16P 字节，其中 P 是参数数目。这个估算不包括激活、临时张量、通信缓存或实现额外副本，因此不能用参数量乘固定系数直接保证模型一定装得下。",
+          "混合精度、分片优化器、参数冻结和融合内核会改变各项构成。有的配置保留 FP32 主参数，有的以 FP32 参数执行 autocast；二者不能重复或遗漏计数。估算时为每一类对象列出元素数、dtype、是否常驻和是否被分片，再对照实际测量。模型文件大小只对应保存格式，不等于峰值训练内存。",
+          "内存单位也要保持一致：MB/GB 按十进制，MiB/GiB 按二进制，工具显示口径可能不同。容量规划还需为峰值波动与运行时开销留余量；不能用四舍五入后的理论估计刚好贴满设备容量，再把偶发 OOM 归为不稳定。"
+        ],
+        "example": {
+          "title": "一个明确假设下的状态内存估算",
+          "steps": [
+            "假设 P=100 万，参数、梯度、一阶矩、二阶矩都为 FP32，且没有其他副本。",
+            "每类约 4 MB，四类合计约 16 MB（十进制）。",
+            "前向激活、Batch、临时工作区和框架开销还需另外计算。"
+          ],
+          "conclusion": "16P 是这组假设下的状态估计，不是普遍的训练峰值公式。"
+        },
+        "id": "0",
+        "lead": "显存不足可能来自常驻参数状态，也可能来自某一步短暂产生的大张量。先按对象与生命周期建立账目，才能判断应该减少可训练参数、同时处理的数据，还是反向保存的中间量。"
+      },
+      {
+        "title": "激活为何随 Batch、序列和宽度增长",
+        "body": [
+          "一个 [B,T,D] 激活包含 BTD 个元素；同一网络中还可能有多个投影、中间 FFN、归一化和反向所需保存量。标准显式注意力分数为 [B,H,T,T]，序列长度翻倍会让这一个张量元素数约增四倍。使用不显式保存完整矩阵的优化算法可以改变实际内存行为，所以应同时区分数学计算复杂度和具体实现的保存策略。",
+          "增大图像分辨率、相机数或历史长度通常增加 token 数，从而影响后续多个模块。仅在最后增加一层小 MLP，新增参数可能不多，但前面的长序列激活仍是主要成本。减少微批大小主要降低激活峰值，不能消除常驻优化器状态；反之，LoRA 减少可训练参数状态，也不一定显著减少所有激活。",
+          "读内存问题时应先判断随哪一项配置增长：Batch 线性增长提示激活，参数数量变化提示状态，某段序列长度引起突增可能涉及注意力或临时工作区。这些只是定位线索，最终仍需逐阶段测量。"
+        ],
+        "id": "1",
+        "lead": "参数量固定时，改变批次、序列和图像分辨率仍可能显著改变内存需求。沿实际张量形状统计激活，可以看清这种增长来自哪里，并区分数学上的中间对象与具体内核是否真的保存它。"
+      },
+      {
+        "title": "冻结能够省掉什么，不能省掉什么",
+        "body": [
+          "冻结参数通常无需为这些参数保存梯度和对应优化器状态，但其权重仍需参与前向。如果冻结模块之前还有可训练 Adapter，反向仍需要穿过它来计算输入梯度，相关激活不一定能全部省去。只有在没有必要上游梯度的边界停止建图，才可以避免该区域的反向保存；不恰当地使用 no_grad 会直接改变可训练路径。",
+          "参数冻结也不自动把模块切换到 eval，Dropout 或 BatchNorm 行为与梯度设置独立。离线缓存固定特征可能进一步减少训练计算，但它要求输入预处理、随机增强、条件和编码器状态都满足缓存有效性条件。缓存来自未来信息或不一致增强时，内存节省的同时改变了训练问题，应独立审查。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "可训练参数少就认为激活内存必然很小",
+          "explanation": "反向是否经过大骨干由计算依赖决定，不只由骨干参数 requires_grad 决定。",
+          "check": "画出可训练模块的位置，分别测冻结、停止建图和真正裁断前置梯度的影响。"
+        },
+        "id": "2",
+        "lead": "冻结减少了部分需要更新的状态，却未必删除穿过冻结模块的反向计算。检查哪些上游参数仍需输入梯度，才能判断激活是否可以省去，也能解释不同微调结构为何具有不同内存收益。"
+      },
+      {
+        "title": "allocated、reserved 与峰值测量",
+        "body": [
+          "设备内存的已分配量通常指仍被活跃张量占用的部分，缓存分配器预留量还包含可复用的内存块。预留量高不等于全部都是泄漏；调用 empty_cache 可以释放部分空闲缓存给其他使用者，却不能释放仍被张量引用的内存。把清缓存放进每个训练步，也可能增加分配开销而不解决活跃对象过大的根因。",
+          "峰值应覆盖完整训练步，并明确统计从什么时候开始。先预热模型，必要时同步设备，重置峰值统计，再测前向、反向和 step；优化器状态可能在第一次 step 才创建，所以只测前向会低估。计时同样需要处理异步执行，不能用 CPU 调用返回时间直接当作 GPU 运算耗时。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "按阶段记录内存，而不是只看一张显卡截图",
+          "explanation": "前向、反向和 optimizer.step 的峰值来源可以不同。",
+          "check": "在固定输入上分别记录 allocated/reserved/peak，并说明预热、同步与首次状态创建。"
+        },
+        "id": "3",
+        "lead": "理论账目需要与测量口径对应，活跃张量、分配器预留和完整训练峰值并不是同一个量。理解它们的差别，才能避免把缓存误判为泄漏，或用只覆盖前向的测量低估训练需求。"
+      },
+      {
+        "title": "激活重计算用额外计算换取更少保存量",
+        "body": [
+          "普通反向需要某些前向中间值，激活 checkpointing 选择只保存区段边界等必要信息，在 backward 时重新执行部分前向来恢复中间量。它不会从磁盘读取 checkpoint，也不等于训练断点保存；两者名称相近，但用途不同。被重计算的函数必须在两次执行中代表同一个计算，否则输出或梯度可能改变。",
+          "PyTorch 提供不同重计算实现，示例显式使用 use_reentrant=False，避免依赖默认选择。分段长度越大，保存边界可能越少，但需要重算的工作也可能更多；实际实现还可能提前停止已不需要的重算。选择区域应根据激活成本、计算成本和依赖关系，不能假定包住整个网络就获得最佳时间—内存折中。",
+          "重算的收益取决于哪些中间量本来需要保存。一个几乎不保存大激活的廉价算子，包住后可能只有管理开销；含大型中间投影的块则可能收益明显。先用保存量和 profiler 定位，再选择分段，能够避免把更多计算花在没有实际内存节省的位置。"
+        ],
+        "example": {
+          "title": "为什么保留边界仍能反向",
+          "steps": [
+            "设一段计算 \\(x\\to h_1\\to h_2\\to y\\)，普通反向可能保存 \\(h_1\\) 与 \\(h_2\\)。",
+            "重计算策略保存 x 和必要状态，反向需要 \\(h_1\\text{ / }h_2\\) 时再从 x 重做这段前向。",
+            "节省的是部分中间保存，增加的是再次求值；x、参数、梯度与优化器状态仍要存在。"
+          ],
+          "conclusion": "激活重计算改变保存策略，不改变期望优化的数学函数。"
+        },
+        "id": "4",
+        "lead": "反向需要中间值，但这些值不一定必须从第一次前向一直保存到使用时。激活重计算利用计算换存储，要求能够从边界恢复同一个局部函数；这一条件比简单包裹一个 API 更重要。"
+      },
+      {
+        "title": "随机状态与副作用是重计算的高频陷阱",
+        "body": [
+          "如果区段包含 Dropout，重算必须采用与原前向相容的随机结果，才能恢复相同函数；框架通常提供随机状态保留机制，但跨设备、特殊随机源或自定义实现仍需核验。一个函数在前向时增加全局计数、更新外部缓存或改变隐藏状态，重算可能再次执行副作用，不能把它视为纯函数。",
+          "BatchNorm 运行统计、依赖全局变量的分支和在区段中迁移设备，都可能让第二次求值与第一次不同。默认一致性检查未必逐元素比较完整数值，不能把“不报错”当作严格等价证明。对计划重计算的模块，固定权重与输入，对照输出、每个参数梯度、必要的输入梯度以及状态 buffer，才能发现静默偏差。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "包进 checkpoint 后只检查输出形状",
+          "explanation": "状态副作用或随机差异可能保持相同 shape，却改变反向结果。",
+          "check": "对照无重算与重算路径的数值、逐参数梯度和状态变化；避免不可重入副作用。"
+        },
+        "id": "5",
+        "lead": "重新执行一段前向，只有在依赖与状态一致时才会重建正确中间值。随机掩码、运行统计和外部缓存都可能使第二次执行变成另一个函数，因此需要把数值结果与副作用一起检查。"
+      },
+      {
+        "title": "内存增长可能来自对象生命周期",
+        "body": [
+          "把 loss、预测或带图激活不断放进列表，会让其引用链延长，某些保存对象无法及时释放。日志应保存 item 或 detach 后的必要摘要；若还需要长期保留数据，明确拷贝到合适设备并控制容量。hook 闭包、异常 traceback 和缓存字典也可能持有大 Tensor，不能只检查显式的训练变量。",
+          "原地操作、del 和 empty_cache 都不是通用修复。del 只移除一个引用，其他对象仍持有同一存储时不会释放；视图可能共享大张量存储，保留一个小切片也可能间接保留原数据。连续运行相同形状步骤，观察峰值是否稳定，再逐项关闭日志和缓存，是区分常驻峰值与持续增长的有效对照。"
+        ],
+        "id": "6",
+        "lead": "若相同形状的训练步持续增加内存，问题可能不是单步峰值，而是旧对象仍被引用。沿日志、视图和缓存的生命周期检查，可以区分需要控制的工作集与本应释放却长期保留的存储。"
+      },
+      {
+        "title": "验证节省量时同时验证计算保持",
+        "body": [
+          "配套代码使用 saved_tensors_hooks 统计为反向保存的逻辑字节，比较普通路径和重计算路径的输出及参数梯度。这个计数不是 CUDA 峰值：同一存储可能被多次逻辑保存，临时工作区与缓存分配器也不在同一口径。CPU 示例能验证保存策略与梯度关系，不能直接声称节省了某个比例的真实 GPU 显存。",
+          "在目标硬件进一步评估时，应比较相同 Batch、序列形状、精度和模型模式，记录完整 step 的峰值、耗时和吞吐。选择收益明确且状态简单的区段，逐步增加覆盖，不要同时改变 Batch 和重计算区域后把所有差异归因于一种技巧。若内存瓶颈主要是优化器状态，激活重计算的收益也会有限。",
+          "最终方案可能组合较小微批与累积、混合精度、激活重计算和参数状态分片。每项策略都针对不同内存项，先定位再组合，才能解释资源收益及额外通信、计算和实现复杂度。",
+          "检查梯度保持时最好比较全部参数，而不只看最终输出或总范数。重算若在某个分支漏掉依赖，输出可能仍完全相同，却让一个子模块梯度错误。若输入前面有可训练模块，还需同时检查输入梯度，这一点与冻结模块的反向边界相通。",
+          "记录节省量时同时报告额外耗时，避免只展示内存下降。若重算让每步时间明显增加，应按相同墙钟或同等训练预算比较实际收益，并说明采用哪种预算。"
+        ],
+        "id": "7",
+        "lead": "保存量减少并不自动说明方案可用，梯度改变或重算耗时过大都会影响训练。以同一模型和数据为参照，同时核验计算结果、实际峰值及完整步耗时，才能解释获得的资源收益。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "总参数与训练参数",
+        "shape": "P / Pₜ 个标量",
+        "meaning": "冻结影响训练状态数量，但权重通常仍驻留。"
+      },
+      {
+        "name": "保存张量",
+        "shape": "各层不同",
+        "meaning": "反向所需的前向中间结果；重计算减少保存项。"
+      },
+      {
+        "name": "演示输入",
+        "shape": "[32,64]",
+        "meaning": "CPU 上对比同一个 MLP 的输出、梯度与逻辑保存量。"
+      }
+    ],
+    "code": {
+      "title": "观察重计算减少的保存量，并逐参数核对梯度",
+      "source": "import torch\nfrom torch import nn\nfrom torch.utils.checkpoint import checkpoint\n\ntorch.manual_seed(32)\n# STEP 1: 两次运行使用同一个模型和同一数据，不进行参数更新\nblock = nn.Sequential(nn.Linear(64, 128), nn.GELU(),\n                      nn.Linear(128, 128), nn.GELU(), nn.Linear(128, 16))\nx = torch.randn(32, 64)\ntarget = torch.randn(32, 16)\n\n# STEP 2: hook 统计为反向保存的逻辑字节；这不是 GPU 峰值\ndef run(use_checkpoint):\n    block.zero_grad(set_to_none=True)\n    local_x = x.detach().clone().requires_grad_(True)\n    saved_bytes = []\n    def pack(tensor):\n        saved_bytes.append(tensor.numel() * tensor.element_size())\n        return tensor\n    def unpack(tensor):\n        return tensor\n    with torch.autograd.graph.saved_tensors_hooks(pack, unpack):\n        if use_checkpoint:\n            output = checkpoint(block, local_x, use_reentrant=False)\n        else:\n            output = block(local_x)\n        loss = (output - target).square().mean()\n    loss.backward()\n    grads = [p.grad.detach().clone() for p in block.parameters()]\n    return output.detach(), grads, sum(saved_bytes)\n\n# STEP 3: 节省保存量的同时，应保留目标计算与梯度\nplain, grad_plain, bytes_plain = run(False)\nremat, grad_remat, bytes_remat = run(True)\ntorch.testing.assert_close(plain, remat)\nfor a, b in zip(grad_plain, grad_remat):\n    torch.testing.assert_close(a, b)\nassert bytes_remat < bytes_plain\nprint('普通前向逻辑保存字节:', bytes_plain)\nprint('重计算逻辑保存字节:', bytes_remat)\nprint('通过：输出和参数梯度一致；此数值不是 CUDA 峰值显存')\n",
+      "explanations": [
+        {
+          "lines": "1–11",
+          "text": "不调用 optimizer.step，避免两次运行参数不同。模型无随机层，先用最清晰的条件核对重计算机制。"
+        },
+        {
+          "lines": "12–31",
+          "text": "saved_tensors_hooks 观察反向保存事件；pack 返回原张量，未改变计算。统计可能包含同一存储的多次逻辑引用，不等同于实际内存分配。"
+        },
+        {
+          "lines": "32–41",
+          "text": "非重入 checkpoint 与普通前向逐输出、逐参数梯度对齐，并显式检查保存量下降。真实 GPU 还要测 memory_allocated、reserved 与峰值。"
+        }
+      ],
+      "expected": "两种前向的输出和全部参数梯度一致；checkpoint 路径的逻辑保存字节更少。数字用于解释机制，不宣称 GPU 节省比例。"
+    },
+    "exercise": {
+      "title": "估算 FP32 Adam 的参数状态内存",
+      "prompt": "实现 adam_state_bytes(total_params, trainable_params)。两个输入都是非负整数，且训练参数量不大于总量。按 FP32 权重、FP32 梯度、两个 FP32 Adam 矩估计，返回 weights、gradients、moments、total 四个字节数。状态已初始化，不计激活、缓存或临时工作区。非法输入抛 ValueError。",
+      "runtime": "python",
+      "starter": "def adam_state_bytes(total_params, trainable_params):\n     # TODO: 权重覆盖所有参数；梯度与两个矩估计仅覆盖训练参数\n     raise NotImplementedError('请实现 adam_state_bytes')\n",
+      "solution": "def adam_state_bytes(total_params, trainable_params):\n    if (not isinstance(total_params, int) or not isinstance(trainable_params, int)\n            or total_params < 0 or trainable_params < 0 or trainable_params > total_params):\n        raise ValueError('参数数量不合法')\n    weights = 4 * total_params\n    gradients = 4 * trainable_params\n    moments = 8 * trainable_params\n    return dict(weights=weights, gradients=gradients, moments=moments,\n                total=weights + gradients + moments)\n",
+      "tests": "assert adam_state_bytes(1000, 100) == dict(weights=4000, gradients=400, moments=800, total=5200)\nassert adam_state_bytes(1000, 1000)['total'] == 16000\nassert adam_state_bytes(1000, 0)['total'] == 4000\nfor args in [(1, 2), (-1, 0), (2.5, 1)]:\n    try:\n        adam_state_bytes(*args)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('应拒绝非法参数数量')\nprint('通过：全量训练、冻结与数量边界')\n",
+      "hints": [
+        "一个 FP32 标量占 4 字节，Adam 的一阶与二阶矩各一份。",
+        "冻结不会让模型权重消失；只在本题假设下减少相应梯度与状态。"
+      ],
+      "explanation": "本题是注明假设的状态内存账单。全量 FP32 Adam 的这个简化部分是每参数 16 字节，但真实峰值还取决于激活、优化器实现和工作区；不能用计算结果判断一个真实模型一定能装进某张卡。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 checkpointed_forward(block, x)，调用 activation checkpoint 并返回与 block(x) 等价的结果。要求 use_reentrant=False、保留随机数状态；x 可以不需要梯度，但 block 参数需要梯度。测试包含 Dropout、无输入梯度和保存量检查，不能直接返回普通前向冒充重计算。",
+      "starter": "import torch\nfrom torch.utils.checkpoint import checkpoint\n\ndef checkpointed_forward(block, x):\n   # TODO: 使用非重入 checkpoint，保留随机状态\n   raise NotImplementedError('请实现 checkpointed_forward')\n",
+      "solution": "import torch\nfrom torch.utils.checkpoint import checkpoint\n\ndef checkpointed_forward(block, x):\n   return checkpoint(block, x, use_reentrant=False, preserve_rng_state=True)\n",
+      "tests": "torch.manual_seed(320)\nblock = torch.nn.Sequential(torch.nn.Linear(8, 32), torch.nn.Dropout(0.3),\n                            torch.nn.GELU(), torch.nn.Linear(32, 4))\nx = torch.randn(5, 8)  # 故意不要求输入梯度\ndef evaluate(fn):\n    block.zero_grad(set_to_none=True)\n    sizes = []\n    def pack(t):\n        sizes.append(t.numel() * t.element_size())\n        return t\n    torch.manual_seed(321)\n    with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):\n        out = fn(block, x)\n        loss = out.square().mean()\n    loss.backward()\n    return out.detach(), [p.grad.clone() for p in block.parameters()], sum(sizes)\na, ga, na = evaluate(lambda m, v: m(v))\nb, gb, nb = evaluate(checkpointed_forward)\ntorch.testing.assert_close(a, b)\nfor p, q in zip(ga, gb):\n    torch.testing.assert_close(p, q)\nassert nb < na, '应真正减少反向保存量'\nassert not x.requires_grad\nprint('PyTorch 通过：无输入梯度、Dropout 一致性与实际重计算')\n",
+      "hints": [
+        "使用 use_reentrant=False，使 x 不带梯度时仍可训练 block 的参数。",
+        "随机层的重算需要与第一次使用同一随机状态；保留默认状态或显式 preserve_rng_state=True。"
+      ],
+      "explanation": "单看输出相等不能证明启用了重计算，所以测试额外比较保存事件的逻辑字节。固定种子让普通前向和 checkpoint 的 Dropout 对齐，再比较梯度，能识别反向重算使用错误随机状态的问题。共享存储和缓存没有计入真实峰值。"
+    },
+    "pitfalls": [
+      {
+        "title": "模型文件大小乘固定倍数就断言显存够用",
+        "detail": "状态 dtype、激活、工作区和通信都会改变峰值。列出内存构成并测完整训练步。"
+      },
+      {
+        "title": "每步 empty_cache 解决 OOM",
+        "detail": "它不能释放活跃张量，也可能降低性能。先定位对象生命周期和实际最大分配。"
+      },
+      {
+        "title": "重计算区段包含不可重复副作用",
+        "detail": "重算会再次执行函数，可能改变状态和梯度。检查随机性、buffer 更新与外部缓存，做等价对照。"
+      },
+      {
+        "title": "把 saved_tensors_hooks 总字节当显卡峰值",
+        "detail": "统计口径不同，可能重复计算共享存储且遗漏工作区。标明逻辑保存量，并在 GPU 上独立测峰值。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "PyTorch：torch.utils.checkpoint",
+        "url": "https://docs.pytorch.org/docs/stable/checkpoint.html"
+      },
+      {
+        "title": "PyTorch：CUDA memory management",
+        "url": "https://docs.pytorch.org/docs/stable/notes/cuda.html#memory-management"
+      },
+      {
+        "title": "PyTorch：Activation Checkpointing Techniques",
+        "url": "https://pytorch.org/blog/activation-checkpointing-techniques/"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "为什么冻结了大部分参数，训练仍可能占很多显存？",
+        "answer": [
+          "权重本身仍然存在，输入、激活和算子临时内存也没有自动消失。若冻结层上游还有可训练 Adapter，梯度必须穿过冻结层，相关前向信息可能仍要保存。",
+          "显存估算把总参数 P 和训练参数 Pₜ 分开；CPU hook 另外观察反向保存量。应先分清参数状态和激活哪个主导，再选择冻结、减序列、减微批次或重计算。"
+        ],
+        "codeFocus": "adam_state_bytes 的 \\(4P\\) 与 \\(12P_t\\)；演示 saved_tensors_hooks。",
+        "acceptance": [
+          "能写出参数状态估算的假设与遗漏项。",
+          "能解释冻结权重但保留输入梯度的情况。"
+        ]
+      },
+      {
+        "question": "如何证明 checkpoint 既节省保存量，又没有悄悄改变训练？",
+        "answer": [
+          "先固定参数、输入和随机状态，比较普通前向与 checkpoint 的输出及每个训练参数的梯度。再在实际设备上测峰值分配和运行时间，而不是只看到程序能运行。",
+          "演示的逻辑保存量说明机制，练习进一步加入 Dropout 和不带梯度的输入，覆盖重算一致性与非重入语义。带全局副作用或可变状态的模块仍需额外审查，因为重算可能不再等价。"
+        ],
+        "codeFocus": "run(False/True) 与 checkpointed_forward 的梯度、Dropout 和保存量断言。",
+        "acceptance": [
+          "能区分正确性验证和硬件收益测量。",
+          "能说出至少一种导致重算不一致的状态变化。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "参数、梯度、优化器状态、激活和临时工作区分别估算。",
+      "冻结参数不保证能跳过所有反向激活；应检查上游可训练依赖。",
+      "激活 checkpointing 是重算中间值，和训练断点文件不同。",
+      "重计算需核对梯度与状态；逻辑保存字节不能冒充 GPU 峰值。"
+    ],
+    "lead": "训练能否放入设备内存，不能由模型文件大小单独决定。参数状态、反向保存的激活和算子临时量具有不同生命周期，也需要不同的优化方法。本章先建立可核对的内存账目，再解释冻结、微批次与激活重计算分别减少哪一部分。重计算尤其要求理解自动微分为何保存中间值，以及再次前向如何保持同一个函数；最终需要同时验证数值一致性、实际峰值和额外耗时。"
+  },
+  {
+    "id": "distributed-training",
+    "number": 33,
+    "module": "engineering",
+    "title": "DDP 与全局统计",
+    "subtitle": "每个进程算局部数据，但训练目标必须在全局保持一致。",
+    "minutes": 110,
+    "tags": [
+      "DDP",
+      "DistributedSampler",
+      "All-reduce",
+      "全局有效分母"
+    ],
+    "prerequisites": [
+      "dataloader",
+      "gradient-accumulation",
+      "memory-checkpointing"
+    ],
+    "objectives": [
+      "解释 DDP 的参数副本、梯度同步与输入分片边界。",
+      "正确处理不等有效标签数和分布式指标的分母。",
+      "理解两进程 CPU/Gloo 示例，并明确多张 GPU 的显存不会自动合并。"
+    ],
+    "why": "多卡 VLA 后训练不仅是把设备数量写大。动作长度、缺失标签和采样分布会使各 rank 的有效监督量不同；错误地平均局部 loss 或重复评估样本，都可能让结果和单卡基线不一致。",
+    "sections": [
+      {
+        "title": "数据并行复制模型，分开处理输入",
+        "body": [
+          "普通 DistributedDataParallel（DDP）让多个进程各持有一份模型，处理不同输入，在反向过程中同步对应参数的梯度。每个进程称为一个 rank，world_size 是参与进程数，local_rank 常用于选择本机设备。多 GPU 的常见组织是一进程一设备，但核心概念是协作进程，而不是一个 Python 进程里简单循环多次模型。",
+          "DDP 的数据并行不自动将参数、梯度和优化器状态分片到不同进程；每个 rank 通常仍有完整副本。因此它主要增加吞吐和可用全局 Batch，不意味着一份放不进单卡的模型可以靠普通 DDP 自动装下。参数或状态分片属于其他机制，需分别理解其通信与保存协议。",
+          "不同 rank 必须构造相容的模型和参数注册顺序，并从协调的初始状态开始。同步梯度之后，各进程执行相同的优化器更新，才能保持副本一致。只让 rank 0 调 optimizer.step、其余 rank 不更新，会破坏这种基本流程。"
+        ],
+        "id": "0",
+        "lead": "将同一训练任务分给多个进程之前，需要先明确哪些对象被复制、哪些数据被分开、哪些结果需要同步。这个结构决定了 DDP 能提高什么资源能力，也决定各副本为何必须执行相容的更新。"
+      },
+      {
+        "title": "从梯度平均推导全局目标",
+        "body": [
+          "在标准 DDP 的默认归约行为下，进程间梯度被平均。若每个 rank 有 n 个样本并对本地损失求 mean，那么所有 rank 的梯度平均等于这 Rn 个样本的总体平均，前提是样本前向与分块无关。若本地用 sum，平均后会比全局 sum 少一个 world_size 因子。学习率不能脱离归约定义单独讨论。",
+          "机器人序列可能有不同有效长度，rank 的样本数相同也不保证有效元素数相同。设本地误差和为 \\(S_r\\)、全局有效数 \\(N=\\sum_r n_r\\)，所需目标为 \\(\\frac{\\sum_r S_r}{N}\\)。因 DDP 最终除 R，本地可对 \\(\\frac{R S_r}{N}\\) 反向，平均后恢复正确全局梯度。这个推导假设分母由数据决定、采用默认平均协议；自定义 hook 或动态参与需要重新核对。"
+        ],
+        "formula": "\\frac1R\\sum_r\\nabla_\\theta\\left(\\frac{R S_r}{N}\\right)=\\nabla_\\theta\\frac{\\sum_rS_r}{N}",
+        "example": {
+          "title": "两个 rank 的有效长度不同",
+          "steps": [
+            "rank 0 有 2 个有效元素、平均梯度 10；rank 1 有 6 个有效元素、平均梯度 2。",
+            "直接平均本地 mean 得到 \\(\\frac{10+2}{2}=6\\)。",
+            "全局元素平均为 \\(\\frac{2\\times10+6\\times2}{8}=4\\)；本地应分别反向 \\(\\frac{2S_0}{8}\\) 与 \\(\\frac{2S_1}{8}\\)。"
+          ],
+          "conclusion": "进程等权平均与元素等权平均只有在相应计数一致时才相同。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "以为 DDP 会自动修正所有 Mask 分母",
+          "explanation": "DDP 只处理传来的梯度，不知道哪些输出是真正有效监督。",
+          "check": "用不等有效长度的两块数据手算全局目标，再对照单进程与多进程的一次更新。"
+        },
+        "id": "1",
+        "lead": "多个本地梯度要合成为一个全局梯度，平均协议必须与原目标的分母匹配。从单进程的有效元素平均出发，可以推导每个 rank 应反向的系数，而不是用学习率补偿一个含义不明的归约。"
+      },
+      {
+        "title": "DistributedSampler 与 DataLoader worker 各做什么",
+        "body": [
+          "DDP 不会自动切分输入，需要由 sampler 或其他数据协议为每个 rank 分配索引。DistributedSampler 使用同一数据集和协调随机顺序生成不同分片；训练每个 epoch 调 set_epoch，可以让分片的随机打乱按新 epoch 变化。DataLoader 的 num_workers 则是在每个 rank 内并行读取数据，两种进程层级不能混为一谈。",
+          "样本数不能整除 world_size 时，sampler 可根据设置补齐重复样本或丢弃尾部；DataLoader 自己的 drop_last 又控制本地不满 Batch。两层策略组合会改变实际看过的样本数量。训练时重复或丢弃应明示，评估时重复样本会影响指标，应去重或采用无重复分片，并保证最终汇总覆盖所声称的集合。",
+          "如果 Dataset 是可迭代流，还需额外协调 rank 与 worker 的分片，不能直接照搬固定索引数据集的假设。记录样本 ID 与每 rank 的覆盖范围，是检查重复、遗漏和错误分片的直接方法。"
+        ],
+        "id": "2",
+        "lead": "梯度能够同步，并不意味着每个样本已经被正确分配。进程间的数据分片与进程内的数据读取承担不同职责，尾部补齐或丢弃也会改变实际训练及评估集合，需要单独追踪样本身份。"
+      },
+      {
+        "title": "集合通信要求所有参与者遵守同一顺序",
+        "body": [
+          "all_reduce、broadcast 和 barrier 等操作需要对应进程按相容顺序参与。如果某个 rank 因空数据、条件分支或异常先退出，其他进程可能在等待相应通信时挂住。遇到停滞时，应先查看各 rank 最后执行到哪一个步骤、是否拥有相同步数，以及是否有更早的异常，而不是只盯着最终超时消息。",
+          "本地没有有效标签并不等于可以直接跳过 backward；其他 rank 可能有监督，仍需所有进程参与预期同步。若全局监督为空，可以依据协调后的全局计数共同跳过这次更新。带条件分支且某些参数未使用的模型，还要与 DDP 的未使用参数处理约定匹配。额外 barrier 可以帮助定位阶段，但不能修复根本不一致的控制流。"
+        ],
+        "example": {
+          "title": "一个 rank 跳步如何造成等待",
+          "steps": [
+            "rank 0 判断自己的 Mask 全 False，直接 continue。",
+            "rank 1 正常 backward，并进入等待所有 rank 的梯度归约。",
+            "rank 0 没有执行对应通信，rank 1 可能一直等到超时；本地判断必须改成全局协调的协议。"
+          ],
+          "conclusion": "分布式控制流也是算法正确性的一部分。"
+        },
+        "focus": {
+          "kind": "常用",
+          "title": "每个异常都带上 rank 与阶段信息",
+          "explanation": "只有 rank 0 的日志常看不到真正最早失败的进程。",
+          "check": "记录数据取出、前向、反向、归约和 step 的阶段标记，先找最早异常。"
+        },
+        "id": "3",
+        "lead": "集合通信依赖参与者之间的对应关系，因此分布式程序的控制流也是算法的一部分。一个进程局部没有监督，并不意味着其他进程也可以跳过相同阶段；需要依据全局状态决定共同动作。"
+      },
+      {
+        "title": "no_sync 与梯度累积的通信边界",
+        "body": [
+          "默认每次反向都可能触发梯度同步。累积多个微批时，可在前几次使用 ddp.no_sync，最后一次恢复同步；这样保持一个完整更新的梯度组合，同时减少通信次数。官方接口要求 forward 也处在 no_sync 上下文中，只包 backward 不会按预期关闭同步。所有 rank 的周期长度和同步边界必须协调。",
+          "通信减少不改变分母问题。若每个 rank 内又有不同长度微批，仍要按整个更新的全局有效数缩放；AMP 的缩放因子也要在本次累积内保持一致。统一同步后再按所需完整梯度裁剪，最后各 rank 更新模型。将每一步操作标成微批级或更新级，可以避免在多个机制叠加时产生隐蔽的计数错误。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "no_sync 只包 backward",
+          "explanation": "forward 也参与 DDP 同步行为的设置，遗漏它可能仍产生通信。",
+          "check": "用清晰的上下文包住对应微批次的 forward 和 backward，并记录同步周期。"
+        },
+        "id": "4",
+        "lead": "梯度累积希望在多个微批次后再更新，因而不必让每次反向都支付完整同步成本。通信可以延后，但完整目标的分母、精度缩放和所有 rank 的同步边界仍需保持一致。"
+      },
+      {
+        "title": "日志指标应归约分子和分母",
+        "body": [
+          "训练梯度同步不代表 Python 日志变量自动变成全局统计。每个 rank 的 loss.item() 仍是本地值。若本地有效数不同，直接平均这些标量会得到错误指标；应汇总误差和 S 与有效数 N，再计算 \\(\\frac{\\sum S}{\\sum N}\\)。成功率、准确率也应累计成功/正确次数与总次数，而不是无条件平均各 rank 的比例。",
+          "指标归约通常不需要梯度，应使用已 detach 的统计量，避免把日志通信混进训练图。还要审查 sampler 是否补齐了重复评估样本，否则即使分子分母数学正确，也统计了错误集合。按任务或场景报告时，分别归约各组计数，避免全局均值掩盖只在少数 rank 出现的困难样本。"
+        ],
+        "id": "5",
+        "lead": "同步梯度服务于参数更新，日志中的损失和计数并不会因此自动成为全局值。对每种指标保留可加的分子与分母，能够把多进程汇总还原为同一明确统计对象。"
+      },
+      {
+        "title": "模式、随机性与保存恢复",
+        "body": [
+          "DDP 同步参数相关状态不意味着每个样本的随机增强必须完全相同。模型初始化需要协调，数据顺序和增强则需按设计既可复现又避免重复。BatchNorm 的本地 Batch 统计、同步 BatchNorm 和 LayerNorm 行为不同；普通 DDP 不会自动把所有前向统计都变成全局统计。评估切换 eval 与求导模式仍是各进程需要明确执行的操作。",
+          "通常由 rank 0 保存公共模型与优化器状态，避免多个进程同时覆盖文件；恢复时所有 rank 读取相容状态并核对设备映射与 step。若要求严格续训，还需要各 rank 的随机状态、sampler 进度和数据位置。只保存 rank 0 的一个种子，不能自动恢复所有进程已消耗的随机序列。",
+          "改变 world_size 会改变分片、全局 Batch 和可能的调度含义，因此应作为训练配置变更记录。即使参数可加载，后续轨迹也未必与原运行精确相同；应区分可继续训练与逐步复现实验。"
+        ],
+        "id": "6",
+        "lead": "参数一致只是副本协作的一部分，模型模式、运行统计和随机序列还影响每次实际前向。恢复训练时必须说明希望恢复到什么程度，再决定哪些公共状态和进程局部状态需要保留。"
+      },
+      {
+        "title": "先证明单进程等价，再扩展真实训练",
+        "body": [
+          "演示启动两个真实 CPU/Gloo 进程，使用可整除的小数据集，将一次 DDP 更新与单进程完整批次更新逐参数对照。它检验的是简单线性模型、相等本地计数与默认梯度平均条件下的等价；不声称覆盖特殊分片、批内对比或所有通信实现。当前交付环境若禁止本机通信，真实双进程项会明确标为未完成，不能用单进程数学检查代替。",
+          "在具备通信权限的本地环境运行时，先使用小数据、固定初始化和简单模型，确认分片无重复、全局计数正确、各副本一致。再逐项引入变长 Mask、累积、AMP 和实际模型。若一次加入所有组件，loss 差异可能来自数据、随机性、归约或通信，很难定位。",
+          "最终还需评估扩展效率：更多进程带来更大总 Batch，但通信、数据加载和不均匀工作量可能限制吞吐。正确性和性能分别验证，记录有效样本吞吐、同步耗时与每 rank 工作量，而不是只报告使用了多少张卡。",
+          "共同训练项目的 `masked_error_sum` 已返回局部分子 \\(S_r\\) 和有效标量数 \\(N_r\\)。若扩展到 R 个默认平均梯度的 DDP rank，先以相同通信顺序汇总 \\(N=\\sum_rN_r\\)，每个 rank 反传 \\(R S_r/N\\)，DDP 平均后得到 \\(\\sum_r\\nabla S_r/N\\)；日志另外归约 detached 的分子与分母。非最后微步的前向和反向应一同放在 no_sync 内，最后微步完成同步。必须保证各 rank 更新/通信边界一致，包括空监督与尾批；这只是适配关系，单进程累积通过不等于通信验证通过。当前真实 Gloo 示例仍为 environment_blocked，不能把共同项目的 CPU 数值对照写成真实 DDP 已通过。"
+        ],
+        "id": "7",
+        "lead": "并行程序的问题来源较多，直接从大模型吞吐或损失曲线判断等价性并不可靠。先让一个可手算模型与单进程更新逐项对照，再增加真实机制，可以把数学归约、数据分片和通信实现的证据分开。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "rank 的模型副本",
+        "shape": "每进程完整 \\(\\theta\\)",
+        "meaning": "各进程复制模型、分配不同样本；参数与优化器状态没有在进程间分片。"
+      },
+      {
+        "name": "本地输入",
+        "shape": "[Bᵣ,D]",
+        "meaning": "由采样器分配，DDP 不自动切分输入。"
+      },
+      {
+        "name": "统计归约",
+        "shape": "[误差总和, 有效计数]",
+        "meaning": "先跨 rank 求和，再计算全局平均。"
+      }
+    ],
+    "code": {
+      "title": "真实两个 CPU/Gloo 进程，对齐单进程更新",
+      "source": "import os\nimport tempfile\nimport torch\nimport torch.distributed as dist\nimport torch.multiprocessing as mp\nfrom torch import nn\nfrom torch.nn.parallel import DistributedDataParallel as DDP\nfrom torch.utils.data import TensorDataset, DistributedSampler\n\n# STEP 1: 每个 worker 是真实进程，Gloo 仍需本机进程通信\ndef worker(rank, world_size, rendezvous):\n    torch.set_num_threads(1)\n    torch.manual_seed(33)\n    dist.init_process_group('gloo', init_method='file://' + rendezvous,\n                            rank=rank, world_size=world_size)\n    try:\n        x = torch.tensor([[1., 0.], [0., 1.], [1., 1.], [2., -1.]])\n        y = torch.tensor([[1.], [2.], [3.], [0.]])\n        model = nn.Linear(2, 1)\n        reference = nn.Linear(2, 1)\n        reference.load_state_dict(model.state_dict())\n        ddp = DDP(model)\n        # STEP 2: 输入由 sampler 分片；backward 中同步梯度\n        sampler = DistributedSampler(TensorDataset(x, y), num_replicas=world_size,\n                                     rank=rank, shuffle=False, drop_last=False)\n        sampler.set_epoch(0)\n        indices = list(sampler)\n        optimizer = torch.optim.SGD(ddp.parameters(), lr=0.1)\n        optimizer.zero_grad(set_to_none=True)\n        loss = (ddp(x[indices]) - y[indices]).square().mean()\n        loss.backward()\n        optimizer.step()\n        # STEP 3: 与完整批次更新对齐，再按分子与分母归约日志\n        ref_opt = torch.optim.SGD(reference.parameters(), lr=0.1)\n        ref_opt.zero_grad(set_to_none=True)\n        (reference(x) - y).square().mean().backward()\n        ref_opt.step()\n        for p, q in zip(model.parameters(), reference.parameters()):\n            torch.testing.assert_close(p, q)\n        stats = torch.tensor([loss.item() * len(indices), float(len(indices))])\n        dist.all_reduce(stats, op=dist.ReduceOp.SUM)\n        if rank == 0:\n            print('CPU Gloo 进程数:', world_size, '全局 MSE:', float(stats[0] / stats[1]))\n            print('通过：两进程更新与单进程完整批次一致')\n    finally:\n        dist.destroy_process_group()\n\nif __name__ == '__main__':\n    with tempfile.TemporaryDirectory(prefix='eml-ddp-') as folder:\n        mp.spawn(worker, args=(2, os.path.join(folder, 'rendezvous')), nprocs=2, join=True)\n",
+      "explanations": [
+        {
+          "lines": "1–22",
+          "text": "mp.spawn 启动独立进程，file:// 只负责 rendezvous，Gloo 的数据通信仍需要本机 socket。当前交付环境在初始化阶段被限制，尚未验证通信路径。"
+        },
+        {
+          "lines": "23–32",
+          "text": "数据量 4 可以被两个进程整除，因此各 rank 各有 2 条样本，没有补齐重复。此等分条件下局部 MSE 的 DDP 平均与全局 MSE 一致。"
+        },
+        {
+          "lines": "33–50",
+          "text": "每个 rank 都做参数对照与 all_reduce；只有打印限制在 rank 0。支持本机通信的环境运行通过后，才可确认这项两进程演示。"
+        }
+      ],
+      "expected": "在支持本机进程通信的环境运行时，应启动两个 Gloo 进程，并通过与单进程更新的参数断言。当前交付环境的通信初始化受限，此项未计为运行通过。",
+      "runtimeNote": "此示例启动两个本地 CPU/Gloo 进程；当前交付环境限制本机通信，未能完成此项运行验证。请下载后在支持本地进程通信的环境执行。",
+      "validationStatus": "environment_blocked"
+    },
+    "exercise": {
+      "title": "求局部 mean 在 DDP 下应使用的权重",
+      "prompt": "counts[r] 是 rank r 的有效元素数。实现 ddp_mean_weights(counts)，返回每个局部 mean 应乘的权重，使随后按 rank 平均得到全局有效元素平均。counts 为非空非负整数列表，总数必须大于零；零计数 rank 的权重为零。本题只是标准库数学练习，不启动分布式进程。",
+      "runtime": "python",
+      "starter": "def ddp_mean_weights(counts):\n     # TODO: DDP 后面还会除以进程数，需要把这个因子补回\n     raise NotImplementedError('请实现 ddp_mean_weights')\n",
+      "solution": "def ddp_mean_weights(counts):\n    if not counts or any(not isinstance(n, int) or n < 0 for n in counts):\n        raise ValueError('有效计数不合法')\n    total = sum(counts)\n    if total == 0:\n        raise ValueError('全局没有有效元素')\n    world_size = len(counts)\n    return [world_size * n / total for n in counts]\n",
+      "tests": "assert ddp_mean_weights([2, 6]) == [0.5, 1.5]\nassert ddp_mean_weights([4, 4, 4]) == [1.0, 1.0, 1.0]\nassert ddp_mean_weights([0, 5]) == [0.0, 2.0]\nweights = ddp_mean_weights([2, 6])\ncombined = sum(w * g for w, g in zip(weights, [2, 6])) / 2\nassert combined == (2 * 2 + 6 * 6) / 8 == 5.0\nfor counts in [[], [0, 0], [-1, 2]]:\n    try:\n        ddp_mean_weights(counts)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('应拒绝非法计数')\nprint('通过：DDP 平均与全局有效元素平均的缩放推导')\n",
+      "hints": [
+        "希望每组最终权重为 nᵣ/N，但 DDP 会再除以 R。",
+        "因此局部 mean 先乘 \\(\\frac{Rn_r}{N}\\)；零计数时不能真正计算 0/0 的局部 mean。"
+      ],
+      "explanation": "数学权重为零只说明该 rank 不贡献监督，不表示可以跳过同步。真实代码宜使用保持计算图的局部 sum，再乘 R/N；这样避免零计数 rank 先计算不存在的 mean。全局分母需通过真实通信或已知窗口计数获得。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 ddp_scaled_local_loss(local_error_sum, global_valid_count, world_size)，返回标准 DDP 平均梯度前应反传的局部损失。local_error_sum 是标量 Tensor，后两个参数为正整数。测试在单个 CPU 进程中用 autograd 明确模拟 rank 梯度平均，与全局 MSE 对比；此练习不运行多卡或 Gloo。",
+      "starter": "import torch\n\ndef ddp_scaled_local_loss(local_error_sum, global_valid_count, world_size):\n    # TODO: 补偿标准 DDP 的 world_size 平均因子，保留计算图\n    raise NotImplementedError('请实现 ddp_scaled_local_loss')\n",
+      "solution": "import torch\n\ndef ddp_scaled_local_loss(local_error_sum, global_valid_count, world_size):\n    if global_valid_count <= 0 or world_size <= 0:\n        raise ValueError('全局有效数与进程数必须为正')\n    return local_error_sum * (world_size / global_valid_count)\n",
+      "tests": "torch.manual_seed(330)\np = torch.tensor(0.7, dtype=torch.float64, requires_grad=True)\ntargets = [torch.tensor([1.0], dtype=torch.float64),\n           torch.tensor([2.0, -1.0, 3.0], dtype=torch.float64)]\ntotal = sum(t.numel() for t in targets)\nrank_gradients = []\nfor target in targets:\n    local_sum = (p - target).square().sum()\n    local_loss = ddp_scaled_local_loss(local_sum, total, 2)\n    rank_gradients.append(torch.autograd.grad(local_loss, p)[0])\naveraged = torch.stack(rank_gradients).mean()\nreference_loss = (p - torch.cat(targets)).square().mean()\nreference = torch.autograd.grad(reference_loss, p)[0]\ntorch.testing.assert_close(averaged, reference, atol=1e-12, rtol=1e-12)\nassert p.grad is None\ntry:\n    ddp_scaled_local_loss(p.square(), 0, 2)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('应拒绝零全局分母')\nprint('PyTorch 通过：单进程数学模拟的不等计数 DDP 梯度缩放')\n",
+      "hints": [
+        "目标是 \\(\\frac1R\\sum_r\\nabla\\,\\mathrm{local\\_loss}_r=\\nabla\\!\\left(\\frac{\\sum_r S_r}{N}\\right)\\)。",
+        "必须保留 local_error_sum 的 Tensor 运算，不要转换为 item 后重建。"
+      ],
+      "explanation": "测试使用有效计数 1 与 3，简单平均局部 mean 会失败；忘记补乘 world_size 也会使结果小一半。autograd.grad 返回各局部梯度而不写入 p.grad，随后手动 mean 只是验证 DDP 的数学缩放，不构成通信系统的运行验证。"
+    },
+    "pitfalls": [
+      {
+        "title": "每个 rank 都读取完整数据却当作不同分片",
+        "detail": "DDP 不替代 sampler。记录各 rank 样本 ID，检查预期覆盖、重复和尾部策略。"
+      },
+      {
+        "title": "平均各 rank 的 mean 就当全局均值",
+        "detail": "当有效数不同，这会赋予进程相同权重。归约分子和分母，并对训练梯度使用相匹配的缩放。"
+      },
+      {
+        "title": "某 rank 发现空监督就自行 continue",
+        "detail": "会破坏其他进程的同步顺序。先协调全局有效计数，保持所有 rank 的通信协议一致。"
+      },
+      {
+        "title": "双进程无法启动却把单进程检查写成已通过 DDP",
+        "detail": "真实通信、初始化与同步没有被验证。应明确标注环境阻塞，在可用环境重新运行真实进程测试。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "PyTorch：DistributedDataParallel",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html"
+      },
+      {
+        "title": "PyTorch：DistributedSampler",
+        "url": "https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.distributed.DistributedSampler"
+      },
+      {
+        "title": "PyTorch：DDP tutorial",
+        "url": "https://docs.pytorch.org/tutorials/intermediate/ddp_tutorial.html"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "为什么 4 张卡上的 DDP 不等于拥有一张 4 倍显存的卡？",
+        "answer": [
+          "数据并行复制模型，各进程处理不同数据并同步梯度；默认没有把权重和优化器状态拆成四份。因此单张卡仍需装得下自己的完整模型状态与局部激活。",
+          "演示每个 worker 都创建独立 Linear 和 optimizer，DDP 包装后只是同步训练。若模型本身放不下，需要考虑降低状态或激活开销，或进一步学习 FSDP、ZeRO，而不是只增加 DDP world_size。"
+        ],
+        "codeFocus": "worker 内模型、优化器与 DDP 的初始化。",
+        "acceptance": [
+          "能区分数据分片与模型状态分片。",
+          "能指出 DDP 对本地容量和全局 Batch 的不同影响。"
+        ]
+      },
+      {
+        "question": "各 rank 的有效动作数不同，怎样让梯度和日志都对应全局平均？",
+        "answer": [
+          "梯度采用本地误差 sum 乘 R/N，再由标准 DDP 平均；N 是所有 rank 的有效计数之和。局部 mean 需要额外按有效数量加权，不能直接等权平均。",
+          "日志归约误差总和与计数，再相除。所有 rank 共同参加归约；零有效 rank 也需保持同步，评估还要核查 sampler 补齐造成的重复。PyTorch 练习仅验证这个数学关系，实际 Gloo 演示仍受交付环境通信限制。"
+        ],
+        "codeFocus": "ddp_scaled_local_loss；演示 stats 的 all_reduce 与全局分母。",
+        "acceptance": [
+          "能推导 R/N 的来由。",
+          "能分别写出梯度和日志的正确汇聚方式。",
+          "能说明数学模拟与分布式运行验证的边界。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "普通 DDP 复制模型并平均梯度，不自动切分数据或分片全部模型状态。",
+      "不等有效计数时，必须从全局目标推导本地 loss 缩放。",
+      "sampler 分片、集合通信顺序与同步边界共同决定正确性。",
+      "全局日志汇总分子/分母，并检查评估样本是否重复。"
+    ],
+    "lead": "数据并行让多个进程同时计算一份训练目标，却不会自动保证它们统计的是同一个平均值。样本分片、梯度归约和控制流只要有一处不一致，就可能改变更新或使进程相互等待。本章以单进程目标为参照，推导 DDP 的梯度平均、全局有效计数和累积边界，再解释采样与恢复状态。这样，多卡训练可以被理解为一组有明确等价条件的协作计算，而不仅是一条启动命令。"
+  },
+  {
+    "id": "multitask-gradients",
+    "number": 34,
+    "module": "training",
+    "title": "多任务梯度",
+    "subtitle": "连续动作回归与离散状态分类共享主干时，如何分析梯度组合。",
+    "minutes": 105,
+    "tags": [
+      "多任务学习",
+      "梯度夹角",
+      "辅助头",
+      "损失权重"
+    ],
+    "prerequisites": [
+      "autograd",
+      "losses",
+      "finetuning",
+      "training-diagnostics"
+    ],
+    "objectives": [
+      "把加权损失展开为共享参数上的梯度组合。",
+      "用 autograd.grad 测量各任务的范数与夹角，处理未使用参数。",
+      "依据独立任务指标和对照实验解释辅助目标的作用边界。"
+    ],
+    "why": "动作回归、状态分类等目标可能共享表征。学习梯度的线性组合、局部夹角与任务采样，能够用证据判断权重设置和辅助监督的实际作用。",
+    "sections": [
+      {
+        "title": "损失权重最终作用于共享参数的梯度",
+        "body": [
+          "多个任务可以共享一个表征网络，再接独立的分类或回归输出。总目标 \\(L=L_a+\\lambda L_b\\) 对共享参数 \\(\\theta\\) 的梯度为 \\(g_a+\\lambda g_b\\)；任务专属头只接收与自己有关的梯度。任务相互促进或竞争主要需要在共享参数坐标上讨论，把两个独立头的不同坐标混进一个向量，会掩盖真正的交互位置。",
+          "配套网络让连续向量回归与四类状态分类共享一个主干。两项损失的数值和输出维数不同，但它们最终都通过同一组参数起作用。把两项梯度分别取出，再与加权总目标的梯度比较，可以直接看见这种叠加。",
+          "选择辅助任务应首先说明它与主任务的关系、标签是否可靠、部署时是否需要对应输出。增加一个能下降的 loss 并不自动产生有用表征；只有独立主任务和相关能力指标上的对照，才能回答辅助监督是否值得保留。"
+        ],
+        "formula": "\\nabla_\\theta(L_a+\\lambda L_b)=g_a+\\lambda g_b",
+        "id": "0",
+        "lead": "不同任务可以拥有独立输出，却通过共享表征共同改变一组参数。讨论它们的相互作用，首先要固定共享坐标并分解每项监督的贡献，再观察总目标怎样将这些贡献组合起来。"
+      },
+      {
+        "title": "loss 数值不能直接表示训练影响",
+        "body": [
+          "给某项 loss 加上不依赖参数的常数，不改变其梯度，却可以任意改变显示数值；改变目标单位、归约分母或输出维数，也会改变 loss 与梯度的尺度关系。因此把两项 loss 调到数字差不多，只是一种非常粗糙的观察，不能作为平衡任务影响的充分标准。",
+          "先分别审查每项监督的单位、Mask、样本权重和归约。再在同一批次、同一参数状态上读取共享梯度范数，观察加权后的量 \\(\\lambda\\lVert g_b\\rVert_2\\) 相对于 \\(\\lVert g_a\\rVert_2\\) 的大小。梯度还可能集中在不同层，单个全局比值会遗漏局部变化；必要时按共享模块分组统计，但不应把大量日志本身当作结论。"
+        ],
+        "example": {
+          "title": "相同梯度可以对应不同 loss 数字",
+          "steps": [
+            "令 \\(L_a(\\theta)=\\theta^2\\)，\\(L_b(\\theta)=\\theta^2+1000\\)。",
+            "在 \\(\\theta=1\\) 时，两项 loss 分别为 1 与 1001，梯度却都为 2。",
+            "若仅按 loss 数值把第二项缩小一千倍，就会人为降低一个本来同等强度的梯度。"
+          ],
+          "conclusion": "数值大小与优化作用必须通过导数联系，不能直接等同。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "调到相同 loss 数值就认为平衡",
+          "explanation": "常数、单位与分母会改变数值解释。",
+          "check": "分别报告原始指标、有效数量及同一共享参数集合上的加权梯度范数。"
+        },
+        "id": "1",
+        "lead": "损失是标量评价，梯度才是参数更新读取的局部信息。一个不依赖参数的常数就能改变前者而不改变后者，因此平衡任务前应先检查单位、归约与共享梯度，不能只让两个显示数字相近。"
+      },
+      {
+        "title": "点积怎样描述局部任务关系",
+        "body": [
+          "若只沿任务 a 做小步 SGD，\\(\\Delta\\theta=-\\eta g_a\\)，则任务 b 的一阶变化约为 \\(-\\eta g_b^\\top g_a\\)。点积为正时，这一步在局部倾向于同时降低 b；为负时，b 可能上升。余弦将点积除以两者范数，保留方向关系而去掉绝对尺度。任一梯度为零时，它没有方向，余弦应记录为未定义而不是强行解释为正交。",
+          "这个推导只是一阶局部关系，依赖足够小的步长和当前样本。网络非线性、曲率、不同训练阶段与数据噪声都会改变后续行为。Adam 的预条件还会改变实际更新方向，因此原始梯度余弦不直接等于优化器一步的任务变化。需要时可直接计算真实 \\(\\Delta\\theta\\) 与各任务梯度的点积，再对照实际 loss 差。",
+          "还可以比较每一任务在真实更新后的损失差与一阶预测 \\(g_i^\\top\\Delta\\theta\\)。两者相近时局部线性解释有参考价值；差异较大时可能因为步长、曲率或随机前向，不能再仅靠梯度夹角解释全部变化。这个对照也能发现记录的梯度是否来自更新前同一参数状态。"
+        ],
+        "formula": "\\Delta L_b\\approx-\\eta g_b^\\top g_a,\\qquad \\cos(g_a,g_b)=\\frac{g_a^\\top g_b}{\\lVert g_a\\rVert\\lVert g_b\\rVert}",
+        "focus": {
+          "kind": "常用",
+          "title": "余弦看方向，范数和权重看强度",
+          "explanation": "只有余弦无法判断合成后谁占主导，也无法区分几乎为零的梯度。",
+          "check": "同时记录两个范数、加权范数比、点积和零范数状态。"
+        },
+        "id": "2",
+        "lead": "判断一个任务的下降方向是否帮助另一个任务，可以从后者在该方向上的一阶变化开始。点积由这个局部展开自然出现，也因此只在步长、参数状态和数据条件明确时具有解释力。"
+      },
+      {
+        "title": "负余弦不等于辅助任务一定有害",
+        "body": [
+          "总梯度 \\(g=g_a+\\lambda g_b\\) 对主任务的一阶作用由 \\(-\\eta g_a^\\top g\\) 决定。即便 \\(g_a\\) 与 \\(g_b\\) 反向，只要主任务项占优势，合成更新仍可降低主任务；权重过大才可能把方向推向相反。局部冲突也可能伴随更好的长期表示或正则作用，这需要固定预算的训练与验证，而不是从一次夹角直接推断。",
+          "反过来，正余弦也不能保证部署收益：两个任务可能共享同一个数据捷径，在训练集上共同下降，却在新场景失效。应跨批次和训练阶段采样统计，结合独立主任务指标、旧能力与任务分组表现。诊断的目的在于提出可验证假设，不是给某辅助目标贴上永久有益或有害的标签。"
+        ],
+        "example": {
+          "title": "完全反向时，权重决定是否抵消",
+          "steps": [
+            "取一维 \\(g_a=1\\)、\\(g_b=-2\\)，余弦为 -1。",
+            "\\(\\lambda=0.25\\) 时总梯度为 0.5，SGD 仍沿降低任务 a 的局部方向更新。",
+            "\\(\\lambda=0.5\\) 时总梯度为 0，\\(\\lambda=0.75\\) 时总梯度为 -0.5，方向反转。"
+          ],
+          "conclusion": "同一个负余弦对应降低、抵消或反转，必须一起看范数与权重。"
+        },
+        "id": "3",
+        "lead": "局部方向存在冲突，并不决定合成更新最终朝向哪里。主任务自身梯度、辅助梯度的幅度和权重共同决定一阶变化，因此一个负余弦需要放回完整更新式中解释。"
+      },
+      {
+        "title": "用 autograd.grad 获取一致的共享坐标",
+        "body": [
+          "autograd.grad 返回对指定参数的导数，默认不写入 .grad，可用于诊断而不直接污染训练梯度。先固定共享参数列表顺序，对每项 loss 分别求导；未参与某任务的参数可返回 None，应在其原位置填同形状零，然后按相同顺序展平。删除 None 项会让两个向量的坐标不再对应，点积数值即使可计算也失去意义。",
+          "如果后面还要对总目标 backward，前面的诊断求导需要按需 retain_graph=True；通常只做一阶统计，不需要 create_graph=True。保留图和多次求导有额外时间与内存成本，适合定期抽样而非无条件每步用于整个大模型。若某 loss 本身完全不连接任何所选参数，还需明确处理其图状态，不要把 allow_unused 当成所有断图问题的自动修复。",
+          "余弦的数值实现还需避免中间溢出。即便各梯度坐标有限，直接平方、点积或范数乘积也可能超过 dtype 的范围；分别将两个向量除以各自最大绝对值，再计算单位方向的点积，数学上不改变余弦。零向量单独返回未定义；非有限梯度先拒绝，不能用 clamp 将 NaN 伪装成合法方向。对应练习保留大数反例以核验这一实现边界。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "把 None 梯度删掉再拼接",
+          "explanation": "两个任务将拥有不同的参数坐标排列，余弦可能没有数学意义。",
+          "check": "固定参数 ID 顺序，用同形状零占位；随后用总 loss.backward 验证组合梯度。"
+        },
+        "id": "4",
+        "lead": "梯度角度的数学定义要求两个向量使用完全相同的参数坐标。实际求导可能返回未使用参数，诊断也可能意外改变训练缓冲区；明确这些实现细节，才能让记录的点积对应原来的推导。"
+      },
+      {
+        "title": "多任务采样与权重共同定义训练期望",
+        "body": [
+          "如果每个 Batch 同时包含两个任务的标签，\\(\\lambda\\) 决定每个共同样本上两项损失的相对系数；如果交替抽取不同任务，任务抽样概率也会影响长期更新频率。把某任务采样概率提高两倍又将其权重提高两倍，可能产生重复加强。需要同时记录任务采样、标签可用率和有效元素归约，而不是只保存一个 \\(\\lambda\\)。",
+          "缺失标签应通过各任务自己的有效位处理，不能把缺失类别当成负类、把缺失回归值当成零。每项分母要对应自己的目标；没有标签的分支可以不贡献监督，但共享主干仍可能被其他任务更新。看辅助分支验证误差时，也要区分它自身标签覆盖的变化与共享表征的真实变化。",
+          "当两个任务标签来自不同样本集合，梯度夹角还受抽到哪些条件影响。一个批次上看到竞争，可能是样本难度和类别构成造成的。可以在固定诊断集合上跨训练阶段重复测量，再与真实训练采样的统计比较，从而区分数据组成变化与参数状态变化。"
+        ],
+        "id": "5",
+        "lead": "损失权重只描述任务已被采到时的相对作用，长期训练还取决于各任务出现的频率。将抽样概率、标签可用率与归约一起写入期望，才能识别重复加强或无意削弱某项监督的情况。"
+      },
+      {
+        "title": "调整权重与进阶梯度方法的边界",
+        "body": [
+          "固定权重是可解释的起点。先验证单任务基线，再加入第二任务，用多个 \\(\\lambda\\) 在相同预算下比较主任务、辅助任务和需要保持的能力。权重太小可能几乎不起作用，太大可能主导共享表示；但最佳值不能只由初始一个 Batch 的梯度比确定，因为任务难度和梯度尺度会随训练改变。",
+          "GradNorm、梯度投影等进阶方法试图处理训练速度或局部冲突，但它们引入新的目标和超参数。它们不会修复数据泄漏、错误 Mask 或不相关标签，也不保证每项部署指标同时提高。阅读这些方法时先弄清实际修改的是损失系数还是梯度方向，再用可复查例子理解它与普通加权和的区别。",
+          "如果希望辅助任务只影响某些层，可以通过结构或梯度路径限定共享范围，但这也是模型设计变化。需要说明哪些参数接受哪些监督，保存完整参数组与消融结果，避免仅在论文或说明中声称“辅助监督”而代码实际更新了不同模块。",
+          "调整共享范围时，某个任务不再影响主干并不等于该任务不存在。它仍可能训练独立模块，但不能再用它的 loss 变化支持“共享表示得到改善”的结论。报告应列出每个目标连接的参数集合，让结构声明与实际梯度路径一致。"
+        ],
+        "id": "6",
+        "lead": "确认了梯度实现之后，如何调整任务关系仍需要针对目标选择方法。固定权重提供可解释参照，动态加权或投影则修改了不同部分的更新机制；它们应由明确假设和受控比较来评价。"
+      },
+      {
+        "title": "从数学恒等式走向可审查实验",
+        "body": [
+          "双任务网络的梯度验证分成两个对照：分别读取共享梯度，与总目标 backward 的结果逐元素核对 \\(g_{\\mathrm{total}}=g_a+\\lambda g_b\\)；再构造确定性相反目标，观察抵消。随机网络的余弦由实际计算决定，不预设必然冲突。未使用参数也保留同一坐标位置，诊断不写入 .grad，避免诊断过程本身改变后续训练。",
+          "实际实验应记录共同初始化、任务采样、训练步数、有效监督数量、梯度统计位置与独立指标。诊断时看到负余弦，提出一个具体假设，例如某阶段辅助任务过强，再通过调整权重或共享范围的单因素对照检验。不要只挑选支持假设的一个 Batch 或最好的一个种子。",
+          "最终验证关心的是需要保留的能力是否改善或至少满足约束，而不是某条余弦曲线是否看起来更漂亮。数学检查确保梯度实现符合定义，独立实验再回答这个定义是否适合任务；两种证据相互补充。"
+        ],
+        "id": "7",
+        "lead": "梯度分解恒等式可以证明代码符合目标，却不能单独证明辅助监督改善部署表现。把数学核验与独立实验分别设计，能够保留局部诊断的价值，同时避免从一张梯度曲线推断长期收益。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "共享表征",
+        "shape": "[B,H]",
+        "meaning": "两个任务头接收同一个主干输出。"
+      },
+      {
+        "name": "回归输出 / 分类 logits",
+        "shape": "[B,2] / [B,4]",
+        "meaning": "两个教学任务的目标类型不同，共享梯度在同一主干参数上比较。"
+      },
+      {
+        "name": "共享梯度",
+        "shape": "[P_shared]",
+        "meaning": "必须用完全一致的参数顺序展平，None 位置填零。"
+      }
+    ],
+    "code": {
+      "title": "读取真实双头梯度，并构造一次方向抵消",
+      "source": "import torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(34)\n# STEP 1: 连续向量回归与四类状态分类共享主干\ntrunk = nn.Linear(3, 4)\naction_head = nn.Linear(4, 2)\nstate_head = nn.Linear(4, 4)\nx = torch.randn(5, 3)\naction_target = torch.randn(5, 2)\nstate_target = torch.tensor([0, 1, 2, 3, 1])\nhidden = torch.tanh(trunk(x))\nloss_action = (action_head(hidden) - action_target).square().mean()\nloss_state = F.cross_entropy(state_head(hidden), state_target)\nshared = tuple(trunk.parameters())\n\n# STEP 2: 读取相同共享坐标，核验加权梯度恒等式\nga_parts = torch.autograd.grad(loss_action, shared, retain_graph=True)\ngs_parts = torch.autograd.grad(loss_state, shared, retain_graph=True)\nga = torch.cat([g.reshape(-1) for g in ga_parts])\ngs = torch.cat([g.reshape(-1) for g in gs_parts])\ndenominator = ga.norm() * gs.norm()\ncosine = None if float(denominator) == 0 else float(torch.dot(ga, gs) / denominator)\nassert all(p.grad is None for p in shared)\nweight = 0.25\n(loss_action + weight * loss_state).backward()\ncombined = torch.cat([p.grad.reshape(-1) for p in shared])\ntorch.testing.assert_close(combined, ga + weight * gs)\nprint('回归 / 分类 loss:', float(loss_action.detach()), float(loss_state.detach()))\nprint('共享梯度范数:', float(ga.norm()), float(gs.norm()), '余弦:', cosine)\n\n# STEP 3: 确定性相反目标，区分数学反例与随机网络观察\npoint = torch.tensor([0.0, 0.0], requires_grad=True)\ntoward_positive = (point - 1).square().sum()\ntoward_negative = (point + 1).square().sum()\ngp = torch.autograd.grad(toward_positive, point, retain_graph=True)[0]\ngn = torch.autograd.grad(toward_negative, point)[0]\ntorch.testing.assert_close(gp, torch.tensor([-2.0, -2.0]))\ntorch.testing.assert_close(gn, -gp)\ntorch.testing.assert_close(gp + gn, torch.zeros(2))\nprint('构造案例：相反梯度等权组合为', (gp + gn).tolist())\nprint('通过：真实回归与分类梯度组合，以及确定性抵消反例')\n",
+      "explanations": [
+        {
+          "lines": "1–16",
+          "text": "两个任务共享 trunk，但输出类型分别为连续向量与四类 logits；分类标签为 long 整数索引。"
+        },
+        {
+          "lines": "18–31",
+          "text": "分别用 autograd.grad 读取主干梯度，不写入 .grad；再以总目标 backward 验证 g_action+0.25*g_state 的逐元素恒等式。"
+        },
+        {
+          "lines": "33–43",
+          "text": "另构造相反梯度作为确定性反例，说明等权抵消可以发生；不将随机网络某一次余弦推广为普遍规律。"
+        }
+      ],
+      "expected": "一般回归与四类分类的加权共享梯度等于总目标反向结果；确定性二维反例得到 [-2,-2] 与 [2,2]，等权组合为零。"
+    },
+    "exercise": {
+      "title": "手算梯度合成与余弦",
+      "prompt": "实现 gradient_relation(g_a, g_b, weight)，返回 (combined, cosine)。两个输入为等长非空有限数列表，weight 为有限非负数；combined = g_a + weight*g_b。cosine 比较两个原始梯度，任一个范数为零时返回 None。非法输入抛 ValueError。 合成梯度溢出时抛 ValueError；余弦应避免直接相乘大数范数造成的中间溢出。",
+      "runtime": "python",
+      "starter": "def gradient_relation(g_a, g_b, weight):\n     # TODO: 同顺序合成梯度；零范数时明确表示夹角未定义\n     raise NotImplementedError('请实现 gradient_relation')\n",
+      "solution": "import math\n\ndef gradient_relation(g_a, g_b, weight):\n    if not g_a or len(g_a) != len(g_b):\n        raise ValueError('向量形状不同')\n    if not math.isfinite(weight) or weight < 0 or any(not math.isfinite(v) for v in g_a + g_b):\n        raise ValueError('必须是有限数且权重非负')\n    combined = [a + weight * b for a, b in zip(g_a, g_b)]\n    if any(not math.isfinite(v) for v in combined):\n        raise ValueError('合成梯度超出浮点有限范围')\n    sa, sb = max(map(abs, g_a)), max(map(abs, g_b))\n    if sa == 0 or sb == 0:\n        return combined, None\n    # 两个正尺度分别约掉，不直接计算可能溢出的 dot 或 norm 乘积。\n    a, b = [v / sa for v in g_a], [v / sb for v in g_b]\n    na, nb = math.hypot(*a), math.hypot(*b)\n    cosine = math.fsum((u / na) * (v / nb) for u, v in zip(a, b))\n    return combined, max(-1.0, min(1.0, cosine))\n",
+      "tests": "combined, cosine = gradient_relation([1, 0], [-2, 0], 0.5)\nassert combined == [0, 0] and cosine == -1\nassert gradient_relation([1, 0], [0, 2], 2) == ([1, 4], 0.0)\nassert gradient_relation([0, 0], [1, 2], 3) == ([3, 6], None)\nassert gradient_relation([1, 2], [1, 2], 0)[0] == [1, 2]\nfor args in [([], [], 1), ([1], [1, 2], 1), ([1], [float('nan')], 1)]:\n    try:\n        gradient_relation(*args)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('应拒绝非法向量')\nassert gradient_relation([1e200, 0], [-1e200, 0], 1) == ([0, 0], -1.0)\nassert abs(gradient_relation([1.7e308, 1.7e308], [1.7e308, 1.7e308], 0)[1] - 1) < 1e-12\ntry:\n    gradient_relation([1e308], [1e308], 1)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError('应拒绝合成梯度溢出')\nprint('通过：抵消、正交、零范数、大数余弦与输入边界')\n",
+      "hints": [
+        "合成梯度包含 weight；夹角比较的是两个原始梯度。",
+        "cosine 的分母为两个范数的乘积，零分母应返回 None。"
+      ],
+      "explanation": "余弦只比较方向，不包含梯度强度；相反方向是否完全抵消还取决于范数和权重。分别除以每个向量的最大绝对值，不改变它们的方向，再对尺度化向量求范数和点积，可避免有限坐标在直接平方或范数相乘时溢出。边界截断只修正正常舍入；非有限输入或合成结果必须先拒绝，不能把 NaN 截断成看似合法的余弦。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 shared_gradient_report(loss_a, loss_b, parameters, weight_b)，返回字典 g_a、g_b、combined（展平 Tensor）与 cosine（float 或 None）。parameters 为同一组非空、需要梯度的参数列表，loss 为标量，weight_b 为非负有限数。用 autograd.grad 读取而不写 .grad，允许某些参数未参与任务并在原位置填零；保留图供之后 total.backward 使用。 非有限梯度或合成结果应拒绝；余弦采用独立尺度化，避免大数中间溢出。",
+      "starter": "import torch\n\ndef shared_gradient_report(loss_a, loss_b, parameters, weight_b):\n    # TODO: 分别读取梯度，None 用同形状零填充，再按固定顺序展平\n    raise NotImplementedError('请实现 shared_gradient_report')\n",
+      "solution": "import math\nimport torch\n\ndef shared_gradient_report(loss_a, loss_b, parameters, weight_b):\n    params = tuple(parameters)\n    if not math.isfinite(weight_b) or weight_b < 0:\n        raise ValueError('任务权重必须是有限非负数')\n    def read(loss):\n        grads = torch.autograd.grad(loss, params, retain_graph=True, allow_unused=True)\n        return torch.cat([(torch.zeros_like(p) if g is None else g).reshape(-1)\n                          for p, g in zip(params, grads)])\n    ga, gb = read(loss_a), read(loss_b)\n    if not bool(torch.isfinite(ga).all() & torch.isfinite(gb).all()):\n        raise ValueError('非有限梯度不能解释为方向')\n    combined = ga + weight_b * gb\n    if not bool(torch.isfinite(combined).all()):\n        raise ValueError('合成梯度超出当前 dtype 的有限范围')\n    sa, sb = ga.abs().max(), gb.abs().max()\n    if float(sa) == 0 or float(sb) == 0:\n        cosine = None\n    else:\n        a, b = ga / sa, gb / sb\n        cosine = float(torch.dot(a / a.norm(), b / b.norm()).clamp(-1, 1))\n    return dict(g_a=ga, g_b=gb, combined=combined, cosine=cosine)\n",
+      "tests": "torch.manual_seed(340)\np = torch.nn.Parameter(torch.tensor([1.0, -2.0], dtype=torch.float64))\nunused = torch.nn.Parameter(torch.tensor([5.0], dtype=torch.float64))\nla = p.square().sum()\nlb = (p - 1).square().sum()\nreport = shared_gradient_report(la, lb, [p, unused], 0.25)\ntorch.testing.assert_close(report['g_a'], torch.tensor([2.0, -4.0, 0.0], dtype=torch.float64))\ntorch.testing.assert_close(report['g_b'], torch.tensor([0.0, -6.0, 0.0], dtype=torch.float64))\nassert p.grad is None and unused.grad is None\n(la + 0.25 * lb).backward()\ntorch.testing.assert_close(report['combined'][:2], p.grad)\nassert report['combined'][2] == 0 and unused.grad is None\nzero_case = shared_gradient_report((p * 0).sum(), p.square().sum(), [p], 1)\nassert zero_case['cosine'] is None\nexpected_cosine = 24 / ((20 ** 0.5) * 6)\nassert abs(report['cosine'] - expected_cosine) < 1e-12\nhuge = torch.tensor([1e200, -1e200], dtype=torch.float64)\nlarge_case = shared_gradient_report((p * huge).sum(), -(p * huge).sum(), [p], 1)\nassert abs(large_case['cosine'] + 1) < 1e-12\ntorch.testing.assert_close(large_case['combined'], torch.zeros_like(p))\nprint('PyTorch 通过：实际求导、未用参数、零范数、大数余弦与总梯度对照')\n",
+      "hints": [
+        "allow_unused=True 的 None 表示该任务没有使用这个参数；填零保持展平坐标一致。",
+        "两次读取都要 retain_graph=True，因为之后还需总损失 backward；默认 create_graph=False 足够诊断。"
+      ],
+      "explanation": "测试手算两个梯度 [2,-4]、[0,-6]，并加入未使用参数，识别坐标错位与删除 None 的错误。读取不修改 .grad，随后真正 backward 与报告逐项一致。零梯度没有方向；大数案例使用两个反向但有限的梯度，检验独立尺度化能避免直接点积/范数乘积的溢出。若原始梯度已非有限，则拒绝解释其方向，而不以 clamp 掩盖错误。参数列表、标量损失与图连接约定由题设保证。"
+    },
+    "pitfalls": [
+      {
+        "title": "辅助 loss 下降就认定主任务受益",
+        "detail": "共享表示可能偏向辅助任务或共同捷径。比较独立主任务、旧能力和部署指标，保留单任务基线。"
+      },
+      {
+        "title": "只凭一次负夹角删除辅助任务",
+        "detail": "局部方向随样本和训练阶段变化，权重也影响合成方向。汇总跨批次统计并做固定预算对照。"
+      },
+      {
+        "title": "用不同参数集合的梯度计算余弦",
+        "detail": "坐标不一致时结果没有可比意义。选择同一共享列表，None 保留零位置。"
+      },
+      {
+        "title": "每步保留全模型图做梯度分析",
+        "detail": "可能显著增加内存与耗时并扰动训练。定期抽样、选定共享层，并在诊断后释放不需要的图。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "PyTorch：torch.autograd.grad",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.autograd.grad.html"
+      },
+      {
+        "title": "GradNorm：多任务梯度归一化原论文（进阶阅读）",
+        "url": "https://arxiv.org/abs/1711.02257"
+      },
+      {
+        "title": "Gradient Surgery for Multi-Task Learning（进阶阅读）",
+        "url": "https://arxiv.org/abs/2001.06782"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "回归 loss 是 0.1，分类 loss 是 10，能否直接断言分类主导共享训练？",
+        "answer": [
+          "不能。loss 数值受单位、常数项、分母和函数形状影响，而共享参数受到的是梯度。即使 loss 很小，也可能对某些参数产生较大梯度。",
+          "应固定共享参数范围，分别用 autograd.grad 读取范数与方向，再观察加权组合及各任务指标。示例只比较 trunk，避免把独立输出头的参数误当作共享干扰。"
+        ],
+        "codeFocus": "演示 shared 的参数范围与 ga、gs；shared_gradient_report。",
+        "acceptance": [
+          "能用给 loss 加常数的反例说明数值与梯度不同。",
+          "能说明应该在哪组参数上比较任务作用。"
+        ]
+      },
+      {
+        "question": "发现两个任务梯度余弦为负，是否说明辅助任务一定有害？",
+        "answer": [
+          "负点积说明在当前参数与数据上，单独沿一个任务的梯度下降方向，另一个任务的一阶变化可能上升。它不直接决定多步训练、预条件优化器和独立部署数据上的结果。",
+          "应汇总不同批次和阶段的统计，并用固定预算比较权重设置。二维抵消案例证明竞争可能发生，但不能把人工构造推广为所有辅助任务的效果；零范数时必须先标记方向未定义。"
+        ],
+        "codeFocus": "演示 STEP 3 的确定性抵消；练习 cosine 的 None 分支。",
+        "acceptance": [
+          "能用点积解释局部一阶竞争。",
+          "能列出单批次夹角无法保证的外部效果。",
+          "能正确处理零梯度夹角。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "多任务干扰应在同一共享参数集合上分析。",
+      "loss 数值不等于梯度强度，余弦不包含范数与权重。",
+      "负余弦描述当前局部关系，不能直接判定长期收益。",
+      "固定参数顺序并保留 None 的零占位，用总梯度逐元素核验。"
+    ],
+    "lead": "共享表征使不同任务能够共同训练同一组参数，也使它们的优化方向发生交互。损失数值相近、梯度夹角为正或辅助任务能够收敛，都不足以单独证明主任务会受益。本章从加权目标的梯度分解出发，推导点积的一阶解释，分析权重、采样和共享范围如何共同决定更新。数值检查用于确认梯度实现，受控的独立评估则用于回答这种监督组合是否适合任务。"
+  }
+]

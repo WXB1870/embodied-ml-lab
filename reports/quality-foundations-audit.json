@@ -1,0 +1,813 @@
+{
+  "scope": "15 actual courses, 126 theory sections; MLP proxy unchanged and canonical content owned by neural editor",
+  "base_commit": "f7475c605ce1496ebd974abf75184f1e96088e81",
+  "frozen_source_sha256": {
+    "content/foundations.json": "7c62bec2d755ee007a6ce63007a2047abdbed07bc072430bb4d6a63e65f518a0",
+    "content/foundations_p0.json": "cd73a096f2f62b8cf3484af057895b53230706db06d543e38a76284b581f9dd0"
+  },
+  "courses": [
+    {
+      "id": "tensor",
+      "title": "张量与广播",
+      "file": "content/foundations.json",
+      "status": "导言与实现修正",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 160,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2,
+        3
+      ],
+      "substantive_change": "八节已有轴语义、广播、内存布局和边界分析完整，保留正文。修复 pool_valid 无效值乘零的问题，改为归约前安全选择；练习增加无效 NaN、完整梯度与单例轴。",
+      "retained_mature_content": "原有线性投影、轴交换、广播和索引推导",
+      "revised_section_ids_excluding_leads": [],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "matrix-grad",
+      "title": "线性代数与矩阵求导",
+      "file": "content/foundations.json",
+      "status": "顺序调整与基础补全",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 179,
+      "section_count": 10,
+      "section_leads_added": 10,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "将 SVD/条件数移至矩阵求导、链式法则与广播反向之后；补充 Jacobian、Hessian 的定义、形状和局部展开。",
+      "retained_mature_content": "线性映射/秩、SVD 证明、矩阵梯度、JVP/VJP、有限差分对照",
+      "revised_section_ids_excluding_leads": [
+        "0"
+      ],
+      "order_changed": true,
+      "old_section_order": [
+        "added-0",
+        "added-1",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "added-0",
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "added-1",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "probability",
+      "title": "概率、统计与训练目标",
+      "file": "content/foundations.json",
+      "status": "深改与顺序调整",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 173,
+      "section_count": 12,
+      "section_leads_added": 12,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "一维似然机制先于全协方差高斯；完整建立条件独立、乘积似然、对数求和、Gaussian/Bernoulli NLL 及预测梯度。新增官方损失与手推梯度对照。",
+      "retained_mature_content": "贝叶斯条件化、全方差分解、密度/事件维、高斯条件分布、熵和 KL",
+      "revised_section_ids_excluding_leads": [
+        "1"
+      ],
+      "order_changed": true,
+      "old_section_order": [
+        "0",
+        "bayes-conditioning",
+        "moments-total-variance",
+        "gaussian-geometry",
+        "1",
+        "added-0",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "bayes-conditioning",
+        "moments-total-variance",
+        "1",
+        "added-0",
+        "gaussian-geometry",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "activation-init",
+      "title": "激活与初始化",
+      "file": "content/foundations.json",
+      "status": "导言与排版/引用修正",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 177,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "逐节建立从非线性到前后向尺度传播的导入；修复导数撇号写法与指数的数学标记，以及知识问答中的旧函数名。",
+      "retained_mature_content": "ReLU 二阶矩与方差的区分、He/Xavier 条件、精确导数和共享方向实验",
+      "revised_section_ids_excluding_leads": [
+        "1",
+        "3",
+        "7"
+      ],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "autograd",
+      "title": "PyTorch 自动微分与计算图",
+      "file": "content/foundations.json",
+      "status": "仅导言并保留成熟正文",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 157,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "八节补齐从依赖图到梯度生命周期的教学衔接；主代码、两类练习及原有反例保持。",
+      "retained_mature_content": "冻结与断图区别、VJP、叶子梯度、非法局部导数、参数更新条件",
+      "revised_section_ids_excluding_leads": [],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "losses",
+      "title": "损失、掩码与归约",
+      "file": "content/foundations.json",
+      "status": "深改与实现修正",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 168,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "补齐 MSE/L1 的导数、Huber 的值/斜率匹配构造与 SmoothL1 尺度区别；完整演示和原 PyTorch 练习统一安全 Mask、正权有效集合、分母、全预测梯度。",
+      "retained_mature_content": "归约目标、维度加权、多模态条件均值、校准和分布假设",
+      "revised_section_ids_excluding_leads": [
+        "0"
+      ],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "optimization",
+      "title": "梯度下降、动量与 AdamW",
+      "file": "content/foundations.json",
+      "status": "深改",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 180,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "题名调整为梯度下降、动量与 AdamW；补齐 SGD 估计的假设、期望和协方差、动量展开与滞后、PyTorch SGD 约定及 Adam 偏差修正。",
+      "retained_mature_content": "AdamW 解耦衰减、参数组、学习率、梯度裁剪和优化器状态分析",
+      "revised_section_ids_excluding_leads": [
+        "0",
+        "1",
+        "2"
+      ],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "numerical",
+      "title": "数值精度与标准化",
+      "file": "content/foundations.json",
+      "status": "局部深改",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 163,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "标准化节先建立 z-score，再推导保持预测不变的参数重参数化及 Hessian 坐标变换；代码验证单位对角线并不消除相关性。",
+      "retained_mature_content": "数值稳定、统计量拟合、常数维度、单位/量纲、目标归一化",
+      "revised_section_ids_excluding_leads": [
+        "1"
+      ],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "generalization",
+      "title": "泛化与验证",
+      "file": "content/foundations.json",
+      "status": "局部深改",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 165,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "首先定义部署风险与经验风险，解释独立固定模型下估计的均值/方差条件；用构造的组分布改变案例说明训练平均值与部署风险可能不同。",
+      "retained_mature_content": "轨迹/场景隔离、过拟合/欠拟合、分组评估、可复现和整体模式恢复练习",
+      "revised_section_ids_excluding_leads": [
+        "0"
+      ],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "gradient-accumulation",
+      "title": "梯度累积",
+      "file": "content/foundations_p0.json",
+      "status": "仅导言并保留成熟正文",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 154,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "八节补齐从目标分母、参数固定到整窗口裁剪与更新的衔接；不扩写已有充分的等价条件与反例。",
+      "retained_mature_content": "不等有效计数、零监督微批次、完整梯度/参数对照、非线性裁剪和批内依赖",
+      "revised_section_ids_excluding_leads": [],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "mixed-precision",
+      "title": "混合精度训练",
+      "file": "content/foundations_p0.json",
+      "status": "仅导言并保留成熟正文",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 161,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "八节从表示范围与精度逐步引出 autocast、缩放、反缩放、跳步与诊断；保留成熟代码和明确 CPU/CUDA 验证边界。",
+      "retained_mature_content": "范围与精度区别、FP32 存储、正确 unscale/clip/step 顺序和真实 CPU GradScaler",
+      "revised_section_ids_excluding_leads": [],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "training-diagnostics",
+      "title": "训练诊断",
+      "file": "content/foundations_p0.json",
+      "status": "深改与顺序调整",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 164,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "固定小批次实验提前至梯度细分前；新增证据—假设—下一实验对照表、相同输入冲突标签的不可约 MSE 推导及可表示/冲突两组实际训练。",
+      "retained_mature_content": "样本与损失契约、None/零/非有限梯度、优化器成员、实际参数位移和三种真实错误案例",
+      "revised_section_ids_excluding_leads": [
+        "5"
+      ],
+      "order_changed": true,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "5",
+        "3",
+        "4",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "memory-checkpointing",
+      "title": "训练显存与重计算",
+      "file": "content/foundations_p0.json",
+      "status": "仅导言并保留成熟正文",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 162,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "八节建立参数状态、激活与重计算的因果关系；保留逻辑保存字节与真实显存不同的严谨口径。",
+      "retained_mature_content": "状态估算、冻结后的输入梯度、非重入重计算、随机状态、保存量与梯度对照",
+      "revised_section_ids_excluding_leads": [],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "distributed-training",
+      "title": "DDP 与全局统计",
+      "file": "content/foundations_p0.json",
+      "status": "仅导言并保留成熟正文",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 165,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "八节从并行目标到 sampler、同步与全局分母递进；保留现有数学验证和真实 Gloo 示例的环境受限声明。",
+      "retained_mature_content": "不等有效计数 R/N 缩放、梯度/日志分开汇总、零监督同步和通信验证边界",
+      "revised_section_ids_excluding_leads": [],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    },
+    {
+      "id": "multitask-gradients",
+      "title": "多任务梯度",
+      "file": "content/foundations_p0.json",
+      "status": "仅导言并保留成熟正文",
+      "audit_scope": [
+        "all theory sections",
+        "main code",
+        "standard-library exercise",
+        "PyTorch exercise",
+        "pitfalls",
+        "knowledge checks",
+        "sources"
+      ],
+      "lead_chars": 157,
+      "section_count": 8,
+      "section_leads_added": 8,
+      "section_sentence_counts": [
+        2
+      ],
+      "substantive_change": "八节先建立同坐标梯度组合，再引出局部竞争与权重实验；保留共享主干代码与确定性抵消反例。",
+      "retained_mature_content": "loss 数值与梯度区别、点积的一阶解释、零范数未定义、未使用参数补零与实验局限",
+      "revised_section_ids_excluding_leads": [],
+      "order_changed": false,
+      "old_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_section_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "all_section_ids_preserved": true,
+      "knowledge_check_positions_preserved": true,
+      "pitfall_positions_preserved": true
+    }
+  ],
+  "code_validation": {
+    "executed": 9,
+    "passed": 9,
+    "failed": 0,
+    "unchanged_cases_preserved_not_rerun": 51,
+    "evidence": "quality-foundations-validation.json"
+  },
+  "math_validation": {
+    "formulas_checked": 583,
+    "unique_formulas": 515,
+    "errors": 0,
+    "unmarked_candidates": 0,
+    "evidence": "quality-foundations-math.json"
+  },
+  "primary_sources_checked": [
+    {
+      "url": "https://www.deeplearningbook.org/contents/optimization.html",
+      "support": "经验风险、随机梯度、小批次估计与动量的数学机制；正文对每个估计明确条件。"
+    },
+    {
+      "url": "https://www.deeplearningbook.org/contents/prob.html",
+      "support": "条件分布、期望和概率建模的基础表述。"
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.optim.SGD.html",
+      "support": "PyTorch momentum buffer 使用未归一化更新；初始缓冲与 dampening 语义。新增对照限定无 dampening、无 Nesterov。"
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.nn.GaussianNLLLoss.html",
+      "support": "高斯 NLL 的 log variance/平方误差项、full=True 常数项和归约规则；数值验证使用远离 eps 的正方差。"
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.nn.BCEWithLogitsLoss.html",
+      "support": "Bernoulli BCE 与 logits 融合、稳定 log-sum-exp 计算；代码逐元素损失和解析梯度对照。"
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.nn.HuberLoss.html",
+      "support": "分段 Huber、阈值处值与导数、与 SmoothL1 的 delta 比例关系。"
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/notes/amp_examples.html",
+      "support": "核对保留内容中的缩放梯度累积、unscale/clip/step 顺序和有效批次边界。"
+    }
+  ],
+  "remaining_scope": [
+    "Site-wide build, link, static export and browser checks are handled by the root integrator.",
+    "No GPU performance or CUDA numerical claims tested in this CPU environment.",
+    "The unchanged real two-process Gloo demonstration remains environment_blocked; the existing single-process mathematical scaling exercises are not substituted for communication validation.",
+    "This pass does not claim every preserved section was rewritten; status is explicit for each course."
+  ]
+}

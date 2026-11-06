@@ -1,0 +1,38 @@
+{
+  "desktop": {
+    "viewport_width": 1348,
+    "document_scroll_width": 1348,
+    "page": "cnn-receptive-field",
+    "section": "activation-pooling",
+    "math_errors": 0
+  },
+  "narrow": {
+    "method": "同源 iframe 固定布局宽度；不冒充移动设备仿真或真机",
+    "frame_width": 390,
+    "layout_client_width": 375,
+    "document_scroll_width": 375,
+    "math_errors": 0,
+    "overflowing_display_math": {
+      "scrollable": true,
+      "keyboard_focusable": true
+    },
+    "toc_jump": "receptive-field",
+    "toc_closed_after_jump": true,
+    "target_top_px": 156.65625
+  },
+  "other_checks": [
+    "Flow Matching 16 节新顺序与章节导入呈现",
+    "Transformer 旧 question-0 理论链接自动转到练习",
+    "题干可见而参考答案默认收起；点击可以展开",
+    "全文搜索概率质量守恒命中新章节并正确滚动",
+    "原理页没有重复讨论区或关键结论卡片"
+  ],
+  "screenshots": [
+    "quality-reading-preview.png",
+    "quality-mobile-preview.png"
+  ],
+  "limits": [
+    "未进行移动真机或 Safari 浏览器测试。",
+    "浏览器只抽查关键长文；全部课程的导入、公式、内部链接由静态与渲染检查覆盖。"
+  ]
+}

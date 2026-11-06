@@ -1,0 +1,34 @@
+{
+  "preview_origin": "http://127.0.0.1:4173",
+  "desktop_viewport_width": 1348,
+  "pages_checked": [
+    "vla-architecture theory",
+    "training-loop shared code",
+    "transformer RoPE",
+    "score-sde shared mixture"
+  ],
+  "checks": {
+    "search_action_expert_finds_new_course": true,
+    "ordinary_course_extra_code_copy": true,
+    "ordinary_course_extra_code_download_matches_source_plus_final_newline": true,
+    "new_figures_load_when_visible": true,
+    "no_observed_katex_errors": true,
+    "mobile_toc_navigates_to_requested_section": true,
+    "mobile_formulas_scroll_inside_their_container": true,
+    "mobile_diagrams_scroll_inside_their_container": true
+  },
+  "mobile_probe": {
+    "method": "same-origin iframe, layout probe; not device emulation",
+    "iframe_width": 390,
+    "document_client_width": 375,
+    "document_scroll_width": 375,
+    "figure_scroll_container_width": 337,
+    "figure_scroll_width": 800,
+    "observed_horizontal_scroll_left": 463
+  },
+  "screenshots": [
+    "case-vla-preview.png",
+    "case-mobile-preview.png"
+  ],
+  "temporary_probe_removed": true
+}

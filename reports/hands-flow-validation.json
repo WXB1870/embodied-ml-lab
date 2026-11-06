@@ -1,0 +1,148 @@
+{
+  "scope": "Flow Matching hand-coding labs and math formatting in three owned JSON sources",
+  "generated_at_utc": "2026-11-06T13:53:56.159683+00:00",
+  "python_version": "3.12.14",
+  "execution_environment": "CPU, float64, single-threaded torch tests; PYTHONPATH=/tmp/embodied-torch",
+  "test_sets": [
+    {
+      "id": "masked-cfm-objective",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 2.2383746650011744,
+      "source_sha256": "93ddf77c15af02774e96fe88072693a03238a1e566d21216b53716192cd4e098",
+      "output": "step 1 loss 1.053117708 encoder_grad [[0.04600000000000005, -0.000999999999999987]]\nstep 2 loss 1.034015872 encoder_grad [[0.021211288895889337, 0.020676926445161482]]\n通过：NaN 前选择、广播、手算梯度、条件编码器更新、两步清零、端点与方向反例\n",
+      "final_source_matches_executed_code": true
+    },
+    {
+      "id": "general-path-target",
+      "passed": true,
+      "returncode": 0,
+      "seconds": 1.7307089060013823,
+      "source_sha256": "167e971c63d95bb5cfbde5c9d1b19e199c51ff0004b5f588d132b97d72fd13bb",
+      "output": "通过：一般路径导数、端点、时间链式法则、方向反例和解析 Gaussian 边际场\n",
+      "final_source_matches_executed_code": true
+    }
+  ],
+  "test_set_count": 2,
+  "test_set_passed": 2,
+  "math_validation": {
+    "files": [
+      {
+        "file": "content/topics/flow-matching.json",
+        "checked": 450,
+        "inline": 429,
+        "display": 6,
+        "formulaBlocks": 15
+      },
+      {
+        "file": "content/generative.json",
+        "checked": 378,
+        "inline": 356,
+        "display": 7,
+        "formulaBlocks": 15
+      },
+      {
+        "file": "content/policy-models.json",
+        "checked": 193,
+        "inline": 184,
+        "display": 3,
+        "formulaBlocks": 6
+      }
+    ],
+    "checked": 1021,
+    "inline": 969,
+    "display": 16,
+    "formulaBlocks": 36,
+    "errors": [],
+    "delimiterErrors": []
+  },
+  "unmarked_math_candidate_count": 0,
+  "unmarked_math_candidates": [],
+  "covariance_correction": {
+    "case": "vector-coupling-covariance",
+    "passed": true,
+    "actual": [
+      [
+        0.8499999999999999,
+        0.63
+      ],
+      [
+        0.63,
+        0.58
+      ]
+    ],
+    "correct": [
+      [
+        0.8499999999999999,
+        0.63
+      ],
+      [
+        0.63,
+        0.58
+      ]
+    ],
+    "old_scalar_shortcut": [
+      [
+        0.8499999999999999,
+        0.42
+      ],
+      [
+        0.84,
+        0.58
+      ]
+    ],
+    "max_error": 0.0
+  },
+  "code_preservation": [
+    {
+      "file": "content/topics/flow-matching.json",
+      "existing_code_fields": 16,
+      "unchanged_existing_code_fields": 13,
+      "intentionally_replaced_fields": [
+        "labs.1.starter",
+        "labs.1.solution",
+        "labs.1.tests"
+      ],
+      "current_source_sha256": "1989c8418536b8f347f96564400d87ec31a75c9e2451ffaf17a99ec45888c5e5"
+    },
+    {
+      "file": "content/generative.json",
+      "existing_code_fields": 14,
+      "unchanged_existing_code_fields": 14,
+      "intentionally_replaced_fields": [],
+      "current_source_sha256": "9404ec860ffbfa2d857ef07735608577c36b41ddbd09d7e73f5acfe8dab565a1"
+    },
+    {
+      "file": "content/policy-models.json",
+      "existing_code_fields": 7,
+      "unchanged_existing_code_fields": 7,
+      "intentionally_replaced_fields": [],
+      "current_source_sha256": "e00f0336b2c84f163886b0d9f7c119ded2db222b50004e5016db1589ea544836"
+    }
+  ],
+  "original_lab_ids": [
+    "path-and-conditional-mean",
+    "masked-cfm-objective",
+    "conditional-heun"
+  ],
+  "current_lab_ids": [
+    "path-and-conditional-mean",
+    "masked-cfm-objective",
+    "conditional-heun",
+    "general-path-target"
+  ],
+  "original_lab_ids_preserved": true,
+  "upgraded_lab_ids": [
+    "masked-cfm-objective"
+  ],
+  "new_lab_ids": [
+    "general-path-target"
+  ],
+  "long_inline_derivations_moved_to_display": 15,
+  "verification_scope_notes": [
+    "Test runtime includes Python process startup and PyTorch import.",
+    "Passed means the supplied deterministic invariant/analytic tests passed; it is not evidence of robot-policy quality.",
+    "KaTeX syntax and delimiter tests do not by themselves establish mathematical correctness.",
+    "Shared rendering, site build, static-page integration and visual verification are handled by the root agent."
+  ]
+}

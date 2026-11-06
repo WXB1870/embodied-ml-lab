@@ -1,0 +1,1609 @@
+{
+  "scope": "architecture.json plus canonical MLP/CNN topics; source-only content review, no shared renderer or publication changes",
+  "baseline_commit": "f7475c605ce1496ebd974abf75184f1e96088e81",
+  "generated_at_utc": "2026-11-06T14:28:52.495340+00:00",
+  "coverage": {
+    "courses": 11,
+    "sections": 96,
+    "chapter_leads": 11,
+    "section_leads": 96,
+    "existing_intro_paragraphs_moved": 5
+  },
+  "courses": [
+    {
+      "id": "normalization",
+      "file": "content/architecture.json",
+      "title": "归一化：统计轴、梯度与不变性",
+      "status": "顺序调整与机制补充",
+      "chapter_lead_characters": 160,
+      "sections_reviewed": 8,
+      "changes": "BN 前向和运行统计移到 Jacobian 之前；BN 反向关系放入完整微分链；RMSNorm 先给计算和数值例子再讨论导数。",
+      "retained": "保留 LayerNorm 完整微分、不变方向、常量行和数值对照。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "4",
+        "2",
+        "3",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "统计轴与样本依赖",
+          "reviewed": true,
+          "lead_characters": 102,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "LayerNorm 的均值、方差与仿射参数",
+          "reviewed": true,
+          "lead_characters": 113,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "BatchNorm 的批次统计与运行统计",
+          "reviewed": true,
+          "lead_characters": 103,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": true,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "LayerNorm 的 Jacobian 与不变方向",
+          "reviewed": true,
+          "lead_characters": 113,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "RMSNorm 保留的方向与丢失的尺度",
+          "reviewed": true,
+          "lead_characters": 108,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "训练模式、冻结参数与小 Batch",
+          "reviewed": true,
+          "lead_characters": 101,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "归一化的位置与信息保留",
+          "reviewed": true,
+          "lead_characters": 100,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "归一化实现的数值对照",
+          "reviewed": true,
+          "lead_characters": 105,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "residual",
+      "file": "content/architecture.json",
+      "title": "残差连接与深层优化",
+      "status": "顺序调整与保留",
+      "chapter_lead_characters": 159,
+      "sections_reviewed": 9,
+      "changes": "增加逐节动机，先定义残差缩放与门控，再分析协方差和最坏情形界。",
+      "retained": "单块与多层 Jacobian、奇异值条件界、Pre/Post-Norm、受控深度实验均已充分，未重写成熟推导。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "jacobian-product",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "jacobian-product",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "增量参数化与残差流",
+          "reviewed": true,
+          "lead_characters": 89,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "从微分到输入梯度与参数梯度",
+          "reviewed": true,
+          "lead_characters": 92,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "jacobian-product",
+          "title": "多层 Jacobian：乘积顺序、奇异值界与深度",
+          "reviewed": true,
+          "lead_characters": 99,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "Pre-Norm 与 Post-Norm",
+          "reviewed": true,
+          "lead_characters": 97,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "残差尺度、门控与零初始化",
+          "reviewed": true,
+          "lead_characters": 91,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "投影旁路与维度变化",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "原地修改与张量别名",
+          "reviewed": true,
+          "lead_characters": 94,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "残差适配与原有功能",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "受控实验：传播增益与优化行为",
+          "reviewed": true,
+          "lead_characters": 112,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "attention",
+      "file": "content/architecture.json",
+      "title": "注意力：匹配、聚合与梯度",
+      "status": "实质扩展",
+      "chapter_lead_characters": 171,
+      "sections_reviewed": 8,
+      "changes": "补齐投影后的双线性匹配、读出期望、点积方差展开、Softmax 商法则、Value/分数两类梯度和多头的机制解释。",
+      "retained": "保留 Mask 布尔契约、空行边界、缓存偏移和梯度数值例子。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "Q/K/V 与加权读出",
+          "reviewed": true,
+          "lead_characters": 90,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "点积方差与缩放因子",
+          "reviewed": true,
+          "lead_characters": 98,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": true,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "Softmax 的竞争与读出梯度",
+          "reviewed": true,
+          "lead_characters": 104,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "多头拆分与轴顺序",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "Mask 的布尔约定",
+          "reviewed": true,
+          "lead_characters": 94,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "Padding、无效 Query 与空行",
+          "reviewed": true,
+          "lead_characters": 112,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "Cross-Attention 与因果可见性",
+          "reviewed": true,
+          "lead_characters": 99,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "高效实现与数值等价",
+          "reviewed": true,
+          "lead_characters": 104,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "embeddings",
+      "file": "content/architecture.json",
+      "title": "Embedding 与位置编码",
+      "status": "实质扩展",
+      "chapter_lead_characters": 161,
+      "sections_reviewed": 8,
+      "changes": "补重复查表梯度求和式、多频正弦的差角关系，以及 RoPE 从二维旋转矩阵到相对点积的中间步骤。",
+      "retained": "保留位置汇聚反例、缓存位置与三类时间区分。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "Embedding 查表与离散索引",
+          "reviewed": true,
+          "lead_characters": 115,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "重复索引梯度与 Padding 行",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "置换等变性与位置身份",
+          "reviewed": true,
+          "lead_characters": 110,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "多频正弦编码",
+          "reviewed": true,
+          "lead_characters": 104,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "RoPE 与相对位置",
+          "reviewed": true,
+          "lead_characters": 102,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "位置偏移与 KV Cache",
+          "reviewed": true,
+          "lead_characters": 100,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "序列、观测、动作与生成时间",
+          "reviewed": true,
+          "lead_characters": 100,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "编码配置与输入干预",
+          "reviewed": true,
+          "lead_characters": 93,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "multimodal",
+      "file": "content/architecture.json",
+      "title": "视觉编码与多模态融合",
+      "status": "针对性补充",
+      "chapter_lead_characters": 168,
+      "sections_reviewed": 8,
+      "changes": "增加固定视觉内容、改变文本 Query 的可手算融合例子；补每个子节的衔接。",
+      "retained": "保留信息不可区分性、冻结与计算图边界、输入处理和融合架构范围。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "像素布局与数值范围",
+          "reviewed": true,
+          "lead_characters": 92,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "局部像素到 Patch token",
+          "reviewed": true,
+          "lead_characters": 99,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "位置、视角与来源身份",
+          "reviewed": true,
+          "lead_characters": 100,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "Projector 与跨模态融合",
+          "reviewed": true,
+          "lead_characters": 101,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "预训练目标与表示能力",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "压缩后的信息能否由后层恢复",
+          "reviewed": true,
+          "lead_characters": 94,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "冻结骨干与梯度边界",
+          "reviewed": true,
+          "lead_characters": 99,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "图文分类中的接口与梯度",
+          "reviewed": true,
+          "lead_characters": 106,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "modules",
+      "file": "content/architecture.json",
+      "title": "PyTorch 模块、参数与状态",
+      "status": "仅导言与保留",
+      "chapter_lead_characters": 165,
+      "sections_reviewed": 8,
+      "changes": "添加章节和逐节导言，复用已有优质开头，并将完整恢复的去向改为明确链接。",
+      "retained": "参数注册、优化器对象、Buffer、共享参数与快照别名已解释充分，完整代码未改。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "Module 树与状态注册",
+          "reviewed": true,
+          "lead_characters": 190,
+          "lead_sentences": 3,
+          "existing_intro_moved": true,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "Parameter、Buffer 与普通属性",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "容器、执行顺序与共享参数",
+          "reviewed": true,
+          "lead_characters": 89,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "优化器与参数对象",
+          "reviewed": true,
+          "lead_characters": 92,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "forward 中的状态生命周期",
+          "reviewed": true,
+          "lead_characters": 106,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "模式、冻结与梯度记录",
+          "reviewed": true,
+          "lead_characters": 83,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "state_dict 与快照别名",
+          "reviewed": true,
+          "lead_characters": 88,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "参数清单与单步更新",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "dataloader",
+      "file": "content/architecture.json",
+      "title": "数据采样与批处理",
+      "status": "仅导言与保留",
+      "chapter_lead_characters": 160,
+      "sections_reviewed": 8,
+      "changes": "添加章节和逐节导言，复用采样/读取/组装的现有导入。",
+      "retained": "重要性权重、自归一化偏差、轨迹窗口、Worker 与随机性已有完整机制和算例，未统一扩写。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "采样、读取与批次组装",
+          "reviewed": true,
+          "lead_characters": 204,
+          "lead_sentences": 3,
+          "existing_intro_moved": true,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "采样概率与损失权重",
+          "reviewed": true,
+          "lead_characters": 101,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "变长序列与有效长度",
+          "reviewed": true,
+          "lead_characters": 94,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "轨迹窗口与时间边界",
+          "reviewed": true,
+          "lead_characters": 97,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "Worker 与数据分片",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "随机增强与可复现性",
+          "reviewed": true,
+          "lead_characters": 108,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "数据吞吐与传输开销",
+          "reviewed": true,
+          "lead_characters": 93,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "数据覆盖与边界验证",
+          "reviewed": true,
+          "lead_characters": 108,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "training-loop",
+      "file": "content/architecture.json",
+      "title": "训练循环与指标归约",
+      "status": "针对性补充",
+      "chapter_lead_characters": 154,
+      "sections_reviewed": 8,
+      "changes": "增加样本等权与元素等权的具体目标、5 与 3 的数值算例及误差项系数分析。",
+      "retained": "保留连续两步、AMP 顺序、指标汇总、小样本诊断和框架更新边界。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "参数、梯度与优化器状态",
+          "reviewed": true,
+          "lead_characters": 187,
+          "lead_sentences": 4,
+          "existing_intro_moved": true,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "损失分子、分母与样本权重",
+          "reviewed": true,
+          "lead_characters": 92,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "连续更新与梯度累积",
+          "reviewed": true,
+          "lead_characters": 88,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "有限性、裁剪与混合精度",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "验证模式与指标聚合",
+          "reviewed": true,
+          "lead_characters": 94,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "调度器与更新计数",
+          "reviewed": true,
+          "lead_characters": 103,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "小样本过拟合与管线检查",
+          "reviewed": true,
+          "lead_characters": 98,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "框架回调与更新顺序",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "checkpoint",
+      "file": "content/architecture.json",
+      "title": "保存与恢复训练状态",
+      "status": "仅导言与保留",
+      "chapter_lead_characters": 156,
+      "sections_reviewed": 9,
+      "changes": "添加章节和逐节导言，复用推理导出/训练恢复的现有区分。",
+      "retained": "EMA、优化器状态、数据游标及单步恢复已有充足说明和代码，不机械加长。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "added-0",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "new_order": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "added-0",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "0",
+          "title": "推理导出与训练恢复",
+          "reviewed": true,
+          "lead_characters": 144,
+          "lead_sentences": 4,
+          "existing_intro_moved": true,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "1",
+          "title": "模型状态与结构配置",
+          "reviewed": true,
+          "lead_characters": 92,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "2",
+          "title": "优化器状态与参数分组",
+          "reviewed": true,
+          "lead_characters": 90,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "3",
+          "title": "保存时机与更新边界",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "added-0",
+          "title": "EMA 权重与训练状态分别保存",
+          "reviewed": true,
+          "lead_characters": 101,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "4",
+          "title": "随机状态与恢复顺序",
+          "reviewed": true,
+          "lead_characters": 94,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "5",
+          "title": "数据游标、Worker 与预取",
+          "reviewed": true,
+          "lead_characters": 105,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "6",
+          "title": "最佳模型与最新训练状态",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "7",
+          "title": "中断前后的单步等价",
+          "reviewed": true,
+          "lead_characters": 104,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "mlp",
+      "file": "content/topics/mlp.json",
+      "title": "MLP：表达、梯度与优化",
+      "status": "顺序调整与实质扩展",
+      "chapter_lead_characters": 161,
+      "sections_reviewed": 11,
+      "changes": "形状、手算前向、反向先于构造逼近；局部 Jacobian 移到激活之后，重参数化反例移入优化；补矩阵梯度的分量求和推导。",
+      "retained": "保留 ReLU 插值证明、误差界、优化曲率、池化次序与现有实现练习。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "affine-nonlinearity",
+        "constructive-approximation",
+        "shapes-parameters",
+        "forward-by-hand",
+        "backpropagation",
+        "activations",
+        "initialization-scaling",
+        "objectives",
+        "training-loop",
+        "tokens-readout",
+        "diagnosis"
+      ],
+      "new_order": [
+        "affine-nonlinearity",
+        "shapes-parameters",
+        "forward-by-hand",
+        "backpropagation",
+        "activations",
+        "constructive-approximation",
+        "initialization-scaling",
+        "objectives",
+        "training-loop",
+        "tokens-readout",
+        "diagnosis"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "affine-nonlinearity",
+          "title": "从仿射变换到非线性函数",
+          "reviewed": true,
+          "lead_characters": 105,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "shapes-parameters",
+          "title": "张量形状、参数朝向与参数量",
+          "reviewed": true,
+          "lead_characters": 94,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "forward-by-hand",
+          "title": "完整手算一次前向与损失",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "backpropagation",
+          "title": "反向传播：每个矩阵梯度从哪里来",
+          "reviewed": true,
+          "lead_characters": 103,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": true,
+          "code_changed": false
+        },
+        {
+          "id": "activations",
+          "title": "ReLU、GELU、SiLU 与饱和",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "constructive-approximation",
+          "title": "用有限个 ReLU 构造函数：表示能力的可检验证明",
+          "reviewed": true,
+          "lead_characters": 105,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": true,
+          "code_changed": false
+        },
+        {
+          "id": "initialization-scaling",
+          "title": "初始化与优化几何",
+          "reviewed": true,
+          "lead_characters": 108,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "objectives",
+          "title": "回归、单标签分类与多标签分类",
+          "reviewed": true,
+          "lead_characters": 104,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "training-loop",
+          "title": "把小网络训练成一个可检查的实验",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "tokens-readout",
+          "title": "非线性与池化的顺序",
+          "reviewed": true,
+          "lead_characters": 104,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "diagnosis",
+          "title": "容量、泛化与故障定位的顺序",
+          "reviewed": true,
+          "lead_characters": 91,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    },
+    {
+      "id": "cnn",
+      "file": "content/topics/cnn.json",
+      "title": "CNN：卷积、采样与空间表示",
+      "status": "实质扩展",
+      "chapter_lead_characters": 163,
+      "sections_reviewed": 11,
+      "changes": "补分解动机、基本感受野组合、激活导数、BN 统计及反向、池化与重叠梯度、GAP 与采样反例；activation-pooling 前移。",
+      "retained": "保留深度可分离卷积秩、支持集路径数、采样原点、Patch 可逆性及卷积转置；不拆新文章。",
+      "section_ids_preserved": true,
+      "old_order": [
+        "local-correlation",
+        "spatial-shape",
+        "sharing-cost",
+        "groups-depthwise",
+        "receptive-field",
+        "equivariance",
+        "activation-pooling",
+        "architecture-design",
+        "patch-embedding",
+        "spatial-readout",
+        "implementation-checks"
+      ],
+      "new_order": [
+        "local-correlation",
+        "spatial-shape",
+        "sharing-cost",
+        "groups-depthwise",
+        "receptive-field",
+        "activation-pooling",
+        "equivariance",
+        "architecture-design",
+        "patch-embedding",
+        "spatial-readout",
+        "implementation-checks"
+      ],
+      "question_array_unchanged": true,
+      "pitfall_array_unchanged": true,
+      "sections": [
+        {
+          "id": "local-correlation",
+          "title": "局部窗口与跨通道求和",
+          "reviewed": true,
+          "lead_characters": 96,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "spatial-shape",
+          "title": "步幅、填充、空洞率与输出尺寸",
+          "reviewed": true,
+          "lead_characters": 91,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "sharing-cost",
+          "title": "参数共享、参数量与计算量",
+          "reviewed": true,
+          "lead_characters": 95,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "groups-depthwise",
+          "title": "分组与深度可分离卷积的秩限制",
+          "reviewed": true,
+          "lead_characters": 104,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "receptive-field",
+          "title": "感受野跨度、支持集与路径数",
+          "reviewed": true,
+          "lead_characters": 101,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "activation-pooling",
+          "title": "激活、归一化与池化",
+          "reviewed": true,
+          "lead_characters": 123,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": true,
+          "code_changed": true
+        },
+        {
+          "id": "equivariance",
+          "title": "平移等变、采样相位与混叠",
+          "reviewed": true,
+          "lead_characters": 101,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "architecture-design",
+          "title": "CNN 架构演进：如何分配空间混合、通道混合与梯度路径",
+          "reviewed": true,
+          "lead_characters": 115,
+          "lead_sentences": 3,
+          "existing_intro_moved": true,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "patch-embedding",
+          "title": "Patch 投影何时可逆",
+          "reviewed": true,
+          "lead_characters": 123,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "spatial-readout",
+          "title": "空间期望的梯度与双峰歧义",
+          "reviewed": true,
+          "lead_characters": 91,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": true,
+          "formula_changed": false,
+          "code_changed": false
+        },
+        {
+          "id": "implementation-checks",
+          "title": "卷积转置、重叠累加与梯度对照",
+          "reviewed": true,
+          "lead_characters": 100,
+          "lead_sentences": 3,
+          "existing_intro_moved": false,
+          "body_changed": false,
+          "formula_changed": false,
+          "code_changed": false
+        }
+      ]
+    }
+  ],
+  "code_preservation": {
+    "old_executable_fields": 112,
+    "unchanged_fields": 111,
+    "changed_fields": [
+      "cnn/section/activation-pooling"
+    ],
+    "new_fields": [
+      "cnn/demo/activation-pooling-gradients"
+    ],
+    "removed_fields": []
+  },
+  "executed_examples": [
+    {
+      "id": "cnn/section/activation-pooling",
+      "passed": true,
+      "source_sha256": "438d3a3c86593ea0b2dc10d0392b9e12afa077ad216df2231583e04334efc6e6",
+      "output": "平均/最大池化的梯度和 GAP 空间反例均通过。"
+    },
+    {
+      "id": "cnn/demo/activation-pooling-gradients",
+      "passed": true,
+      "source_sha256": "6e7c9cfb8ead6d65640868ee9b04dd55f25e094b099ba5fb0b4f0401b5439827",
+      "output": "通过：ReLU、BN 前向/反向/运行统计、池化梯度、GAP、采样相位与边界约定。",
+      "bn_input_gradient_max_abs_error": 4.440892098500626e-16
+    }
+  ],
+  "derivation_checks": {
+    "checks_passed": 18,
+    "python_scope": "CPU, float64, fixed seed; small mathematical examples",
+    "torch": "2.15.0+cpu",
+    "checks": [
+      {
+        "name": "MLP_W2",
+        "max_abs_error": 0
+      },
+      {
+        "name": "MLP_b2",
+        "max_abs_error": 0
+      },
+      {
+        "name": "MLP_W1",
+        "max_abs_error": 0
+      },
+      {
+        "name": "MLP_b1",
+        "max_abs_error": 0
+      },
+      {
+        "name": "MLP_x",
+        "max_abs_error": 0
+      },
+      {
+        "name": "dot_product_variance_exact",
+        "max_abs_error": 0
+      },
+      {
+        "name": "scaled_dot_variance_exact",
+        "max_abs_error": 1.1102230246251565e-16
+      },
+      {
+        "name": "qk_bilinear",
+        "max_abs_error": 0
+      },
+      {
+        "name": "softmax_jacobian",
+        "max_abs_error": 0
+      },
+      {
+        "name": "readout_score_gradient",
+        "max_abs_error": 8.760353553682876e-17
+      },
+      {
+        "name": "readout_value_gradient",
+        "max_abs_error": 0
+      },
+      {
+        "name": "rope_rotation_composition",
+        "max_abs_error": 1.1102230246251565e-16
+      },
+      {
+        "name": "rope_relative_dot",
+        "max_abs_error": 0
+      },
+      {
+        "name": "rope_common_shift",
+        "max_abs_error": 8.881784197001252e-16
+      },
+      {
+        "name": "sample_weighted_loss",
+        "max_abs_error": 0
+      },
+      {
+        "name": "element_weighted_loss",
+        "max_abs_error": 0
+      },
+      {
+        "name": "sample_weights",
+        "max_abs_error": 0
+      },
+      {
+        "name": "element_weights",
+        "max_abs_error": 0
+      }
+    ]
+  },
+  "formula_validation": {
+    "formulasChecked": 746,
+    "uniqueFormulas": 612,
+    "errors": [],
+    "unmarkedCandidates": []
+  },
+  "primary_sources_checked": [
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.nn.BatchNorm2d.html",
+      "claims": "statistical axes, biased training variance, unbiased running-variance update, eval behavior, momentum"
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.nn.AvgPool2d.html",
+      "claims": "window average, padding, count_include_pad and divisor convention"
+    },
+    {
+      "url": "https://docs.pytorch.org/docs/2.15/generated/torch.nn.MaxPool2d.html",
+      "claims": "window maximum, implicit negative-infinity padding, stride and dilation"
+    },
+    {
+      "url": "https://proceedings.mlr.press/v97/zhang19a.html",
+      "claims": "downsampling and shift sensitivity; qualified anti-aliasing discussion"
+    },
+    {
+      "url": "https://arxiv.org/abs/1704.04861",
+      "claims": "MobileNet architecture based on depthwise separable convolution"
+    }
+  ],
+  "limits": [
+    "New checks use CPU float64 and small deterministic inputs; they do not establish robot performance or GPU kernel behavior.",
+    "Unchanged executable fields are preserved and their existing repository validation may be reused only for matching source hashes.",
+    "Browser/layout and integrated routing validation are performed by the root agent after assembly."
+  ]
+}

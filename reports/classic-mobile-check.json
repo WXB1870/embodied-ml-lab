@@ -1,0 +1,36 @@
+{
+  "clip-frame": {
+    "documentWidth": 375,
+    "formulaErrors": 0,
+    "tables": [
+      {
+        "container": "table-wrap",
+        "containerWidth": 337,
+        "contentWidth": 337
+      },
+      {
+        "container": "detail-body table-wrap",
+        "containerWidth": 335,
+        "contentWidth": 335
+      }
+    ],
+    "viewport": 375
+  },
+  "vision-frame": {
+    "documentWidth": 375,
+    "formulaErrors": 0,
+    "tables": [
+      {
+        "container": "table-wrap",
+        "containerWidth": 337,
+        "contentWidth": 355
+      },
+      {
+        "container": "detail-body table-wrap",
+        "containerWidth": 335,
+        "contentWidth": 335
+      }
+    ],
+    "viewport": 375
+  }
+}

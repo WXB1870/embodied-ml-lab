@@ -1,0 +1,270 @@
+{
+  "checked_at": "2026-11-06T16:27:07Z",
+  "environment": "CPU, one isolated process and temporary directory per executed case",
+  "total": 29,
+  "passed": 29,
+  "failed": 0,
+  "results": [
+    {
+      "topic": "mlp",
+      "case": "demo:manual-backprop",
+      "passed": true,
+      "source_sha256": "6b30be44ba557b4565dbc901a78cb6a1a196a2abb4d4d46882925b0a5997abf9",
+      "seconds": 2.14,
+      "output": "x (3, 2) gradient agrees\nw1 (3, 2) gradient agrees\nb1 (3,) gradient agrees\nw2 (2, 3) gradient agrees\nb2 (2,) gradient agrees\nloss = 0.092792\n通过：前向、五组梯度、有限差分和 17 个参数。\none SGD step: 0.09279166666666665 -> 0.08276880316466285\nfirst updated prediction: [1.129593732638889, -0.2800681768055556]\n输入保持不变；四组参数的手写更新与 SGD 一致。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "mlp",
+      "case": "demo:readout-training",
+      "passed": true,
+      "source_sha256": "5fe644819826bd5a92af6b7cc57132066a1bf60e95b4728552c797e5ce55ba11",
+      "seconds": 2.254,
+      "output": "initial gradient norm = 0.6892086267471313\ntrain normalized MSE: 0.945299 -> 0.001044\nholdout MSE in original units: 0.003075\n通过：有效池化、训练更新、有限验证损失与含统计量的恢复。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "mlp",
+      "case": "demo:constructive-spline",
+      "passed": true,
+      "source_sha256": "a83659c5f55535548c1f9eee605f9ca851c0e6c4715c50fa2766041704162841",
+      "seconds": 1.606,
+      "output": "width=4, max_error=0.01562500, verified slopes\nwidth=8, max_error=0.00390625, verified slopes\nwidth=16, max_error=0.00097656, verified slopes\n这是构造性表示实验，没有执行优化；它不保证训练能找到这组参数，也不刻画区间外误差。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "mlp",
+      "case": "lab:affine-from-loops",
+      "passed": true,
+      "source_sha256": "d6f9367075092077a2899aedaa1e6a1a07d4894e24ce53a6a63ccbae34f26458",
+      "seconds": 0.014,
+      "output": "通过：非方形权重、Batch 共享、偏置和参数量。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "mlp",
+      "case": "lab:manual-gradient",
+      "passed": true,
+      "source_sha256": "5511f1271a4ef6743f455688f8e50fd1c9bef778a131c6af2834c48137140857",
+      "seconds": 1.487,
+      "output": "通过：全部梯度、平均归约和失活支路。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "mlp",
+      "case": "lab:masked-readout",
+      "passed": true,
+      "source_sha256": "0c45d3f1360ef37394fb6195ff23fbfc8b94d83cdf7897cd082d391b62b9b2c5",
+      "seconds": 1.494,
+      "output": "通过：指定 MLP、独立 GELU 参考、NaN Padding 隔离、每样本分母与梯度。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "mlp",
+      "case": "lab:relu-spline",
+      "passed": true,
+      "source_sha256": "5d9738f31a85964ca9fedb5670e4cbe5aaad5b651504a770ea21f83fd08f5d85",
+      "seconds": 1.535,
+      "output": "通过：非等距节点、分段前向与梯度、明确参数量、x² 误差界及无效输入\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
+      "case": "demo:unfold-convolution",
+      "passed": true,
+      "source_sha256": "c60f8514222c5588253fd4baa14e7fb9f424afbad5ce7814e8da4872023765c6",
+      "seconds": 1.497,
+      "output": "groups = 1 shape = (2, 5, 3, 8) forward and gradients agree\ngroups = 2 shape = (2, 6, 3, 8) forward and gradients agree\ngroups = 4 shape = (2, 8, 3, 8) forward and gradients agree\nunfold/input element ratio = 9.0\n通过：互相关、通道分组、非方形几何、输入/权重/偏置梯度。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
+      "case": "demo:cnn-training-and-patches",
+      "passed": true,
+      "source_sha256": "5bc5b8de67a17d8ab7b706be807b102b80edf1e8ffbf256e630689d013c5367b",
+      "seconds": 2.62,
+      "output": "features.0 (4, 8, 12, 12) params 224 MAC/sample 31104 r,j 3 1\nfeatures.1 (4, 8, 12, 12) params 0 MAC/sample 0 r,j 3 1\nfeatures.2 (4, 12, 12, 12) params 876 MAC/sample 124416 r,j 5 1\nfeatures.3 (4, 12, 12, 12) params 0 MAC/sample 0 r,j 5 1\nactivation gradient input shape (4, 3, 12, 12) norm 0.0011663604527711868\nactivation gradient features.0 shape (4, 8, 12, 12) norm 0.002516424050554633\nactivation gradient features.1 shape (4, 8, 12, 12) norm 0.0050918362103402615\nactivation gradient features.2 shape (4, 12, 12, 12) norm 0.011078418232500553\nactivation gradient features.3 shape (4, 12, 12, 12) norm 0.02079293318092823\nparameter gradient features.0.weight (8, 3, 3, 3) 0.008509782142937183\nparameter gradient features.0.bias (8,) 0.0027193380519747734\nparameter gradient features.2.weight (12, 8, 3, 3) 0.0210920087993145\nparameter gradient features.2.bias (12,) 0.02851436287164688\nparameter gradient classifier.weight (2, 12) 0.015211914665997028\nparameter gradient classifier.bias (2,) 0.0766485258936882\nlocal output support within 5x5; total params=1126, MAC/sample=155544\ntrain CE: 0.698557 -> 0.000010\nholdout CE: 0.000010, accuracy: 1.000\n通过：卷积分类训练、独立留出评价、参数量与 patch 线性投影等价。\n此处输入尺寸可变仅是形状性质，不代表对新分辨率的泛化保证。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
+      "case": "demo:activation-pooling-gradients",
+      "passed": true,
+      "source_sha256": "6e7c9cfb8ead6d65640868ee9b04dd55f25e094b099ba5fb0b4f0401b5439827",
+      "seconds": 1.691,
+      "output": "通过：ReLU、BN 前向/反向/运行统计、池化梯度、GAP、采样相位与边界约定。\nBN 输入梯度最大绝对误差： 4.440892098500626e-16\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
+      "case": "lab:geometry-and-receptive-field",
+      "passed": true,
+      "source_sha256": "493545ad0712aa2212d0139b7dffc38530ae22b2ca60f925edb115f7840d1e8f",
+      "seconds": 0.012,
+      "output": "通过：非方形尺寸、向下取整、dilation 与感受野递推。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
+      "case": "lab:grouped-convolution",
+      "passed": true,
+      "source_sha256": "d40864cd0d8843bd8329e1484f2bdecef847c775453db28532a75f614d40c8df",
+      "seconds": 1.444,
+      "output": "通过：普通、分组、depthwise、无偏置与三组梯度。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
+      "case": "lab:spatial-expectation",
+      "passed": true,
+      "source_sha256": "521b3c52ff07404426a53a9a23016c33883f8809b1edd5dfb6e1c415bb53a9d1",
+      "seconds": 1.565,
+      "output": "通过：空间归约、非方形 xy 顺序、中心坐标和可微期望。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "demo:manual-mha",
+      "passed": true,
+      "source_sha256": "3df66264bd55d13dabef6108751cc81c58a0b61972c272203f4d499cea26a8e3",
+      "seconds": 1.529,
+      "output": "passed: forward, all six gradients, mask perturbation, batch isolation\nQ/K lengths: 3 4 ; output shape: (2, 3, 8)\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "demo:tiny-causal-lm",
+      "passed": true,
+      "source_sha256": "0da3dcab68271f8533b41f2e94c9f0ca03b5644044e5d93a1c8a4ca99ed5f4d6",
+      "seconds": 2.718,
+      "output": "TINY_LM_VALIDATION {\"block0_shapes\": {\"allowed\": [2, 1, 4, 4], \"attention_output\": [2, 4, 8], \"ffn_hidden\": [2, 4, 32], \"k\": [2, 2, 4, 4], \"merged\": [2, 4, 8], \"norm1\": [2, 4, 8], \"norm2\": [2, 4, 8], \"output\": [2, 4, 8], \"packed\": [2, 4, 24], \"per_head\": [2, 2, 4, 4], \"q\": [2, 2, 4, 4], \"residual1\": [2, 4, 8], \"scores\": [2, 2, 4, 4], \"v\": [2, 2, 4, 4], \"weights\": [2, 2, 4, 4]}, \"cache_errors\": {\"(1, 1, 1, 1)\": 4.440892098500626e-16, \"(1, 3)\": 6.661338147750939e-16, \"(2, 2)\": 0.0}, \"dimensions\": {\"B\": 2, \"D\": 8, \"H\": 2, \"T\": 4, \"layers\": 2}, \"future_input_gradient_max\": 0.0, \"greedy_sequences\": [[0, 1, 2, 3, 4], [3, 4, 5, 6, 0]], \"max_parameter_gradient_error\": 2.220446049250313e-15, \"parameter_gradient_groups\": 28, \"seed\": 19, \"synthetic_ce_after\": 0.007492298951543006, \"synthetic_ce_before\": 2.2914662556635736}\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "demo:layerwise-information-flow",
+      "passed": true,
+      "source_sha256": "ea1e80a9a9b3aefdd0936a803f2399ba24bacd50b494cfcada7baf1e75c109f2",
+      "seconds": 1.554,
+      "output": "causal future derivative: 0.0\nindirect future derivative: 0.02335226556510318\nfinite-difference error: 1.890090514655718e-12\npassed: reachability, Jacobian support, perturbation, prefix KV invariance\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "lab:visibility-mask",
+      "passed": true,
+      "source_sha256": "172de7e6942ed70a16f5460780368b227dbcd6a126dbec38325d34de0043eeb4",
+      "seconds": 0.014,
+      "output": "passed: prefix isolation, bidirectional actions, causal actions, boundaries\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "lab:safe-masked-attention",
+      "passed": true,
+      "source_sha256": "7e452098ea72dfb34bc45adbeb4feead073282ebd6b4ced3698acd985ee915b3",
+      "seconds": 1.541,
+      "output": "passed: selected-key oracle, gradients, empty rows, padding, broadcasting\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "lab:cache-offset",
+      "passed": true,
+      "source_sha256": "10a03b2192177b2e5b65a4e13155b8cd578cf0967e30dcab3cb84e9254cc85de",
+      "seconds": 1.484,
+      "output": "passed: multi-chunk forward, gradients, history offset, immutable cache\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "lab:multihead-self-attention",
+      "passed": true,
+      "source_sha256": "c1aaf3df2de14a20cbc86998aef69605ba1f901b18f8675478ab36ef0e0499ab",
+      "seconds": 1.654,
+      "output": "MHA_VALIDATION {\"checks\": [\"causal perturbation, future gradients and batch isolation\", \"padding values cannot leak; empty rows stay finite and zero\", \"all-padding output and all five input/parameter gradient groups are zero\", \"single-token analytic value readout\", \"invalid dimensions, mask dtype/shape and causal flag rejected\"], \"official_cases\": [{\"causal\": false, \"gradient_groups\": 5, \"heads\": 1, \"max_gradient_error\": 4.440892098500626e-16, \"max_output_error\": 5.551115123125783e-17, \"max_weight_error\": 8.326672684688674e-17}, {\"causal\": true, \"gradient_groups\": 5, \"heads\": 1, \"max_gradient_error\": 6.661338147750939e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 1.1102230246251565e-16}, {\"causal\": false, \"gradient_groups\": 5, \"heads\": 3, \"max_gradient_error\": 8.881784197001252e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 5.551115123125783e-17}, {\"causal\": true, \"gradient_groups\": 5, \"heads\": 3, \"max_gradient_error\": 7.771561172376096e-16, \"max_output_error\": 1.1102230246251565e-16, \"max_weight_error\": 1.1102230246251565e-16}], \"seed\": 71}\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "lab:pre-ln-transformer-block",
+      "passed": true,
+      "source_sha256": "e436bf9b00e8f16fee55881aa44d33d5e4d1c38d624dbcd9d26c0b18c58a0ad0",
+      "seconds": 1.625,
+      "output": "BLOCK_VALIDATION {\"checks\": [\"whole-block causal perturbation, future gradients and batch isolation\", \"invalid values cannot leak through attention, norm or residual branches\", \"all-padding output and all thirteen input/parameter gradients are zero\", \"zero branches recover identity forward and identity input Jacobian\", \"FFN/epsilon and input contracts rejected when invalid\"], \"official_cases\": [{\"causal\": false, \"gradient_groups\": 13, \"max_gradient_error\": 1.1102230246251565e-15, \"max_output_error\": 4.440892098500626e-16}, {\"causal\": true, \"gradient_groups\": 13, \"max_gradient_error\": 8.881784197001252e-16, \"max_output_error\": 3.3306690738754696e-16}], \"seed\": 73}\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "lab:rotary-position-offset",
+      "passed": true,
+      "source_sha256": "09e45e32e6cf2a164e7a5b2356e1bba5f436ae6f33d2dfca2a55bcef974575f5",
+      "seconds": 1.724,
+      "output": "passed: explicit rotations, norm, gradients, global offset, relative shift\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
+      "case": "demo:conditional-gaussian",
+      "passed": true,
+      "source_sha256": "fc40b1bab387396fb38514de249aaea00e5043ff18622dfb84cf4cc58597f786",
+      "seconds": 2.739,
+      "output": "probe MSE: 2.4499 -> 0.5982\nanalytic marginal-field MSE: 0.5670 (not generally zero)\ncondition=0, mean=[-1.5123507976531982, -0.6763036251068115], std=[0.33139434456825256, 0.3346610367298126]\ncondition=1, mean=[1.4671655893325806, 0.6931766271591187], std=[0.33958590030670166, 0.32513418793678284]\nanalytic-field Euler max error: 0.00882\n通过：训练更新、确定性采样、条件分组和解析 ODE 对照\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
+      "case": "demo:mask-and-solvers",
+      "passed": true,
+      "source_sha256": "e6e36458946b35274958c15863ab24470ea4f1a9a33a50f0670f2beb3b0b76f1",
+      "seconds": 1.624,
+      "output": "effective counts=[2, 3], global loss=0.24404\nsteps=4, Euler NFE=4, error=0.553751; Heun NFE=8, error=0.046852\nsteps=8, Euler NFE=8, error=0.304995; Heun NFE=16, error=0.012881\nsteps=16, Euler NFE=16, error=0.160707; Heun NFE=32, error=0.003377\n通过：有效分母、Mask 梯度、NaN Padding 隔离和两种积分器\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
+      "case": "demo:conditional-mixture",
+      "passed": true,
+      "source_sha256": "d073e24ff939b10d2c708a9c83611a3079831be7f10421f7559e85d1a36a0800",
+      "seconds": 6.141,
+      "output": "{\n  \"probe\": {\n    \"before_mse\": 2.4930944442749023,\n    \"after_mse\": 1.2641465663909912,\n    \"oracle_target_mse\": 1.2173534631729126,\n    \"learned_to_oracle_field_mse\": 0.03903840854763985\n  },\n  \"reference_check\": {\n    \"learned_512_to_1024_rms\": 4.985554824088467e-06,\n    \"oracle_1024_to_2048_rms\": 2.6106449695362244e-06\n  },\n  \"model_flow_rms\": 0.14688722789287567,\n  \"metrics\": [\n    {\n      \"method\": \"euler\",\n      \"steps\": 4,\n      \"nfe\": 4,\n      \"solver_rms\": 0.3175126910209656,\n      \"oracle_rms\": 0.3351382315158844,\n      \"conditional_sliced_w2\": [\n        0.213861346244812,\n        0.5913624167442322\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 8,\n      \"nfe\": 8,\n      \"solver_rms\": 0.17310850322246552,\n      \"oracle_rms\": 0.2170654535293579,\n      \"conditional_sliced_w2\": [\n        0.17151984572410583,\n        0.5171769857406616\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 16,\n      \"nfe\": 16,\n      \"solver_rms\": 0.09023953974246979,\n      \"oracle_rms\": 0.16710339486598969,\n      \"conditional_sliced_w2\": [\n        0.2142331451177597,\n        0.48075148463249207\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 32,\n      \"nfe\": 32,\n      \"solver_rms\": 0.04652957618236542,\n      \"oracle_rms\": 0.1519119143486023,\n      \"conditional_sliced_w2\": [\n        0.24017584323883057,\n        0.4662860631942749\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 64,\n      \"nfe\": 64,\n      \"solver_rms\": 0.024432459846138954,\n      \"oracle_rms\": 0.14843572676181793,\n      \"conditional_sliced_w2\": [\n        0.2532864809036255,\n        0.4602748453617096\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 4,\n      \"nfe\": 8,\n      \"solver_rms\": 0.10401348024606705,\n      \"oracle_rms\": 0.17882823944091797,\n      \"conditional_sliced_w2\": [\n        0.21159185469150543,\n        0.4918566048145294\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 8,\n      \"nfe\": 16,\n      \"solver_rms\": 0.024358347058296204,\n      \"oracle_rms\": 0.14914999902248383,\n      \"conditional_sliced_w2\": [\n        0.25339192152023315,\n        0.4597090482711792\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 16,\n      \"nfe\": 32,\n      \"solver_rms\": 0.006410537753254175,\n      \"oracle_rms\": 0.1472007781267166,\n      \"conditional_sliced_w2\": [\n        0.26350802183151245,\n        0.454908162355423\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 32,\n      \"nfe\": 64,\n      \"solver_rms\": 0.0016110853757709265,\n      \"oracle_rms\": 0.14693327248096466,\n      \"conditional_sliced_w2\": [\n        0.2661551237106323,\n        0.4538086950778961\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 64,\n      \"nfe\": 128,\n      \"solver_rms\": 0.0003958101733587682,\n      \"oracle_rms\": 0.14689403772354126,\n      \"conditional_sliced_w2\": [\n        0.2668299078941345,\n        0.45356154441833496\n      ]\n    }\n  ],\n  \"seconds\": 4.625468373000331\n}\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
+      "case": "lab:path-and-conditional-mean",
+      "passed": true,
+      "source_sha256": "5108dd0b994bae9da750df6162e1fc20b4ea6b394a28d46d589bae8c52f5a726",
+      "seconds": 0.011,
+      "output": "通过：端点、时间导数、条件加权平均与边界\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
+      "case": "lab:masked-cfm-objective",
+      "passed": true,
+      "source_sha256": "93ddf77c15af02774e96fe88072693a03238a1e566d21216b53716192cd4e098",
+      "seconds": 2.331,
+      "output": "step 1 loss 1.053117708 encoder_grad [[0.04600000000000005, -0.000999999999999987]]\nstep 2 loss 1.034015872 encoder_grad [[0.021211288895889337, 0.020676926445161482]]\n通过：NaN 前选择、广播、手算梯度、条件编码器更新、两步清零、端点与方向反例\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
+      "case": "lab:conditional-heun",
+      "passed": true,
+      "source_sha256": "6534f03d1e9db3f236835c238de8ef4ec1f1ae6647f3fd64319456f582b08a63",
+      "seconds": 1.574,
+      "output": "通过：非均匀步长、时间依赖、状态依赖、条件、反向积分与 NFE\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
+      "case": "lab:general-path-target",
+      "passed": true,
+      "source_sha256": "167e971c63d95bb5cfbde5c9d1b19e199c51ff0004b5f588d132b97d72fd13bb",
+      "seconds": 1.63,
+      "output": "通过：一般路径导数、端点、时间链式法则、方向反例和解析 Gaussian 边际场\n",
+      "reused_unchanged_result": true
+    }
+  ]
+}

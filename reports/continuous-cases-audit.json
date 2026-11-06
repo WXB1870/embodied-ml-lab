@@ -1,0 +1,1043 @@
+{
+  "baseline_commit": "0035390787417ffcd51de4ec0ec5636579853082",
+  "existing_courses_reviewed": 49,
+  "existing_courses_with_targeted_changes": 28,
+  "existing_courses_retained": 21,
+  "new_courses": [
+    "vla-architecture"
+  ],
+  "total_courses": 50,
+  "total_sections": 437,
+  "scope_note": "Targeted changes include references, prerequisite metadata, mathematical formatting and corrections; this count does not mean 28 wholesale rewrites. Retained ignores course numbering and runnable/fragment metadata.",
+  "courses": [
+    {
+      "id": "tensor",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "维度语义、广播、视图/复制及有效池化已有独立数值与梯度检查；无需再造端到端模型。",
+      "change": "正文、代码、练习保持。",
+      "title": "张量与广播",
+      "module": "foundations",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "matrix-grad",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "VJP/JVP、链式法则、秩/零空间与有限差分连接完整，具有可执行参照。",
+      "change": "正文保留；独立片段标记 runnable 并复验。",
+      "title": "线性代数与矩阵求导",
+      "module": "foundations",
+      "section_count": 10,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "probability",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "条件分布、全期望/全方差、高斯条件化及条件均值的成立条件已展开。",
+      "change": "理论、例题与练习保留；独立片段标记 runnable 并复验。",
+      "title": "概率、统计与训练目标",
+      "module": "foundations",
+      "section_count": 12,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "losses",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "MSE/NLL、有效集合、加权分母和 NaN 梯度均已解释，工程分母需要与数据与累积共用。",
+      "change": "正文指向共同项目 masked_error_sum；成熟目标与安全选择推导保留。",
+      "title": "损失、掩码与归约",
+      "module": "foundations",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "autograd",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "跨课衔接",
+      "finding": "计算图、冻结与 no_grad、VJP 和高阶梯度已有有效对照；需要把局部求导放回完整更新。",
+      "change": "链接 MLP 的前向—VJP—梯度—更新链；保留原实验。",
+      "title": "PyTorch 自动微分与计算图",
+      "module": "foundations",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "optimization",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "数值衔接",
+      "finding": "SGD 方差、Momentum、Adam 偏差修正、AdamW 与裁剪边界已充分，不宜平均扩写。",
+      "change": "引用同一 MLP 的旧参数点梯度与 SGD 数值更新；其余原理与实验保留。",
+      "title": "梯度下降、动量与 AdamW",
+      "module": "foundations",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "numerical",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "尺度改变目标权重与 Hessian 的解释充分，包含数值稳定边界。",
+      "change": "保留归一化与条件数实验；独立片段标记 runnable 并复验。",
+      "title": "数值精度与标准化",
+      "module": "foundations",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "generalization",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "划分单位、选择偏差、增强等变关系与评估分母已形成连续解释。",
+      "change": "不新增模型与图示，保留。",
+      "title": "泛化与验证",
+      "module": "foundations",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "mlp",
+      "classification": [
+        "A",
+        "B",
+        "D"
+      ],
+      "action": "贯穿案例改写",
+      "finding": "通用反向、样条表达能力与初始化已成熟，但正文的 2→2→1 手算与 manual-backprop 的 2→3→2 不同，数值链被打断。",
+      "change": "统一现有 17 参数模型的前向、损失、五组梯度、SGD；增加计算图和数值表，保留成熟推导、其余实现和练习 ID。",
+      "title": "MLP：表达、梯度与优化",
+      "module": "neural",
+      "section_count": 11,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "activation-init",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "跨课衔接",
+      "finding": "激活导数、二阶矩与方差区别、对称性和初始化假设已成熟，需明确与完整 MLP 的对应。",
+      "change": "保留推导；链接同一 MLP 的 ReLU 门与偏置扰动，避免另造案例。",
+      "title": "激活与初始化",
+      "module": "neural",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "normalization",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "LN/RMSNorm Jacobian、epsilon 条件、BN 状态与跨样本依赖已深入且有导数核对。",
+      "change": "保留；现有独立公式验证标记 runnable 并复验，CNN 仅连接 GAP/BN 边界。",
+      "title": "归一化：统计轴、梯度与不变性",
+      "module": "neural",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "residual",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "Jacobian 乘积、奇异值/非正规例子、零初始化与 Pre/Post-Norm 的假设清楚。",
+      "change": "保留成熟推导及公平梯度对照，不用贯穿案例取代它们；独立片段复验。",
+      "title": "残差连接与深层优化",
+      "module": "neural",
+      "section_count": 9,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "cnn-receptive-field",
+      "classification": [
+        "A",
+        "B",
+        "D",
+        "E"
+      ],
+      "action": "贯穿案例与边界调整",
+      "finding": "分组秩、感受野支持集、BN/激活/池化已有深度；几何、参数与梯度未在同网串起，Patch/空间头边界可更明确。",
+      "change": "沿现有 SmallCNN 追踪形状、参数、MAC、r/j、GAP 梯度和局部支持集；增加结构图，保留高级推导，Patch/空间读出用跨课链接定位。",
+      "title": "CNN：卷积、采样与空间表示",
+      "module": "neural",
+      "section_count": 11,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "attention",
+      "classification": [
+        "A",
+        "B"
+      ],
+      "action": "主专章边界保留",
+      "finding": "QKV 双线性匹配、方差缩放、Softmax 梯度、矩形 Mask 的推导成熟；完整模型位置交由 Transformer。",
+      "change": "保留 Attention 专章；数值片段复验。连续多层模型与图示由 Transformer 分工补足，不复制专章。",
+      "title": "注意力：匹配、聚合与梯度",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "embeddings",
+      "classification": [
+        "A",
+        "B",
+        "E"
+      ],
+      "action": "依赖调整",
+      "finding": "Embedding 梯度、位置/生成时间区别及 RoPE 恒等式已有完整机制；原前置引用 Transformer 与教学顺序相反。",
+      "change": "前置改为 attention、tensor；缓存作为后续应用链接，Transformer 再以前置 embeddings 连接。",
+      "title": "Embedding 与位置编码",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "transformer",
+      "classification": [
+        "A",
+        "B",
+        "D"
+      ],
+      "action": "专题分工",
+      "finding": "已有 QKV、SwiGLU Jacobian 与多层 Mask 理论成熟；完整两层案例、RoPE 与 Cross-Attention 图示由专门分工审查改写。",
+      "change": "本分工核对代理实现/练习，添加 embeddings 前置；完整 topic 变更与核验见 case-transformer 报告，仅计一个 canonical course。",
+      "title": "Transformer：注意力、残差与序列建模",
+      "module": "transformers",
+      "section_count": 16,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "vision-preprocessing",
+      "classification": [
+        "E"
+      ],
+      "action": "调整前置依赖与顺序",
+      "finding": "现有像素范围、布局、Patch 与几何解释保留；将先修改为 Tensor 与 CNN，并放在多模态融合之前。",
+      "change": "现有像素范围、布局、Patch 与几何解释保留；将先修改为 Tensor 与 CNN，并放在多模态融合之前。",
+      "title": "视觉预处理与坐标变换",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "multimodal",
+      "classification": [
+        "A",
+        "E"
+      ],
+      "action": "依赖与边界调整",
+      "finding": "多模态接口、条件路径与表示瓶颈已成熟；视觉预处理应先于本课。",
+      "change": "增加 vision-preprocessing 前置与正文链接；保留接口内容，不复制 CNN 的 Patch 秩分析。",
+      "title": "视觉编码与多模态融合",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "contrastive-pretraining",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "图文双向归一化、温度、重复正例与梯度解释已经形成闭环；本轮不增加另一套表征项目。",
+      "change": "图文双向归一化、温度、重复正例与梯度解释已经形成闭环；本轮不增加另一套表征项目。",
+      "title": "图文对比学习",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "tokenizer-autoregressive",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "保留分词、一次标签移位、因果与监督 Mask 的区分，以及含 Padding 的训练验证。",
+      "change": "保留分词、一次标签移位、因果与监督 Mask 的区分，以及含 Padding 的训练验证。",
+      "title": "分词、自回归与标签对齐",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "conditioning-fusion",
+      "classification": [
+        "D"
+      ],
+      "action": "补充架构衔接",
+      "finding": "保留 Cross-Attention、FiLM 与 AdaLN 的局部机制；将完整多层双流交互交给新 VLA 架构课。",
+      "change": "保留 Cross-Attention、FiLM 与 AdaLN 的局部机制；将完整多层双流交互交给新 VLA 架构课。",
+      "title": "条件注入：拼接、FiLM 与 AdaLN",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "kv-cache-inference",
+      "classification": [
+        "D"
+      ],
+      "action": "连接已有完整模型",
+      "finding": "专章继续负责缓存不变性、偏移和代价；正文链接同一 TinyLM 与新 VLA，避免第三套独立 Transformer。",
+      "change": "专章继续负责缓存不变性、偏移和代价；正文链接同一 TinyLM 与新 VLA，避免第三套独立 Transformer。",
+      "title": "KV Cache 与增量计算",
+      "module": "transformers",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "latent-variable-models",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "ELBO 恒等式、后验近似差、重参数化与可解析 Gaussian 后验已有有效推导/数值验证；只修正文内函数名格式。",
+      "change": "ELBO 恒等式、后验近似差、重参数化与可解析 Gaussian 后验已有有效推导/数值验证；只修正文内函数名格式。",
+      "title": "生成建模、潜变量与 VAE",
+      "module": "generative",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "diffusion",
+      "classification": [
+        "D"
+      ],
+      "action": "统一二维数据案例",
+      "finding": "保留后验、ELBO 权重、DDIM 与参数化推导；替换原一维示例为与 FM 共用条件混合分布的完整 DDPM，加入解析噪声 Oracle。",
+      "change": "保留后验、ELBO 权重、DDIM 与参数化推导；替换原一维示例为与 FM 共用条件混合分布的完整 DDPM，加入解析噪声 Oracle。",
+      "title": "Diffusion：DDPM、目标参数化与 DDIM",
+      "module": "generative",
+      "section_count": 12,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "score-sde",
+      "classification": [
+        "B"
+      ],
+      "action": "增加解析双路径案例",
+      "finding": "原 SDE/概率流推导保留；以同一二维混合分布计算两条路径的密度、责任、条件均值、Score 与速度，并验证连续性与 Fokker–Planck 方程。",
+      "change": "原 SDE/概率流推导保留；以同一二维混合分布计算两条路径的密度、责任、条件均值、Score 与速度，并验证连续性与 Fokker–Planck 方程。",
+      "title": "Score、SDE 与概率流 ODE",
+      "module": "generative",
+      "section_count": 9,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "flow-matching",
+      "classification": [
+        "A"
+      ],
+      "action": "复用成熟实验并交叉连接",
+      "finding": "保留概率路径→条件回归→边缘速度→ODE 的数学链和三份完整实现、四个手写题；沿用已有双峰实验，只补跨章对照和局部片段依赖标识。",
+      "change": "保留概率路径→条件回归→边缘速度→ODE 的数学链和三份完整实现、四个手写题；沿用已有双峰实验，只补跨章对照和局部片段依赖标识。",
+      "title": "Flow Matching",
+      "module": "generative",
+      "section_count": 16,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "behavior-cloning",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "条件似然、条件均值、缺失条件与闭环偏移已成体系；新 VLA 课引用其监督目标。",
+      "change": "条件似然、条件均值、缺失条件与闭环偏移已成体系；新 VLA 课引用其监督目标。",
+      "title": "行为克隆",
+      "module": "policies",
+      "section_count": 9,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "action-representation",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "坐标、位姿、旋转、归一化几何与有效动作处理已有充分推导，继续作为新 VLA 的前置。",
+      "change": "坐标、位姿、旋转、归一化几何与有效动作处理已有充分推导，继续作为新 VLA 的前置。",
+      "title": "状态与动作表示",
+      "module": "policies",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "action-chunk",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "历史长度、预测/执行长度、重规划与动作锚点区分完整；不重复控制教材。",
+      "change": "历史长度、预测/执行长度、重规划与动作锚点区分完整；不重复控制教材。",
+      "title": "时间对齐与动作块",
+      "module": "policies",
+      "section_count": 7,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "partial-observability",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "Bayes belief 更新、观测不可辨识、历史表示与有限记忆边界已建立；不为统一案例重写 HMM 数值例。",
+      "change": "Bayes belief 更新、观测不可辨识、历史表示与有限记忆边界已建立；不为统一案例重写 HMM 数值例。",
+      "title": "部分观测与记忆",
+      "module": "policies",
+      "section_count": 7,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "generative-policy",
+      "classification": [
+        "B",
+        "D"
+      ],
+      "action": "保留原课，由新架构课承接",
+      "finding": "保留 ACT/CVAE、Diffusion/Flow Policy 的统计建模；多层 VLM/expert 联合计算集中在新课。",
+      "change": "保留 ACT/CVAE、Diffusion/Flow Policy 的统计建模；多层 VLM/expert 联合计算集中在新课。",
+      "title": "生成式动作策略：ACT、Diffusion 与 Flow",
+      "module": "policies",
+      "section_count": 7,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "finetuning",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "LoRA 参数化、梯度、训练状态与迁移风险已详解；新课只补其具体 VLA 计算图位置。",
+      "change": "LoRA 参数化、梯度、训练状态与迁移风险已详解；新课只补其具体 VLA 计算图位置。",
+      "title": "微调与 LoRA",
+      "module": "policies",
+      "section_count": 10,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "returns-bellman",
+      "classification": [
+        "C"
+      ],
+      "action": "修正参考答案",
+      "finding": "理论已讲清终止与截断、GAE 双 Mask；TD 代码仍以乘零处理无效尾值。改为先选择有效 bootstrap，新增终态 NaN 隔离和非终态 NaN 拒绝测试。",
+      "change": "理论已讲清终止与截断、GAE 双 Mask；TD 代码仍以乘零处理无效尾值。改为先选择有效 bootstrap，新增终态 NaN 隔离和非终态 NaN 拒绝测试。",
+      "title": "回报与 Bellman 方程",
+      "module": "policies",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "policy-gradient",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "保留两步轨迹的精确枚举、Score-function 推导、baseline 条件与同批均值偏差、PPO 动作比率的适用范围。",
+      "change": "保留两步轨迹的精确枚举、Score-function 推导、baseline 条件与同批均值偏差、PPO 动作比率的适用范围。",
+      "title": "策略梯度",
+      "module": "policies",
+      "section_count": 10,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "modules",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "注册、Buffer、梯度与优化器成员的区分充分，需对应完整训练对象。",
+      "change": "定位共享 TokenRegressor 的四组统计 Buffer 与参数；修正已有示例说明为 8 维输入/4 维输出。",
+      "title": "PyTorch 模块、参数与状态",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "dataloader",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "采样分布、collate、有效数和泄漏已有完整解释，组批后的实际更新仍需贯通。",
+      "change": "链接同一 ToyEpisodes/collate_episodes，说明 190 个有效标量与尾批更新；旧练习保留。",
+      "title": "数据采样与批处理",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "training-loop",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享项目",
+      "finding": "原有更新边界、归约与评估机制成熟，但各节工程实验相对独立。",
+      "change": "复用 Linear(4,2) 建立单一 full source；Dataset→累积→CPU BF16→更新→评估→epoch 恢复→故障诊断，新增流程图与函数定位表。",
+      "title": "训练循环与指标归约",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "checkpoint",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "恢复验证扩展",
+      "finding": "模型/优化器/RNG/EMA/数据游标论述成熟，已有单步恢复需与真实 DataLoader 状态连接。",
+      "change": "保留旧案例，链接共同项目下一整轮顺序、梯度路径、指标和状态逐项恢复；明确 epoch_end、workers=0 范围。",
+      "title": "保存与恢复训练状态",
+      "module": "engineering",
+      "section_count": 9,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "data-quality",
+      "classification": [
+        "A",
+        "E"
+      ],
+      "action": "删除重复段落",
+      "finding": "Episode 划分、统计量和采样风险主体成熟；删除末节两段逐字重复，保留其余。",
+      "change": "Episode 划分、统计量和采样风险主体成熟；删除末节两段逐字重复，保留其余。",
+      "title": "示教数据与采样",
+      "module": "engineering",
+      "section_count": 7,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "gradient-accumulation",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "同一参数点、共同分母、裁剪与随机前向等价条件解释完整。",
+      "change": "保留原对照；链接同一七条 episode 的 10/30 有效计数控制组和 SGD 梯度/参数等价。",
+      "title": "梯度累积",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "mixed-precision",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "共享实现定位",
+      "finding": "指数/有效数字、autocast、scaler 单位与局部高精度位置的推导充分。",
+      "change": "链接同模型 FP32/CPU BF16 梯度与实际更新；不宣称 CUDA、性能或通用误差界已验证。",
+      "title": "混合精度训练",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "memory-checkpointing",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "状态与激活内存分账、逻辑保存量与实际峰值区别、重算副作用已充分。",
+      "change": "不添加第二个共享模型或 GPU 估算结论；原代码/练习保留。",
+      "title": "训练显存与重计算",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "distributed-training",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "适配说明",
+      "finding": "全局分母推导、Sampler、no_sync、日志归约和控制流已有完整说明。",
+      "change": "连接共享 S_r/N_r 到默认 DDP 的 R*S_r/N，明确真实 Gloo 仍 environment_blocked，单进程数学对照不能替代通信测试。",
+      "title": "DDP 与全局统计",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "training-diagnostics",
+      "classification": [
+        "A",
+        "D"
+      ],
+      "action": "同对象故障对照",
+      "finding": "已有推理式证据链、小样本冲突标签下界及参数身份诊断成熟。",
+      "change": "同一共享模型构造漏 bias 优化器、Padding/有效 NaN 两类单因素干预；保留成熟诊断论证。",
+      "title": "训练诊断",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "multitask-gradients",
+      "classification": [
+        "A"
+      ],
+      "action": "数值正确性修复",
+      "finding": "任务梯度叠加、局部点积与长期效果区别成熟；审查发现有限坐标的直接点积/范数乘积可溢出。",
+      "change": "两种语言的原练习改为独立尺度化求余弦，拒绝非有限合成，加入 1e200/1.7e308 反例，保持题目索引及核心目的。",
+      "title": "多任务梯度",
+      "module": "engineering",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "distribution-shift",
+      "classification": [
+        "A"
+      ],
+      "action": "修正局部算例对齐",
+      "finding": "DAgger、状态分布与误差积累分析保留；澄清解析专家 −s 与代码专家 −0.5s 的不同设定，补明后者平衡点为 2δ。",
+      "change": "DAgger、状态分布与误差积累分析保留；澄清解析专家 −s 与代码专家 −0.5s 的不同设定，补明后者平衡点为 2δ。",
+      "title": "分布偏移与 DAgger",
+      "module": "execution",
+      "section_count": 8,
+      "content_changed": true,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "execution-latency",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "时间戳、可执行区间、重规划和过期动作协议已有连续时序算例；没有扩展无关控制理论。",
+      "change": "时间戳、可执行区间、重规划和过期动作协议已有连续时序算例；没有扩展无关控制理论。",
+      "title": "动作执行与延迟",
+      "module": "execution",
+      "section_count": 7,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "evaluation",
+      "classification": [
+        "A"
+      ],
+      "action": "保留",
+      "finding": "独立试验单位、macro/micro、Wilson、配对 bootstrap 与消融论证完整，避免另造简化模型。",
+      "change": "独立试验单位、macro/micro、Wilson、配对 bootstrap 与消融论证完整，避免另造简化模型。",
+      "title": "闭环评估与统计",
+      "module": "execution",
+      "section_count": 7,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    },
+    {
+      "id": "train-infer-contract",
+      "classification": [
+        "A"
+      ],
+      "action": "保留完整闭环案例",
+      "finding": "现有训练→保存→新进程加载→反归一化→闭环执行案例已完整；不重复新建同类工程项目。",
+      "change": "现有训练→保存→新进程加载→反归一化→闭环执行案例已完整；不重复新建同类工程项目。",
+      "title": "训练与推理一致性",
+      "module": "execution",
+      "section_count": 8,
+      "content_changed": false,
+      "review_scope": [
+        "theory",
+        "code",
+        "exercises",
+        "reasoning questions",
+        "prerequisites"
+      ]
+    }
+  ],
+  "new_course": {
+    "id": "vla-architecture",
+    "sections": 11,
+    "coding_exercises": 2,
+    "reasoning_questions": 6,
+    "source_version": "OpenPI 215abfb217dbac7d5f1273282331b9b1866c0479"
+  },
+  "source_sha256": {
+    "content/architecture.json": "d4cc31c603bfee72254f112503781330beadcc253e6c2061203c697c55349d42",
+    "content/architecture_p0.json": "0b35c0482c64061a87d4cb6fe9bdfe222a42da466996c0ab25b846b0f287f267",
+    "content/curriculum.json": "326067d90e547d40a8db9d0f4adcedb5337b857b95731e581107ce9c9f1470bd",
+    "content/ddp-validation-note.json": "e0ec26f4544860f273d1f02a39be3baefb15bb0ef2716f0f42a660688e7c5d28",
+    "content/foundations.json": "0e66d63c1c75d19b21961709c970c4bfa8ee34d0e7fc880900a461f9ab3785b3",
+    "content/foundations_p0.json": "a04456b3b34386e4a432eab243382960dfdd77f347a693842205d70d52530e28",
+    "content/generative.json": "ef7d0068ba35c09e29840fdec3f2beb7669d88b614d7600c5d319bbd83c63c4f",
+    "content/policy-models.json": "c298f0a595ac2914e179d5e18c9665df89da239efab5c6ecd6ea616ffeab32d9",
+    "content/vla-architecture.json": "4461af2bc321d7001ec4512cd29a2dcf8bd951f511d1cd8ed8a80e62baea7a04",
+    "content/vla.json": "f273e3886f9c7d11bcddbaddaf4f86e3e76a1e228019b8d98833719ac476c973",
+    "content/vla_p0.json": "d3300f848e0a31b572978d2a468dd5d1ffb93cb67add9847af96850e4889d068",
+    "content/topics/cnn.json": "3e2e8e5466a8516b431fc5abf0f524b49ca6e648238c77a29df61f3c23a1f4b2",
+    "content/topics/flow-matching.json": "f58a0af6fea6a99af9a58be08a71a4251700b14722c0a62762e96e4d4410c0e1",
+    "content/topics/mlp.json": "328d929aadc57d185a5ad907032673a72a07e252c90bd68f3297a637c6655633",
+    "content/topics/transformer.json": "7d1965ffab11b32b77e783a9571320a075c0bc41ae8d35e6ea535d3bfb2ff34b"
+  }
+}

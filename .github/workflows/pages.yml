@@ -20,88 +20,29 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      SITE_URL: https://wxb1870.github.io/embodied-ml-lab/
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check whether site source has been imported
-        id: source
-        shell: bash
-        run: |
-          if [[ -f package.json ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Source code has not been imported. Export the full project from ChatGPT Sites/Codex first."
-          fi
-
-      - name: Set up Node.js
-        if: steps.source.outputs.present == 'true'
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Install dependencies
-        if: steps.source.outputs.present == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -f pnpm-lock.yaml ]]; then
-            corepack enable
-            pnpm install --frozen-lockfile
-          elif [[ -f yarn.lock ]]; then
-            corepack enable
-            yarn install --immutable || yarn install --frozen-lockfile
-          elif [[ -f package-lock.json ]]; then
-            npm ci
-          else
-            npm install
-          fi
-
-      - name: Build static site
-        if: steps.source.outputs.present == 'true'
-        shell: bash
-        env:
-          SITE_BASE_PATH: /embodied-ml-lab
-          GITHUB_PAGES: 'true'
-        run: |
-          set -euo pipefail
-          if [[ -f pnpm-lock.yaml ]]; then
-            pnpm run build
-          elif [[ -f yarn.lock ]]; then
-            yarn build
-          else
-            npm run build
-          fi
-
-      - name: Locate publishable files
-        id: artifact
-        if: steps.source.outputs.present == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          for dir in out dist build; do
-            if [[ -f "$dir/index.html" ]]; then
-              touch "$dir/.nojekyll"
-              echo "path=$dir" >> "$GITHUB_OUTPUT"
-              echo "Publishing static output from $dir"
-              exit 0
-            fi
-          done
-          echo "::error::No static index.html found in out/, dist/, or build/. Configure static export first; GitHub Pages cannot host a Node server."
-          exit 1
-
-      - name: Configure GitHub Pages
-        if: steps.source.outputs.present == 'true'
-        uses: actions/configure-pages@v5
-
-      - name: Upload static site
-        if: steps.source.outputs.present == 'true'
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/setup-python@v5
         with:
-          path: ${{ steps.artifact.outputs.path }}
-
+          python-version: '3.12'
+      - name: Build textbook
+        run: |
+          python scripts/assemble.py
+          node scripts/prerender.cjs
+          touch dist/.nojekyll
+      - name: Check deployment paths and pages
+        run: |
+          node scripts/validate_routes.cjs
+          python scripts/validate_site.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
       - name: Deploy
         id: deployment
-        if: steps.source.outputs.present == 'true'
         uses: actions/deploy-pages@v4

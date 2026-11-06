@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 710" width="1200" height="710" role="img" aria-labelledby="title desc">
+<title id="title">从视觉语言骨干到连续动作专家</title><desc id="desc">π₀ 风格的输入、逐层联合注意力和速度采样。固定前缀与动态后缀分别进入同一个多层结构；不是串联最终 VLM 特征的浅层头。</desc>
+<defs><marker id="arrow-line" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#698292"/></marker><marker id="arrow-blue" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#245d8a"/></marker><marker id="arrow-orange" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#a55b21"/></marker><marker id="arrow-green" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#176d69"/></marker></defs>
+<style>text{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;fill:#172b3a;font-size:18px} .small{font-size:16px;fill:#526777}.heading{font-size:26px;font-weight:650}.sub{font-size:21px;font-weight:600}.mono{font-family:ui-monospace,"DejaVu Sans Mono",monospace;font-size:16px}</style>
+<rect width="1200" height="710" rx="14" fill="#ffffff"/>
+<text x="38" y="44" class="heading" text-anchor="start"><tspan x="38" dy="0">VLA 的系统边界：固定观测与动态动作在每层相遇</tspan></text>
+<text x="38" y="73" class="small" text-anchor="start"><tspan x="38" dy="0">π₀ 风格 · 时间约定采用 OpenPI：t=1 为噪声，t=0 为动作</tspan></text>
+<rect x="35" y="105" width="470" height="215" rx="12" fill="#eef5fb" stroke="#245d8a" stroke-width="1.4"/>
+<text x="55" y="137" class="sub" text-anchor="start"><tspan x="55" dy="0">固定观测前缀 P</tspan></text>
+<rect x="55" y="158" width="200" height="58" rx="8" fill="#ffffff" stroke="#245d8a" stroke-width="1.4"/>
+<text x="155" y="193" class="" text-anchor="middle"><tspan x="155" dy="0">多视角图像</tspan></text>
+<rect x="280" y="158" width="205" height="58" rx="8" fill="#ffffff" stroke="#245d8a" stroke-width="1.4"/>
+<text x="382" y="193" class="" text-anchor="middle"><tspan x="382" dy="0">语言指令</tspan></text>
+<path d="M155 216 V248" fill="none" stroke="#245d8a" stroke-width="2.1" marker-end="url(#arrow-blue)"/>
+<path d="M382 216 V248" fill="none" stroke="#245d8a" stroke-width="2.1" marker-end="url(#arrow-blue)"/>
+<rect x="55" y="250" width="430" height="50" rx="8" fill="#ffffff" stroke="#245d8a" stroke-width="1.4"/>
+<text x="270" y="281" class="" text-anchor="middle"><tspan x="270" dy="0">视觉编码 / 词嵌入 → 前缀 token</tspan></text>
+<rect x="35" y="365" width="470" height="210" rx="12" fill="#fff5e9" stroke="#a55b21" stroke-width="1.4"/>
+<text x="55" y="397" class="sub" text-anchor="start"><tspan x="55" dy="0">动作专家后缀 S</tspan></text>
+<rect x="55" y="417" width="165" height="56" rx="8" fill="#ffffff" stroke="#a55b21" stroke-width="1.4"/>
+<text x="137" y="452" class="" text-anchor="middle"><tspan x="137" dy="0">当前状态 s</tspan></text>
+<rect x="245" y="417" width="240" height="56" rx="8" fill="#ffffff" stroke="#a55b21" stroke-width="1.4"/>
+<text x="365" y="452" class="" text-anchor="middle"><tspan x="365" dy="0">噪声动作 Xₜ + 时间 t</tspan></text>
+<path d="M137 473 V508" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<path d="M365 473 V508" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<text x="137" y="538" class="" text-anchor="middle"><tspan x="137" dy="0">线性映射</tspan></text>
+<text x="365" y="538" class="" text-anchor="middle"><tspan x="365" dy="0">投影 + 时间 MLP</tspan></text>
+<rect x="585" y="155" width="275" height="365" rx="12" fill="#fafcfd" stroke="#698292" stroke-width="1.4"/>
+<text x="722" y="190" class="sub" text-anchor="middle"><tspan x="722" dy="0">逐层联合计算</tspan></text>
+<text x="650" y="235" class="" text-anchor="middle"><tspan x="650" dy="0">VLM</tspan><tspan x="650" dy="25">参数流</tspan></text>
+<text x="797" y="235" class="" text-anchor="middle"><tspan x="797" dy="0">Action expert</tspan><tspan x="797" dy="25">参数流</tspan></text>
+<rect x="605" y="289" width="235" height="64" rx="8" fill="#ebf7f4" stroke="#176d69" stroke-width="1.4"/>
+<text x="722" y="316" class="" text-anchor="middle"><tspan x="722" dy="0">兼容 Q/K/V 空间</tspan><tspan x="722" dy="24">同一 attention + 块 Mask</tspan></text>
+<path d="M650 263 V286" fill="none" stroke="#245d8a" stroke-width="2.1" marker-end="url(#arrow-blue)"/>
+<path d="M797 263 V286" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<path d="M650 353 V390" fill="none" stroke="#245d8a" stroke-width="2.1" marker-end="url(#arrow-blue)"/>
+<path d="M797 353 V390" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<text x="650" y="418" class="small" text-anchor="middle"><tspan x="650" dy="0">独立输出投影</tspan><tspan x="650" dy="24">残差 / FFN</tspan></text>
+<text x="797" y="418" class="small" text-anchor="middle"><tspan x="797" dy="0">独立输出投影</tspan><tspan x="797" dy="24">残差 / FFN</tspan></text>
+<text x="722" y="492" class="sub" text-anchor="middle"><tspan x="722" dy="0">重复 L 层</tspan></text>
+<path d="M505 275 H548 V235 H582" fill="none" stroke="#245d8a" stroke-width="2.1" marker-end="url(#arrow-blue)"/>
+<path d="M505 493 H548 V395 H582" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<rect x="920" y="235" width="245" height="88" rx="8" fill="#fff5e9" stroke="#a55b21" stroke-width="1.4"/>
+<text x="1042" y="270" class="" text-anchor="middle"><tspan x="1042" dy="0">仅动作 token → 速度头</tspan><tspan x="1042" dy="28">vθ(Xₜ,t,c) : [B,H,Dₐ]</tspan></text>
+<path d="M860 395 H895 V279 H917" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<rect x="920" y="375" width="245" height="85" rx="8" fill="#ffffff" stroke="#a55b21" stroke-width="1.4"/>
+<text x="1042" y="408" class="" text-anchor="middle"><tspan x="1042" dy="0">ODE：X ← X + Δt · vθ</tspan><tspan x="1042" dy="27">Δt &lt; 0，t 从 1 到 0</tspan></text>
+<path d="M1042 323 V372" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<rect x="920" y="520" width="245" height="80" rx="8" fill="#ebf7f4" stroke="#176d69" stroke-width="1.4"/>
+<text x="1042" y="552" class="" text-anchor="middle"><tspan x="1042" dy="0">反归一化 / 动作解码</tspan><tspan x="1042" dy="26">执行前 K 步 → 新观测</tspan></text>
+<path d="M1042 460 V517" fill="none" stroke="#176d69" stroke-width="2.1" marker-end="url(#arrow-green)"/>
+<path d="M920 420 H890 V625 H365 V576" fill="none" stroke="#a55b21" stroke-width="2.1" marker-end="url(#arrow-orange)"/>
+<text x="600" y="649" class="small" text-anchor="middle"><tspan x="600" dy="0">同一次观测内重算 Xₜ、t；新观测到达后重新编码前缀</tspan></text>
+<text x="38" y="688" class="small" text-anchor="start"><tspan x="38" dy="0">模型读入整块噪声动作，不读取推理时未知的干净动作。π₀.₅ 默认状态路径见下一图。</tspan></text>
+</svg>

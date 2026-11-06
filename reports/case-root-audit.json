@@ -1,0 +1,220 @@
+{
+  "baseline": "0035390787417ffcd51de4ec0ec5636579853082",
+  "scope": "15 canonical courses; core Flow Matching source included rather than counting its proxy twice",
+  "courses": [
+    {
+      "id": "contrastive-pretraining",
+      "title": "图文对比学习",
+      "classification": "A",
+      "decision": "保留",
+      "reason": "图文双向归一化、温度、重复正例与梯度解释已经形成闭环；本轮不增加另一套表征项目。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "tokenizer-autoregressive",
+      "title": "分词、自回归与标签对齐",
+      "classification": "A",
+      "decision": "保留",
+      "reason": "保留分词、一次标签移位、因果与监督 Mask 的区分，以及含 Padding 的训练验证。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "kv-cache-inference",
+      "title": "KV Cache 与增量计算",
+      "classification": "D",
+      "decision": "连接已有完整模型",
+      "reason": "专章继续负责缓存不变性、偏移和代价；正文链接同一 TinyLM 与新 VLA，避免第三套独立 Transformer。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "vision-preprocessing",
+      "title": "视觉预处理与坐标变换",
+      "classification": "E",
+      "decision": "调整前置依赖与顺序",
+      "reason": "现有像素范围、布局、Patch 与几何解释保留；将先修改为 Tensor 与 CNN，并放在多模态融合之前。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "conditioning-fusion",
+      "title": "条件注入：拼接、FiLM 与 AdaLN",
+      "classification": "D",
+      "decision": "补充架构衔接",
+      "reason": "保留 Cross-Attention、FiLM 与 AdaLN 的局部机制；将完整多层双流交互交给新 VLA 架构课。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "latent-variable-models",
+      "title": "生成建模、潜变量与 VAE",
+      "classification": "A",
+      "decision": "保留",
+      "reason": "ELBO 恒等式、后验近似差、重参数化与可解析 Gaussian 后验已有有效推导/数值验证；只修正文内函数名格式。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "diffusion",
+      "title": "Diffusion：DDPM、目标参数化与 DDIM",
+      "classification": "D",
+      "decision": "统一二维数据案例",
+      "reason": "保留后验、ELBO 权重、DDIM 与参数化推导；替换原一维示例为与 FM 共用条件混合分布的完整 DDPM，加入解析噪声 Oracle。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "score-sde",
+      "title": "Score、SDE 与概率流 ODE",
+      "classification": "B",
+      "decision": "增加解析双路径案例",
+      "reason": "原 SDE/概率流推导保留；以同一二维混合分布计算两条路径的密度、责任、条件均值、Score 与速度，并验证连续性与 Fokker–Planck 方程。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "flow-matching",
+      "title": "Flow Matching",
+      "classification": "A",
+      "decision": "复用成熟实验并交叉连接",
+      "reason": "保留概率路径→条件回归→边缘速度→ODE 的数学链和三份完整实现、四个手写题；沿用已有双峰实验，只补跨章对照和局部片段依赖标识。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "partial-observability",
+      "title": "部分观测与记忆",
+      "classification": "A",
+      "decision": "保留",
+      "reason": "Bayes belief 更新、观测不可辨识、历史表示与有限记忆边界已建立；不为统一案例重写 HMM 数值例。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "distribution-shift",
+      "title": "分布偏移与 DAgger",
+      "classification": "A",
+      "decision": "修正局部算例对齐",
+      "reason": "DAgger、状态分布与误差积累分析保留；澄清解析专家 −s 与代码专家 −0.5s 的不同设定，补明后者平衡点为 2δ。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "returns-bellman",
+      "title": "回报与 Bellman 方程",
+      "classification": "C",
+      "decision": "修正参考答案",
+      "reason": "理论已讲清终止与截断、GAE 双 Mask；TD 代码仍以乘零处理无效尾值。改为先选择有效 bootstrap，新增终态 NaN 隔离和非终态 NaN 拒绝测试。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "policy-gradient",
+      "title": "策略梯度",
+      "classification": "A",
+      "decision": "保留",
+      "reason": "保留两步轨迹的精确枚举、Score-function 推导、baseline 条件与同批均值偏差、PPO 动作比率的适用范围。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "execution-latency",
+      "title": "动作执行与延迟",
+      "classification": "A",
+      "decision": "保留",
+      "reason": "时间戳、可执行区间、重规划和过期动作协议已有连续时序算例；没有扩展无关控制理论。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    },
+    {
+      "id": "train-infer-contract",
+      "title": "训练与推理一致性",
+      "classification": "A",
+      "decision": "保留完整闭环案例",
+      "reason": "现有训练→保存→新进程加载→反归一化→闭环执行案例已完整；不重复新建同类工程项目。",
+      "reviewed": [
+        "theory",
+        "code",
+        "exercise",
+        "pytorchTask",
+        "knowledgeChecks"
+      ]
+    }
+  ],
+  "limits": [
+    "DDPM and VLA results concern fixed synthetic examples, not robot performance.",
+    "New root code execution evidence is in validation.json; independent analytic checks are in case-transformer-independent-generative-review.json."
+  ]
+}
