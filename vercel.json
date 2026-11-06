@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "",
+  "installCommand": "",
+  "outputDirectory": "docs",
+  "trailingSlash": true,
+  "rewrites": [
+    { "source": "/embodied-ml-lab/:path*", "destination": "/:path*" }
+  ]
+}
