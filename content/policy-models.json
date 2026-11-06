@@ -81,7 +81,7 @@
           ]
         },
         "takeaway": "先回答生成什么随机变量、给定哪些条件，再选择网络与执行接口。",
-        "lead": "比较动作生成方法之前，必须让它们描述同一个随机变量，并拥有可比的观测信息。动作块、历史窗口和生成迭代各有独立的时间含义。统一这些记号后，才能分清网络骨干、概率模型与执行接口的选择。"
+        "lead": "条件动作分布描述给定当前可用观测与指令后，一段未来命令可能怎样变化。动作块是这份分布的一个联合样本，策略条件则在本次生成开始前已经可获得。先定义这两个对象，再比较模型如何表示分布。"
       },
       {
         "id": "act-conditional-latent-model",
@@ -98,7 +98,7 @@
         ],
         "formula": "\\begin{aligned}\\mathcal L_{\\rm ACT}&=\\mathbb E_{z\\sim q_\\phi}\\left[\\mathcal L_{\\rm rec}(A,f_\\theta(c,z))\\right]+\\beta D_{\\rm KL}\\left(q_\\phi\\|\\mathcal N(0,I)\\right)\\\\ z&=\\mu+\\exp(\\ell/2)\\odot\\epsilon,\\quad\\epsilon\\sim\\mathcal N(0,I)\\\\ D_{\\rm KL}&=\\frac12\\sum_{j=1}^{r}\\left(\\mu_j^2+e^{\\ell_j}-1-\\ell_j\\right)\\end{aligned}",
         "takeaway": "ACT 的潜变量训练、并行动作查询和测试时 \\(z=0\\) 是具体设计；不能用“输出一个动作块”概括其全部机制。",
-        "lead": "联合预测一段动作，并没有指定如何表达示范中的多样性。ACT 将动作块放入条件潜变量模型，使训练时的动作信息能够指导潜在表示。沿 VAE 的后验、先验和解码器分工，可以解释它的训练目标与部署时的特定选择。"
+        "lead": "ACT（Action Chunking with Transformers）是以动作块为输出、训练时用条件潜变量建模示范变化的模仿学习方法。动作分块规定输出时域，潜变量模型规定变化怎样表达，Transformer 负责具体计算。下面分别认识这三个层次。"
       },
       {
         "id": "diffusion-policy-objective",
@@ -114,7 +114,7 @@
         ],
         "formula": "\\begin{aligned}X_\\tau&=\\alpha_\\tau A+\\sigma_\\tau\\epsilon,\\quad\\epsilon\\sim\\mathcal N(0,I)\\\\ \\mathcal L_{\\epsilon}&=\\mathbb E\\left[\\frac{1}{M}\\sum_{(b,h,i):m_{bhi}=1}\\left(\\epsilon_\\theta(X_\\tau,\\tau,c)_{bhi}-\\epsilon_{bhi}\\right)^2\\right]\\\\ M&=\\sum_{b,h,i}m_{bhi}>0\\end{aligned}",
         "takeaway": "动作块、条件编码、预测目标和调度器需要共同定义，只有输出形状一致远远不够。",
-        "lead": "动作块也可以作为扩散模型的整体生成变量，由条件去噪逐渐恢复其中的结构。噪声坐标彼此独立，并不要求最终动作独立，关系由联合去噪网络学习。将前面扩散推导中的变量对应到动作张量后，训练目标、条件输入和采样器才能一一对齐。",
+        "lead": "Diffusion Policy 将动作块作为条件扩散的生成变量，通过学习噪声预测或相应参数来逐步生成动作。观测提供条件，生成时间表示噪声阶段。先看加噪监督与采样怎样组成策略，再对照动作接口。",
         "code": "import torch\n\ntorch.set_default_dtype(torch.float64)\ncovariance = torch.tensor([[1., 0.8], [0.8, 1.]])\nalpha, sigma = 0.8, 0.6\nQ = alpha**2*covariance + sigma**2*torch.eye(2)\n\ndef mean_noise(x):\n    return sigma*torch.linalg.solve(Q, x)\n\nx = torch.tensor([0.4, -0.2], requires_grad=True)\njacobian = torch.autograd.functional.jacobian(mean_noise, x)\nexpected = sigma*torch.linalg.solve(Q, torch.eye(2))\ntorch.testing.assert_close(jacobian, expected)\nassert abs(jacobian[0, 1].item()) > 0.1\nx_changed = x.detach() + torch.tensor([0., 1.])\nchange = mean_noise(x_changed) - mean_noise(x.detach())\ntorch.testing.assert_close(change, expected[:, 1])\nclean_mean = alpha*covariance @ torch.linalg.solve(Q, x)\ntorch.testing.assert_close(alpha*clean_mean + sigma*mean_noise(x), x)\nprint(\"noise-prediction Jacobian:\", jacobian.tolist())\nprint(\"coordinate 1 changes when only coordinate 2 changes:\", change[0].item())\n",
         "codeExplanation": "动作向量只有两个坐标，因此联合 Gaussian 的条件均值可直接用线性求解得到。Autograd 检查非对角 Jacobian，最后验证条件期望仍满足加噪等式 \\(\\alpha\\mathbb E[A\\mid X]+\\sigma\\mathbb E[\\epsilon\\mid X]=X\\)。实际序列可把 \\(H\\times D\\) 坐标展平理解，网络则用时序结构近似更复杂的非线性条件均值。"
       },
@@ -130,7 +130,7 @@
         ],
         "formula": "\\begin{aligned}X_\\tau&=(1-\\tau)Z+\\tau A,\\qquad U=A-Z\\\\ \\mathcal L_{\\rm FM}&=\\mathbb E\\left[\\frac1M\\sum_{m_{bhi}=1}\\left(v_\\theta(X_\\tau,\\tau,c)_{bhi}-U_{bhi}\\right)^2\\right]\\\\ t&=1-\\tau,\\quad \\frac{dX}{dt}=Z-A,\\quad \\frac{dX}{d\\tau}=A-Z\\end{aligned}",
         "takeaway": "阅读代码时同时核对路径端点、训练 target 和采样方向，不能仅根据变量名 \\(t\\) 推断约定。",
-        "lead": "保持相同条件与动作块接口，还可以改用速度回归建立生成过程。Flow Policy 的训练目标来自所选路径的时间导数，不能从输出形状或变量名称判断。把端点、速度和积分方向放在一起检查，能够识别不同仓库之间表面相似的时间约定。"
+        "lead": "Flow 动作策略用条件速度场连续变换一整块噪声，积分终点成为生成动作。Flow Matching 提供速度训练目标，动作块与执行协议则另外定义。下面固定本节的时间方向，说明与去噪策略的不同。"
       },
       {
         "id": "receding-horizon-protocol",
@@ -144,7 +144,7 @@
         ],
         "formula": "A_k=G_\\theta(Z,c_k),\\qquad (a_k,\\ldots,a_{k+K-1})=A_k[0:K],\\qquad c_{k+K}=E(o_{\\leq k+K},l)",
         "takeaway": "闭环的关键是用新观测重新条件化；正确采样之后还必须正确解释时间和动作语义。",
-        "lead": "一个动作分布只有经过观测、生成、解码和消费，才成为与环境交互的策略。执行前几步后重新预测，使模型能够使用动作已经造成的新状态。这里先建立同步协议，再讨论窗口起点和延迟怎样改变实际执行含义。"
+        "lead": "滚动时域执行是每次预测较长动作段，只执行其中一部分，然后用新观测重新预测的方法。它把联合生成与环境反馈连接起来。预测 H 步和执行 K 步承担不同职责，不能用一个“步数”代替。"
       },
       {
         "id": "oracle-experiment-derivation",
@@ -162,7 +162,7 @@
         ],
         "formula": "\\begin{aligned}q_\\tau&=(1-\\tau)^2+\\tau^2s^2\\\\ v^*(x,\\tau,c)&=\\mu+\\frac{\\tau s^2-(1-\\tau)}{q_\\tau}(x-\\tau\\mu)\\\\ X_\\tau&=\\tau\\mu+\\sqrt{q_\\tau}\\,Z,\\quad X_1=\\mu+sZ\\\\ r_\\tau&=\\alpha_\\tau^2s^2+\\sigma_\\tau^2\\\\ \\widehat\\epsilon&=\\frac{\\sigma_\\tau}{r_\\tau}(X_\\tau-\\alpha_\\tau\\mu),\\quad\\widehat A=\\mu+\\frac{\\alpha_\\tau s^2}{r_\\tau}(X_\\tau-\\alpha_\\tau\\mu)\\end{aligned}",
         "takeaway": "解析对照让每项误差有独立参照：先验证监督接口，再验证数值路径，最后验证闭环反馈。",
-        "lead": "完整策略失败时，学习误差与执行错误往往同时出现。用一个已知解析分布替换学习模型，可以保留采样和闭环接口，同时获得独立参照。这个实验先检查生成器是否按定义运输分布，再检查重规划是否利用新观测。"
+        "lead": "解析参考场是由已知分布直接得到的生成函数，用来暂时替代不完美的学习模型。这样能先单独检验采样和执行协议。下面再把模型误差、数值误差与反馈过程逐层加回来。"
       },
       {
         "id": "training-and-diagnostic-links",
@@ -170,7 +170,8 @@
         "body": [
           "若换成解析场仍无法在无扰动条件下执行预定轨迹，优先检查切片起点、动作单位、参考系、反归一化与执行时序；增加模型容量不解决这些协议错误。若解析场正确、学习场错误，再检查小数据过拟合、条件是否被模型使用、噪声目标及数值范围。如果离线预测正常但受扰动闭环失效，则需分析状态分布偏移、观测年龄和反馈周期。每一步替换都在排除一组具体假设。",
           "SFT 或行为克隆说明数据和监督问题，LoRA、部分解冻与全量微调说明参数更新范围。无论选择哪种更新方式，都必须保留原动作生成器的输入、目标与采样语义；详见 [微调与 PEFT](#/learn/finetuning)。改模型时应分别验证条件梯度、有效输出梯度、一次实际参数变化和保存恢复，不以 `requires_grad=True` 代替更新证据。",
-          "本课的统一接口不要求不同策略使用完全相同的超参数。公平比较应固定数据划分、动作语义、可用观测和任务评价协议，并分别记录训练预算、采样 NFE、延迟与执行 \\(K\\)。ACT、Diffusion 和 Flow 在此提供不同建模选择，不能由一个二维高斯数值实验排名。更复杂的策略优化也必须先说明奖励、访问的数据分布和是否具有所需策略密度。"
+          "本课的统一接口不要求不同策略使用完全相同的超参数。公平比较应固定数据划分、动作语义、可用观测和任务评价协议，并分别记录训练预算、采样 NFE、延迟与执行 \\(K\\)。ACT、Diffusion 和 Flow 在此提供不同建模选择，不能由一个二维高斯数值实验排名。更复杂的策略优化也必须先说明奖励、访问的数据分布和是否具有所需策略密度。",
+          "生成式策略由三部分共同组成：条件动作分布、从分布得到样本的方法，以及把样本放回反馈系统的协议。比较 ACT、Diffusion 与 Flow 时，应分别说明这三部分的设计，并固定所需观测、动作语义与评价条件。"
         ],
         "takeaway": "用可解释的替换实验逐项定位误差，才能把模型训练和真实闭环表现联系起来。",
         "lead": "不同策略共享部分工程接口，也保留各自的概率目标与采样假设。诊断时应逐层替换条件编码、生成场和执行协议，观察哪个替换消除了错误。这样才能把后训练范围、损失设计和闭环失败联系到明确的原因。"
@@ -354,6 +355,6 @@
         ]
       }
     ],
-    "lead": "生成模型能够表示多种可能的动作，但一个可执行策略还必须说明条件来自何时、输出包含哪些命令，以及何时重新观察环境。ACT、Diffusion 与 Flow 采用不同的分布表示和训练目标，却都要回答这些接口问题。本章承接动作表示、时间对齐和生成建模，在统一的动作块记号下分析各类策略，再通过解析采样与闭环对照区分模型、求解器和执行协议的影响。"
+    "lead": "生成式动作策略学习的是给定观测条件下整段动作的分布，而不只输出一个确定动作均值。动作块定义预测对象，ACT 的条件潜变量、Diffusion 的去噪过程和 Flow 的速度场则以不同方式表达和采样这个分布。本章先认识共同的条件与动作接口，再分别解释三类方法，最后将采样结果接到重新观察、重新规划的执行过程。"
   }
 ]

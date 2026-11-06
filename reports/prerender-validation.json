@@ -10,7 +10,7 @@
     {
       "path": "/learn/tensor/",
       "title": "张量与广播",
-      "bytes": 40948
+      "bytes": 41195
     },
     {
       "path": "/learn/tensor/code/",
@@ -25,7 +25,7 @@
     {
       "path": "/learn/matrix-grad/",
       "title": "线性代数与矩阵求导",
-      "bytes": 268257
+      "bytes": 268572
     },
     {
       "path": "/learn/matrix-grad/code/",
@@ -40,7 +40,7 @@
     {
       "path": "/learn/probability/",
       "title": "概率、统计与训练目标",
-      "bytes": 332997
+      "bytes": 333406
     },
     {
       "path": "/learn/probability/code/",
@@ -55,7 +55,7 @@
     {
       "path": "/learn/losses/",
       "title": "损失、掩码与归约",
-      "bytes": 132703
+      "bytes": 133012
     },
     {
       "path": "/learn/losses/code/",
@@ -70,7 +70,7 @@
     {
       "path": "/learn/autograd/",
       "title": "PyTorch 自动微分与计算图",
-      "bytes": 45956
+      "bytes": 46294
     },
     {
       "path": "/learn/autograd/code/",
@@ -85,7 +85,7 @@
     {
       "path": "/learn/optimization/",
       "title": "梯度下降、动量与 AdamW",
-      "bytes": 220911
+      "bytes": 221154
     },
     {
       "path": "/learn/optimization/code/",
@@ -100,7 +100,7 @@
     {
       "path": "/learn/numerical/",
       "title": "数值精度与标准化",
-      "bytes": 84057
+      "bytes": 84370
     },
     {
       "path": "/learn/numerical/code/",
@@ -115,7 +115,7 @@
     {
       "path": "/learn/generalization/",
       "title": "泛化与验证",
-      "bytes": 44287
+      "bytes": 44489
     },
     {
       "path": "/learn/generalization/code/",
@@ -130,7 +130,7 @@
     {
       "path": "/learn/mlp/",
       "title": "MLP：表达、梯度与优化",
-      "bytes": 433984
+      "bytes": 433775
     },
     {
       "path": "/learn/mlp/code/",
@@ -145,7 +145,7 @@
     {
       "path": "/learn/activation-init/",
       "title": "激活与初始化",
-      "bytes": 174046
+      "bytes": 174485
     },
     {
       "path": "/learn/activation-init/code/",
@@ -160,7 +160,7 @@
     {
       "path": "/learn/normalization/",
       "title": "归一化：统计轴、梯度与不变性",
-      "bytes": 246172
+      "bytes": 246055
     },
     {
       "path": "/learn/normalization/code/",
@@ -175,7 +175,7 @@
     {
       "path": "/learn/residual/",
       "title": "残差连接与深层优化",
-      "bytes": 253320
+      "bytes": 254338
     },
     {
       "path": "/learn/residual/code/",
@@ -190,7 +190,7 @@
     {
       "path": "/learn/cnn-receptive-field/",
       "title": "CNN：卷积、采样与空间表示",
-      "bytes": 487927
+      "bytes": 487647
     },
     {
       "path": "/learn/cnn-receptive-field/code/",
@@ -205,7 +205,7 @@
     {
       "path": "/learn/attention/",
       "title": "注意力：匹配、聚合与梯度",
-      "bytes": 182591
+      "bytes": 182585
     },
     {
       "path": "/learn/attention/code/",
@@ -220,7 +220,7 @@
     {
       "path": "/learn/embeddings/",
       "title": "Embedding 与位置编码",
-      "bytes": 79793
+      "bytes": 79661
     },
     {
       "path": "/learn/embeddings/code/",
@@ -235,7 +235,7 @@
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 629389
+      "bytes": 629986
     },
     {
       "path": "/learn/transformer/code/",
@@ -250,7 +250,7 @@
     {
       "path": "/learn/vision-preprocessing/",
       "title": "视觉预处理与坐标变换",
-      "bytes": 68044
+      "bytes": 68480
     },
     {
       "path": "/learn/vision-preprocessing/code/",
@@ -265,7 +265,7 @@
     {
       "path": "/learn/multimodal/",
       "title": "视觉编码器与多模态融合",
-      "bytes": 88264
+      "bytes": 88142
     },
     {
       "path": "/learn/multimodal/code/",
@@ -280,7 +280,7 @@
     {
       "path": "/learn/contrastive-pretraining/",
       "title": "图文预训练：CLIP 与 SigLIP",
-      "bytes": 120687
+      "bytes": 120944
     },
     {
       "path": "/learn/contrastive-pretraining/code/",
@@ -295,7 +295,7 @@
     {
       "path": "/learn/tokenizer-autoregressive/",
       "title": "分词、自回归与标签对齐",
-      "bytes": 37436
+      "bytes": 37669
     },
     {
       "path": "/learn/tokenizer-autoregressive/code/",
@@ -310,7 +310,7 @@
     {
       "path": "/learn/conditioning-fusion/",
       "title": "条件注入：拼接、FiLM 与 AdaLN",
-      "bytes": 95889
+      "bytes": 96216
     },
     {
       "path": "/learn/conditioning-fusion/code/",
@@ -325,7 +325,7 @@
     {
       "path": "/learn/kv-cache-inference/",
       "title": "KV Cache 与增量计算",
-      "bytes": 53289
+      "bytes": 53549
     },
     {
       "path": "/learn/kv-cache-inference/code/",
@@ -340,7 +340,7 @@
     {
       "path": "/learn/latent-variable-models/",
       "title": "生成建模、潜变量与 VAE",
-      "bytes": 335240
+      "bytes": 335190
     },
     {
       "path": "/learn/latent-variable-models/code/",
@@ -355,7 +355,7 @@
     {
       "path": "/learn/diffusion/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM",
-      "bytes": 600042
+      "bytes": 599777
     },
     {
       "path": "/learn/diffusion/code/",
@@ -370,7 +370,7 @@
     {
       "path": "/learn/score-sde/",
       "title": "Score、SDE 与概率流 ODE",
-      "bytes": 510981
+      "bytes": 510623
     },
     {
       "path": "/learn/score-sde/code/",
@@ -385,7 +385,7 @@
     {
       "path": "/learn/flow-matching/",
       "title": "Flow Matching",
-      "bytes": 679984
+      "bytes": 679682
     },
     {
       "path": "/learn/flow-matching/code/",
@@ -400,7 +400,7 @@
     {
       "path": "/learn/behavior-cloning/",
       "title": "行为克隆",
-      "bytes": 126487
+      "bytes": 126052
     },
     {
       "path": "/learn/behavior-cloning/code/",
@@ -415,7 +415,7 @@
     {
       "path": "/learn/action-representation/",
       "title": "状态与动作表示",
-      "bytes": 167461
+      "bytes": 167267
     },
     {
       "path": "/learn/action-representation/code/",
@@ -430,7 +430,7 @@
     {
       "path": "/learn/action-chunk/",
       "title": "时间对齐与动作块",
-      "bytes": 46528
+      "bytes": 46385
     },
     {
       "path": "/learn/action-chunk/code/",
@@ -445,7 +445,7 @@
     {
       "path": "/learn/partial-observability/",
       "title": "部分观测与记忆",
-      "bytes": 97562
+      "bytes": 97982
     },
     {
       "path": "/learn/partial-observability/code/",
@@ -460,7 +460,7 @@
     {
       "path": "/learn/generative-policy/",
       "title": "生成式动作策略：ACT、Diffusion 与 Flow",
-      "bytes": 332525
+      "bytes": 332538
     },
     {
       "path": "/learn/generative-policy/code/",
@@ -475,7 +475,7 @@
     {
       "path": "/learn/vla-architecture/",
       "title": "VLA：从视觉语言骨干到动作专家",
-      "bytes": 378980
+      "bytes": 378649
     },
     {
       "path": "/learn/vla-architecture/code/",
@@ -490,7 +490,7 @@
     {
       "path": "/learn/finetuning/",
       "title": "微调与 LoRA",
-      "bytes": 300087
+      "bytes": 299848
     },
     {
       "path": "/learn/finetuning/code/",
@@ -505,7 +505,7 @@
     {
       "path": "/learn/returns-bellman/",
       "title": "回报与 Bellman 方程",
-      "bytes": 195408
+      "bytes": 195722
     },
     {
       "path": "/learn/returns-bellman/code/",
@@ -520,7 +520,7 @@
     {
       "path": "/learn/policy-gradient/",
       "title": "策略梯度",
-      "bytes": 222223
+      "bytes": 222520
     },
     {
       "path": "/learn/policy-gradient/code/",
@@ -535,7 +535,7 @@
     {
       "path": "/learn/modules/",
       "title": "PyTorch 模块、参数与状态",
-      "bytes": 22828
+      "bytes": 22660
     },
     {
       "path": "/learn/modules/code/",
@@ -550,7 +550,7 @@
     {
       "path": "/learn/dataloader/",
       "title": "数据采样与批处理",
-      "bytes": 61526
+      "bytes": 61199
     },
     {
       "path": "/learn/dataloader/code/",
@@ -565,7 +565,7 @@
     {
       "path": "/learn/training-loop/",
       "title": "训练循环与指标归约",
-      "bytes": 57785
+      "bytes": 57424
     },
     {
       "path": "/learn/training-loop/code/",
@@ -580,7 +580,7 @@
     {
       "path": "/learn/checkpoint/",
       "title": "保存与恢复训练状态",
-      "bytes": 63950
+      "bytes": 63530
     },
     {
       "path": "/learn/checkpoint/code/",
@@ -595,7 +595,7 @@
     {
       "path": "/learn/data-quality/",
       "title": "示教数据与采样",
-      "bytes": 94288
+      "bytes": 94036
     },
     {
       "path": "/learn/data-quality/code/",
@@ -610,7 +610,7 @@
     {
       "path": "/learn/gradient-accumulation/",
       "title": "梯度累积",
-      "bytes": 68423
+      "bytes": 68651
     },
     {
       "path": "/learn/gradient-accumulation/code/",
@@ -625,7 +625,7 @@
     {
       "path": "/learn/mixed-precision/",
       "title": "混合精度训练",
-      "bytes": 38436
+      "bytes": 38579
     },
     {
       "path": "/learn/mixed-precision/code/",
@@ -640,7 +640,7 @@
     {
       "path": "/learn/memory-checkpointing/",
       "title": "训练显存与重计算",
-      "bytes": 29028
+      "bytes": 29195
     },
     {
       "path": "/learn/memory-checkpointing/code/",
@@ -655,7 +655,7 @@
     {
       "path": "/learn/distributed-training/",
       "title": "DDP 与全局统计",
-      "bytes": 56612
+      "bytes": 56760
     },
     {
       "path": "/learn/distributed-training/code/",
@@ -670,7 +670,7 @@
     {
       "path": "/learn/training-diagnostics/",
       "title": "训练诊断",
-      "bytes": 44647
+      "bytes": 44726
     },
     {
       "path": "/learn/training-diagnostics/code/",
@@ -685,7 +685,7 @@
     {
       "path": "/learn/multitask-gradients/",
       "title": "多任务梯度",
-      "bytes": 70066
+      "bytes": 70247
     },
     {
       "path": "/learn/multitask-gradients/code/",
@@ -700,7 +700,7 @@
     {
       "path": "/learn/distribution-shift/",
       "title": "分布偏移与 DAgger",
-      "bytes": 85209
+      "bytes": 85579
     },
     {
       "path": "/learn/distribution-shift/code/",
@@ -715,7 +715,7 @@
     {
       "path": "/learn/execution-latency/",
       "title": "动作执行与延迟",
-      "bytes": 68126
+      "bytes": 68532
     },
     {
       "path": "/learn/execution-latency/code/",
@@ -730,7 +730,7 @@
     {
       "path": "/learn/evaluation/",
       "title": "闭环评估与统计",
-      "bytes": 76874
+      "bytes": 76719
     },
     {
       "path": "/learn/evaluation/code/",
@@ -745,7 +745,7 @@
     {
       "path": "/learn/train-infer-contract/",
       "title": "训练与推理一致性",
-      "bytes": 68504
+      "bytes": 68690
     },
     {
       "path": "/learn/train-infer-contract/code/",

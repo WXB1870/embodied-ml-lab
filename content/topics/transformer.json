@@ -2,7 +2,7 @@
   "id": "transformer",
   "title": "Transformer：注意力、残差与序列建模",
   "subtitle": "从注意力梯度与信息路径，理解表示变换、因果训练和缓存。",
-  "lead": "如何让四个输入位置交换信息，并各自预测下一个符号？本章用同一个两层因果 Transformer 回答这个问题：先看输入、输出与完整网络，再拆开内容读取和逐位置变换，最后把多层表示接到损失与增量生成。Attention 是其中负责信息交换的算子，Transformer 则是将它与 FFN、残差和归一化组合起来的网络架构。QKV 梯度、SwiGLU Jacobian、RoPE 和多层可达性的推导，都用于解释这条具体计算链。",
+  "lead": "Transformer 是一种以注意力进行位置间信息交换、以逐位置前馈网络处理特征，并用残差和归一化组合多层计算的神经网络架构。Attention 是其中的读取机制，不等于整个 Transformer；自回归也只是其中一种任务组织方式。本章用两层因果小模型，将四个输入位置映射为下一符号预测，先认识整网与各模块，再追踪前向、损失、梯度和缓存。",
   "minutes": 240,
   "prerequisites": [
     "attention",
@@ -117,7 +117,7 @@
       "code": "import torch\n\ntorch.manual_seed(19)\nx = torch.randn(2, 4, 8)\nprojection = torch.nn.Linear(8, 24)\ny = projection(x)\nassert y.shape == (2, 4, 24)\n",
       "codeExplanation": "这里使用 PyTorch 的权重存储约定 `W:[out_features,in_features]`，所以前向写成 \\(XW^\\top\\)。",
       "takeaway": "先确定每个轴表示什么，再判断 reshape、transpose 和 matmul 是否合理。",
-      "lead": "先确定模型要完成什么，再追踪每一步计算。我们让两条短序列各自预测下一个符号；输入位置之间需要交流，但某个预测不能提前读取自己的答案。下图先给出整网，后面的各节再拆开其中的计算。",
+      "lead": "Token 是序列中携带特征的一个位置，Batch 区分彼此独立的样本，Channel 是一个位置内部的特征坐标。主案例先把离散符号映射为这些向量，再经两层网络预测下一符号。下图给出整网，后续小节拆开其中的模块。",
       "codeKind": "runnable",
       "figures": [
         {
@@ -143,7 +143,7 @@
       "formula": "Q=XW_Q^\\top,\\ K=XW_K^\\top,\\ V=XW_V^\\top,\\qquad [B,T,D]\\rightarrow[B,T,H,d_h]\\rightarrow[B,H,T,d_h]",
       "code": "q = q_proj(x).reshape(B, T, H, D // H).transpose(1, 2)\nk = k_proj(x).reshape(B, T, H, D // H).transpose(1, 2)\nv = v_proj(x).reshape(B, T, H, D // H).transpose(1, 2)",
       "takeaway": "投影产生计算角色，reshape 拆分通道，transpose 才交换头轴和位置轴。",
-      "lead": "不同位置可能需要根据一种特征寻找对象，却读取另一种特征作为内容。将匹配与读出分别参数化，便得到 Query、Key 和 Value；这些投影提供可学习的选择方式，并非给每个向量预先指定语义。",
+      "lead": "Q、K、V 投影是把当前表示分别转换成查询、匹配线索和待读取内容的可学习映射。分开这三种角色，使模型可以按一类特征选择位置、再读取另一类内容。下面将这个想法落实到同一个小模型的拆头过程。",
       "codeKind": "fragment",
       "codeExplanation": "这是三个独立投影的局部写法，依赖已定义的 torch、x、B/T/H/D 与三个 Linear。完整模型使用等价的打包 `qkv`，可在[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `CausalAttention.forward` 中运行。",
       "figures": [
@@ -189,7 +189,7 @@
         "check": "除看权重外，再固定其他输入，对相关信息做有控制的替换或遮挡，比较输出变化，并检查扰动是否产生了分布外输入。"
       },
       "codeExplanation": "Query 长度 2、Key 长度 4、Q/K 宽度 3、Value 宽度 2 刻意不同，避免方形张量掩盖转置错误。随机 g 对应一个明确标量目标；逐项比较三条反向路径，不能只检查总梯度范数。",
-      "lead": "投影得到匹配特征之后，还需要把一组分数变成稳定的内容读取。先计算一个小例子的归一化权重和输出，再解释缩放如何影响分布，最后沿计算图推导三条反向路径。",
+      "lead": "缩放点积注意力用 Query 与各 Key 的点积打分，调整尺度并经过 Softmax 后，对 Value 作加权汇总。这定义了一次完整的内容读取。先完成手算，再解释缩放与三条反向路径，最后回到主案例张量。",
       "codeKind": "runnable"
     },
     {
@@ -216,7 +216,7 @@
         ],
         "conclusion": "拆头是在每个token内部切分通道，不能让时间位置混进head维度。"
       },
-      "lead": "单个注意力矩阵让同一位置的所有 Value 通道共享一组读取权重。多头允许不同子空间采用不同的读取方式，但需要正确拆分、重组和投影，才能把这种自由度接回固定宽度的表示。",
+      "lead": "多头注意力并行执行多套投影与读取，再拼接各头结果，用输出投影混合回模型宽度。各头可以选择不同位置关系，输出投影则把这些读出接回同一个表示。下面先追踪合头，再分析参数与表达限制。",
       "codeKind": "fragment",
       "codeExplanation": "局部片段依赖 `per_head`、B/L/H/d_v 和输出投影。对应[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 中 `CausalAttention.forward` 的最后三步；其中自注意力使用 L=T=4、d_v=4。"
     },
@@ -237,7 +237,7 @@
       "formula": "J_{\\rm pre}=I+J_FJ_N,\\qquad J_{\\rm post}=J_N(I+J_F)",
       "code": "x = x + dropout(attention(norm1(x), allowed))\nx = x + dropout(ffn(norm2(x)))",
       "takeaway": "残差、归一化范围与顺序都是模型计算的一部分，不只是训练技巧。",
-      "lead": "多头注意力已经返回 [2,4,8]，接下来要决定怎样利用这次读取，同时保留原表示。先看两条残差组成的完整 Block，把逐位置非线性暂记为 F；再进入下一节拆开 F 的内部计算。",
+      "lead": "Transformer Block 是可以重复堆叠的基本网络单元，通常将注意力、逐位置 FFN、残差连接与归一化组合在一起。主案例的 Pre-LN Block 先读取上下文，再处理更新后的特征，每次都把分支结果加回原表示。先看完整结构，再展开 FFN。",
       "codeKind": "fragment",
       "codeExplanation": "这是 Block 的两行核心计算，依赖 attention、两个 norm、ffn 和 dropout。[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `Block.forward` 额外展开 FFN 维度、无效 Query 清零和缓存返回；训练态 Dropout 为 0.1，数值对照在 eval 下关闭。"
     },
@@ -256,7 +256,7 @@
       "takeaway": "Attention 混合位置，FFN 混合每个位置上的通道；两个阶段共同构成表示变换。",
       "code": "import torch\nimport torch.nn.functional as F\n\ntorch.manual_seed(4)\ndtype = torch.float64\nx = torch.randn(3, dtype=dtype)\nWg, Wu = (torch.randn(5, 3, dtype=dtype) for _ in range(2))\nWd = torch.randn(3, 5, dtype=dtype)\ndef f(v):\n    return Wd @ (F.silu(Wg @ v) * (Wu @ v))\ng, u = Wg @ x, Wu @ x\nsigmoid = g.sigmoid()\nsilu_derivative = sigmoid + g * sigmoid * (1 - sigmoid)\nmanual = Wd @ (torch.diag(u * silu_derivative) @ Wg\n               + torch.diag(F.silu(g)) @ Wu)\nactual = torch.autograd.functional.jacobian(f, x)\ntorch.testing.assert_close(actual, manual)\nprint(\"SwiGLU Jacobian 最大误差:\", (actual - manual).abs().max().item())\n",
       "codeExplanation": "为对应公式，这段使用列向量和 `W@x`；模型处理一批行向量时通常写 `x@W.T`。两项分别计算门控与内容支路的导数，合起来才与 autograd 一致。无偏置只为简化记号，不改变乘积求导的两条路径。",
-      "lead": "完整 Block 的第二条分支只作用于当前位置。现在把其中的 F 展开：它怎样在不再读取其他 Token 的情况下处理刚获得的上下文？先沿主案例的 8→32→8 计算，再用 SwiGLU 比较另一种通道交互方式。",
+      "lead": "前馈网络（FFN）是在每个 Token 上独立应用、参数共享的多层感知机。它对注意力已经汇入的上下文作非线性通道变换，本身不再读取其他位置。主案例使用 8→32→8 的 GELU 分支，再以 SwiGLU 作为门控变体比较。",
       "codeKind": "runnable"
     },
     {
@@ -273,7 +273,7 @@
       ],
       "formula": "\\begin{aligned}R(\\phi)&=\\begin{bmatrix}\\cos\\phi&-\\sin\\phi\\\\\\sin\\phi&\\cos\\phi\\end{bmatrix}\\\\\\widetilde q_m^\\top\\widetilde k_n&=q^\\top R(m\\omega)^\\top R(n\\omega)k=q^\\top R((n-m)\\omega)k\\\\\\omega_r&=10000^{-2r/d_h},\\quad r=0,\\ldots,d_h/2-1\\end{aligned}",
       "takeaway": "位置机制、索引和配对布局必须一起匹配；shape 相同并不能保证缓存等价。",
-      "lead": "内容匹配本身没有规定哪些位置相邻，也没有区分同一组内容的不同排列。位置机制把这些关系引入计算；从无位置时的对称性出发，可以明确绝对编码和旋转位置编码各自改变了什么。",
+      "lead": "位置编码是向序列计算提供位置或相对关系的机制。RoPE 通过按位置旋转 Q/K 的成对通道，使匹配包含相对位置差；它不同于在输入上加绝对位置向量。下面从无位置时的对称性开始，说明为何需要它及怎样计算。",
       "code": "import math\nimport torch\n\ndtype = torch.float64\ndef rotate(z, angle):\n    c, s = math.cos(angle), math.sin(angle)\n    return torch.tensor([[c, -s], [s, c]], dtype=z.dtype) @ z\n\nq = k = torch.tensor([1., 0.], dtype=dtype)\nomega, m, n = math.pi / 6, 1, 3\nqm, kn = rotate(q, m * omega), rotate(k, n * omega)\ndot = qm @ kn\nrelative = q @ rotate(k, (n - m) * omega)\nshifted = rotate(q, (m + 2) * omega) @ rotate(k, (n + 2) * omega)\ntorch.testing.assert_close(dot, torch.tensor(0.5, dtype=dtype))\ntorch.testing.assert_close(dot, relative)\ntorch.testing.assert_close(dot, shifted)\ntorch.testing.assert_close(qm.norm(), q.norm())\ntorch.testing.assert_close(kn.norm(), k.norm())\nprint(\"rotated q/k:\", qm.tolist(), kn.tolist())\nprint(\"original / relative / shifted:\", dot.item(), relative.item(), shifted.item())\nprint(\"distance 0,2,6,12:\", [round(math.cos(d * omega), 6) for d in (0, 2, 6, 12)])\n",
       "codeKind": "runnable",
       "codeExplanation": "这段确定性二维算例与图中的角度相同，验证范数、相对点积和共同平移。完整模型的 `apply_rope` 把相同计算向量化到 `[2,2,4,4]`，采用标准基数 10000；代码页还验证全序列与多种缓存分块的输出和所有参数梯度。",
@@ -336,7 +336,7 @@
           ]
         ]
       },
-      "lead": "位置编码提供位置身份，可见性约束则决定哪些信息允许参与当前预测。Mask 必须在正确的计算阶段改变归一化集合，接口中的布尔值含义也必须与这种数学约定一致。",
+      "lead": "注意力 Mask 定义一行 Query 允许读取哪些 Key。布尔 Mask 通过约定表达允许或禁止，浮点 Mask 则直接给分数加偏置；它们在 Softmax 前改变读取集合或偏好。先固定数学含义，再比较库接口。",
       "codeKind": "fragment",
       "codeExplanation": "接口对照片段，依赖 F、q/k/v、allowed 与 allowed_2d；完整可运行的手写及 SDPA 对照见代码页 `manual-mha`。本章统一用 True 表示允许，在库边界才转换。"
     },
@@ -361,7 +361,7 @@
         "混合前缀布局：明确每个区域之间是否允许信息流动，并在所有层保持约定。"
       ],
       "takeaway": "先由预测目标决定合法条件，再选择 Attention Mask。",
-      "lead": "一个 Block 输出的新表示会成为下一层的输入，后续匹配因此针对已经包含上下文的信息。先理解这种逐层更新，再追踪信息可能经过的路径，才能同时解释深度的作用和间接泄漏的风险。",
+      "lead": "多层可见性描述信息经过若干层连接后，可能从哪些原始输入到达当前输出。单层 Mask 约束的是直接读取，多层还会产生间接路径。下面沿两层模型说明表示更新、因果性以及间接泄漏。",
       "code": "import math\nimport torch\n\nx = torch.tensor([[1., 0.], [0., 2.], [-1., 1.]], dtype=torch.float64)\ndef layer(z):\n    weights = torch.softmax(z @ z.T / math.sqrt(z.shape[-1]), dim=-1)\n    return z + weights @ z, weights\n\nh, a_first = layer(x)\ny, a_second = layer(h)\nfrozen_readout = h + a_first @ h\nassert not torch.allclose(a_first, a_second)\nassert not torch.allclose(y, frozen_readout)\ntorch.testing.assert_close(a_first.sum(-1), torch.ones(3, dtype=x.dtype))\ntorch.testing.assert_close(a_second.sum(-1), torch.ones(3, dtype=x.dtype))\nprint(\"通过：相同投影与可见性下，更新后的表示改变了第二层读取权重。\")\n",
       "codeExplanation": "这里关闭位置编码、FFN 和学习投影，只保留内容匹配与残差，避免把不同参数的影响混入对照。frozen_readout 刻意重复使用第一层权重；它与真正重新计算第二层注意力不同。多层可达性和完整梯度的验证见代码页中对应实现。",
       "codeKind": "runnable",
@@ -393,7 +393,7 @@
         "explanation": "若一行所有分数均为负无穷，普通稳定Softmax中的“减去行最大值”会遇到负无穷减负无穷。用一个很大的负数替代也不自动正确：所有分数相同会产生均匀分布，仍然读入无效Value。",
         "check": "教学实现对全无效Query规定零输出，并检查反向梯度有限；不要假定不同API、精度和内核的空行行为相同。"
       },
-      "lead": "可见性规则还要处理不属于真实序列的位置。禁止读取一个 Key 与规定一个无效 Query 的输出并非同一要求，而没有任何合法 Key 的一行需要额外定义，不能留给数值实现猜测。",
+      "lead": "Padding 是为统一存储长度加入的无效位置；全遮蔽行是某个 Query 没有任何合法 Key 的情况。前者需要分别处理输入读取、Query 输出与损失，后者还需要定义空集合读出的数值行为。",
       "codeKind": "fragment",
       "codeExplanation": "局部核心依赖 torch、有限 scores、布尔 allowed 与 v。可独立运行的完整边界检查见 `safe-masked-attention` 练习；`CausalAttention.forward` 在同一安全归一化后继续处理输出偏置和无效 Query。"
     },
@@ -411,7 +411,7 @@
       ],
       "formula": "\\begin{aligned}Q&=\\sqrt2\\ln 2\\begin{bmatrix}1&0\\\\0&1\\end{bmatrix},\\quad K=\\begin{bmatrix}1&0\\\\0&1\\\\0&0\\end{bmatrix},\\quad V=\\begin{bmatrix}2&0\\\\0&4\\\\2&2\\end{bmatrix}\\\\ A&=\\operatorname{softmax}_{\\rm row}(QK^\\top/\\sqrt2)=\\begin{bmatrix}1/2&1/4&1/4\\\\1/4&1/2&1/4\\end{bmatrix}\\\\ O&=AV=\\begin{bmatrix}3/2&3/2\\\\1&5/2\\end{bmatrix}\\end{aligned}",
       "takeaway": "Query 决定输出位置，Key 决定匹配，Value 决定被读取的内容。",
-      "lead": "条件序列与待更新序列不一定来自同一组位置。让一组查询读取另一组内容，便得到交叉注意力；其输出长度、条件压缩和梯度路径都应从这种非对称的数据流推导。",
+      "lead": "Cross-Attention 是让一组位置的 Query 读取另一组条件的 Key/Value 的注意力。输出位置由 Query 数量决定，条件序列可以更长或更短。它是主案例之外的一种连接方式，先用独立算例认识，再比较条件压缩。",
       "code": "import math\nimport torch\n\ndtype = torch.float64\nq = (math.sqrt(2) * math.log(2) * torch.eye(2, dtype=dtype)).requires_grad_()\nk = torch.tensor([[1., 0.], [0., 1.], [0., 0.]], dtype=dtype, requires_grad=True)\nv = torch.tensor([[2., 0.], [0., 4.], [2., 2.]], dtype=dtype, requires_grad=True)\n\ndef read(q, k, v, allowed=None):\n    score = q @ k.T / math.sqrt(q.shape[-1])\n    if allowed is not None:\n        score = score.masked_fill(~allowed, -torch.inf)\n    weight = score.softmax(-1)\n    return weight, weight @ v\n\na3, o3 = read(q, k, v)\na2, o2 = read(q, k[:2], v[:2])\nam, om = read(q, k, v, torch.tensor([[1, 1, 0], [1, 1, 0]], dtype=torch.bool))\ntorch.testing.assert_close(a3, torch.tensor([[.5, .25, .25], [.25, .5, .25]], dtype=dtype))\ntorch.testing.assert_close(o3, torch.tensor([[1.5, 1.5], [1., 2.5]], dtype=dtype))\ntorch.testing.assert_close(o2, torch.tensor([[4/3, 4/3], [2/3, 8/3]], dtype=dtype))\ntorch.testing.assert_close(om, o2)\ntorch.testing.assert_close(am[:, :2], a2)\n# One available key: every query reads the same V; score-path gradients vanish.\na1, o1 = read(q, k[:1], v[:1])\ntorch.testing.assert_close(o1, v[:1].expand(2, -1))\ngq, gk, gv = torch.autograd.grad(o1.sum(), (q, k, v))\nassert torch.count_nonzero(gq) == torch.count_nonzero(gk) == 0\ntorch.testing.assert_close(gv[0], torch.tensor([2., 2.], dtype=dtype))\nprint(\"S=3 weights/output:\", a3.tolist(), o3.tolist())\nprint(\"S=2 weights/output:\", a2.tolist(), o2.tolist())\nprint(\"single-key Q/K gradient maxima:\", gq.abs().max().item(), gk.abs().max().item())\n",
       "codeKind": "runnable",
       "codeExplanation": "固定两个 Query，依次改变可用上下文长度为 3、2、1；输出始终有两行。前两个结果可按整数指数质量手算，最后用 Autograd 检验单 Key 时 Q/K 路径梯度为零而 Value 梯度不为零。多头、批量及一般梯度对照保留在代码页的 `manual-mha`，此处只隔离查询与条件的关系。",
@@ -469,7 +469,7 @@
         ]
       },
       "takeaway": "自回归由条件分解和输入约束定义；Decoder 这个名称不能代替对训练目标的检查。",
-      "lead": "同样的注意力与前馈模块，可以按不同的信息可用范围组成编码器或解码器。将计算结构和概率分解分别说明，可以避免仅凭模块名称判断是否自回归，或把一种 VLA 的接口推广到所有策略。",
+      "lead": "Encoder 将已知输入编码成表示，Decoder 根据可用上下文产生目标输出；自回归则规定输出按前缀逐项分解。三者分属结构与概率组织两个层次。下面据此比较 BERT、GPT-2、T5 与本章小模型。",
       "figures": [
         {
           "src": "/assets/figures/transformer-original-encoder-decoder.svg",
@@ -501,7 +501,7 @@
         ],
         "conclusion": "监督位置、输入可见性与Padding处理应分别写清，再检查组合后的行为。"
       },
-      "lead": "选定自回归分解之后，每个输出位置必须对应一个尚未读取的目标。训练可以利用已知真实前缀并行计算，但需要精确对齐标签和有效监督，才能把结构上的因果性转化为正确的学习目标。",
+      "lead": "Teacher Forcing 是训练时以真实历史作为下一项预测条件的方法。标签移位把每个输出对应到尚未读取的目标，Loss Mask 再决定哪些预测受监督。下面回到同一条五符号序列，完整连接输出头与反向传播。",
       "codeKind": "fragment",
       "codeExplanation": "依赖完整案例中的 `sequence`、TinyLM 实例 `model`、词表大小 `vocab=7` 与 F。可运行的循环见[两层模型实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm)；模型返回 logits、逐层 cache 与可选 trace，因此这里先解包再计算 CE。"
     },
@@ -527,7 +527,7 @@
         ],
         "conclusion": "非方形因果Mask与位置编码都要使用绝对位置。可将整段前向结果与多种分块大小的缓存结果逐项比较。"
       },
-      "lead": "自回归生成每轮只追加新位置，因果结构使过去的计算具备复用的可能。把历史不变性对应到每层的 K/V，再处理局部与全局位置的差别，才能保证增量计算与完整前向等价。"
+      "lead": "KV Cache 是保存各层历史 Key 和 Value、在后续调用中复用的增量计算机制。只有历史表示保持不变时，这份中间结果才仍有效。主案例的因果结构提供这一条件，下面将它连接到位置偏移和等价性。"
     },
     {
       "id": "cost-and-inference",
@@ -544,7 +544,7 @@
       "code": "import torch\n\nscores = torch.tensor([1000., 1001., 999., 1002.], dtype=torch.float64)\nvalues = torch.tensor([[1., 0.], [0., 2.], [3., 1.], [-1., 4.]], dtype=scores.dtype)\n\ndef stats(s, v):\n    m = s.max()\n    e = (s - m).exp()\n    return m, e.sum(), e @ v\n\nma, la, ra = stats(scores[:2], values[:2])\nmb, lb, rb = stats(scores[2:], values[2:])\nm = torch.maximum(ma, mb)\nwa, wb = (ma - m).exp(), (mb - m).exp()\nmerged = (wa * ra + wb * rb) / (wa * la + wb * lb)\nfull = scores.softmax(-1) @ values\nwrong = (ra / la + rb / lb) / 2\ntorch.testing.assert_close(merged, full)\nassert not torch.allclose(wrong, full)\nprint(\"全局 / 正确分块:\", full.tolist(), merged.tolist())\nprint(\"直接平均局部输出的误差:\", (wrong - full).abs().max().item())\n",
       "takeaway": "输出、梯度和信息流都要验证；训练速度与内存优化不能代替数学等价性检查。",
       "codeExplanation": "分数约为 1000，直接 `exp(scores)` 会溢出；各块减自己的最大值保持数值稳定，合并时再恢复共同尺度。`ra/la` 是块内归一化的输出，缺少该块的全局概率质量，因而直接平均会改变答案。示例不含 Mask；被完全遮蔽的块需要单独跳过或定义零质量，不能对 \\(-\\infty-(-\\infty)\\) 直接求指数。",
-      "lead": "理解数据流后，才可以可靠地估算哪些张量消耗了计算与显存。显式注意力矩阵、投影和缓存具有不同的规模关系；分块归约则说明如何减少中间存储而保持同一个数学输出。",
+      "lead": "计算量计数需要执行的运算，激活显存计数运行中保存的中间量，缓存则保存供后续复用的状态。它们随序列和宽度的增长方式不同。先按数据流分清对象，再解释分块 Softmax 为什么能减少存储。",
       "codeKind": "runnable"
     },
     {
@@ -554,14 +554,15 @@
         "先沿数据流找到输入组织：图像经过何种骨干，语言如何分词，状态怎样投影，动作是离散 token、连续查询还是噪声序列。随后标注 token 排列和每个区域长度，再找构建位置编码与 Attention Mask 的位置。这样能够把配置中的网络宽度、头数、动作长度和前向中的张量对应起来。",
         "再逐层追踪参数更新路径：哪些模块冻结，哪些适配器或动作头训练，Loss 从哪些输出计算，梯度经过哪些条件分支。冻结参数、`no_grad`、`detach`、缓存复用各自改变不同内容，不能相互替代。模型可以把视觉语言骨干与动作生成器分开，也可以通过统一 token 序列交互；后训练修改必须服从具体模型的输入输出和可见性约定。",
         "最后检查训练与部署的一致性：图像处理、tokenizer 特殊符号、归一化统计、时间编号、推理步数、有效位和动作还原必须配套。注意力热图可帮助发现错误连接，却不能单凭高权重断言某个区域就是决策原因：V 的内容、输出投影和后续层都会改变最终影响。需要用受控输入扰动、消融和闭环评估支持模型行为的解释。",
-        "把以上接口放进动作策略后，应继续区分潜变量解码、离散 token 自回归、Diffusion 和 Flow 的生成目标。它们可以共享视觉语言条件编码，却不能互换输出头、时间约定或采样器。[生成式动作策略](#/learn/generative-policy) 将这些接口与 ACT、闭环重规划及后训练目标连接起来。"
+        "把以上接口放进动作策略后，应继续区分潜变量解码、离散 token 自回归、Diffusion 和 Flow 的生成目标。它们可以共享视觉语言条件编码，却不能互换输出头、时间约定或采样器。[生成式动作策略](#/learn/generative-policy) 将这些接口与 ACT、闭环重规划及后训练目标连接起来。",
+        "回看主案例：符号先变成带位置身份的表示，每层注意力读取可见上下文，FFN 重组当前位置特征，残差传递更新，输出头与标签定义学习目标。生成时仍是这个函数，只在历史不变的条件下用 K/V 缓存省去重算。"
       ],
       "bullets": [
         "输入约定 → 投影形状 → 位置与可见性 → Block → 输出头与损失 → 缓存和执行。",
         "先在小张量上建立可重复的对照，再替换优化内核或接入大模型。"
       ],
       "takeaway": "从任务条件到代码证据逐层核对，比只记住 Attention 公式更接近独立修改模型的能力。",
-      "lead": "前面的机制可以作为阅读具体策略模型的共同语言，但不能预先决定某个模型采用哪一种结构。沿实际观测、条件、动作和损失的流向逐项定位，才能把通用理论连接到可靠的后训练修改。"
+      "lead": "VLA 是将视觉与语言条件用于动作预测的模型家族，Transformer 可以承担其观测编码或动作计算。位置、Mask、条件流与损失决定具体接口。下面用本章已定义的机制阅读这些连接，不预设所有 VLA 都有同一架构。"
     }
   ],
   "implementations": [

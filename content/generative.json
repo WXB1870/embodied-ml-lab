@@ -40,7 +40,7 @@
           "本篇先省略条件 \\(c\\)，使用 \\(a\\) 表示观测值、\\(z\\) 表示潜变量。条件模型在最后一节恢复。前置的[概率与训练目标](#/learn/probability?tab=theory)给出密度、条件期望和 KL 的基础；这里关心无法直接计算边缘似然时，如何构造可优化的目标。"
         ],
         "formula": "\\mathbb E_{A\\sim p_{\\mathrm{data}}}[-\\log p_\\theta(A)]=H(p_{\\mathrm{data}})+D_{\\mathrm{KL}}(p_{\\mathrm{data}}\\Vert p_\\theta)",
-        "lead": "回归模型可以给出一个预测值，生成模型则需要描述哪些样本可能出现以及如何产生它们。密度计算与随机采样是两个相关但不同的任务。先明确这一区别，才能理解潜变量为何有助于表示分布，又为何会带来似然计算的困难。"
+        "lead": "生成建模的目标是表示数据怎样分布，并据此产生样本；密度计算则回答模型给某个观测多大支持。能够采样与能够方便地计算密度是两种能力。先定义样本与条件，再选择要学习和评价哪一种对象。"
       },
       {
         "id": "latent-marginal",
@@ -54,7 +54,7 @@
           "完整代码刻意使用这一可解析模型，使真实证据与后验都可检查。高维非线性 VAE 通常没有这些解析量，不能仅凭训练 loss 降低就宣布后验近似已经准确。"
         ],
         "formula": "\\begin{aligned}p_\\theta(a)&=\\int p_\\theta(a\\mid z)p(z)\\,dz,&p_\\theta(z\\mid a)&=\\frac{p_\\theta(a\\mid z)p(z)}{p_\\theta(a)}\\\\ z\\mid a&\\sim\\mathcal N\\!\\left(\\frac{a}{1+\\tau^2},\\,\\frac{\\tau^2}{1+\\tau^2}\\right)&&\\text{for }a=z+\\tau\\epsilon\\end{aligned}",
-        "lead": "复杂观测可以由更简单的随机因素经过条件生成得到。潜变量模型利用这一分解扩展表示能力，但观察结果后再反推潜变量，通常需要一个难算的归一化积分。一个线性 Gaussian 例子可以同时展示生成、边缘化与后验推断的方向。"
+        "lead": "潜变量是模型中未直接观测、用于组织生成过程的随机变量。先验规定生成前它怎样分布，解码器规定给定它如何产生数据，后验则反过来描述观测数据后它可能取什么值。下面用这条双向关系解释边缘积分的困难。"
       },
       {
         "id": "elbo-derivation",
@@ -69,7 +69,7 @@
           "实际通常最小化负 ELBO。代码中的符号应是 NLL 加 KL；若把 KL 减掉，会奖励远离先验。下面的解析模型同时计算真实 \\(\\log p(a)\\)、ELBO 和后验 KL，以三方恒等式验证方向和常数，而不只检查一个 loss 是否有限。"
         ],
         "formula": "\\begin{aligned}\\log p_\\theta(a)&=\\log\\mathbb E_{q_\\phi(z\\mid a)}\\!\\left[\\frac{p_\\theta(a,z)}{q_\\phi(z\\mid a)}\\right]\\\\&\\ge\\mathbb E_q[\\log p_\\theta(a,z)-\\log q_\\phi(z\\mid a)]\\\\&=\\underbrace{\\mathbb E_q[\\log p_\\theta(a\\mid z)]-D_{\\mathrm{KL}}(q_\\phi(z\\mid a)\\Vert p(z))}_{\\mathcal L_{\\mathrm{ELBO}}}\\\\\\log p_\\theta(a)-\\mathcal L_{\\mathrm{ELBO}}&=D_{\\mathrm{KL}}(q_\\phi(z\\mid a)\\Vert p_\\theta(z\\mid a))\\ge0.\\end{aligned}",
-        "lead": "边缘似然难算，并不意味着无法优化一个与它有明确关系的目标。引入近似后验后，可以把未知积分转成可采样的期望，再用对数的凹性构造下界。接下来还需识别下界间隙，避免把不同方向的 KL 混为同一个正则项。"
+        "lead": "证据下界（ELBO）是观测对数似然的一个可计算下界，由近似后验下的重建项与先验 KL 组成。它让难处理的边缘似然可以通过采样优化。下面推导下界和间隙，而非先把两个损失项当作经验配方。"
       },
       {
         "id": "gaussian-kl",
@@ -81,7 +81,7 @@
           "固定先验不代表先验永远最合理。学习先验、结构化后验或条件先验会改变相应 KL 的表达式；本节公式只适用于指定的对角高斯与单位高斯。它不是对任意分布都成立的正则化公式。"
         ],
         "formula": "\\begin{aligned}D_{\\mathrm{KL}}(q\\Vert p)&=\\sum_{i=1}^d\\mathbb E_q\\!\\left[-\\log s_i-\\frac{(Z_i-\\mu_i)^2}{2s_i^2}+\\frac{Z_i^2}{2}\\right]\\\\&=\\frac12\\sum_{i=1}^d\\left(\\mu_i^2+s_i^2-1-\\log s_i^2\\right)\\\\&=\\frac12\\sum_{i=1}^d\\left(\\mu_i^2+e^{\\ell_i}-1-\\ell_i\\right).\\end{aligned}",
-        "lead": "ELBO 中的先验 KL 需要变成网络能够计算和求导的量。对角 Gaussian 是一个常用且可解析的选择，它也最容易暴露方差、标准差与对数方差的混淆。从两份对数密度逐项求期望，可以确定公式中的每个系数和归约轴。"
+        "lead": "高斯 KL 衡量近似后验与先验在指定方向上的分布差异。对角高斯使用独立坐标的均值和方差，使这一项可解析计算。下面直接对两份对数密度求期望，解释均值、方差与常数项各从哪里来。"
       },
       {
         "id": "observation-model",
@@ -93,7 +93,7 @@
           "动作归一化和有效位也会改变观测模型或误差度量。若动作各维具有不同固定尺度，等价的原单位高斯具有不同方差。Padding 不应作为真实观测进入重建似然；其处理应与[损失、掩码与归约](#/learn/losses?tab=theory)保持一致。"
         ],
         "formula": "-\\log p_\\theta(a\\mid z)=\\frac{\\|a-f_\\theta(z)\\|^2}{2\\tau^2}+D\\log\\tau+\\frac D2\\log(2\\pi),\\qquad \\tau>0",
-        "lead": "下界的另一部分要求潜变量能够解释观测，但“解释得好”必须由观测概率模型定义。MSE、L1 与二元交叉熵分别隐含不同假设，并会改变相对 KL 的尺度。先说明解码器输出的是哪种分布参数，再决定代码中的重建损失。"
+        "lead": "观测模型是给定潜变量后数据的条件分布，解码器通常输出它的参数。重建损失来自这个分布的负对数似然，而不只是任选一种像素误差。先确定数据类型与噪声假设，再解释 MSE 等形式。"
       },
       {
         "id": "reparameterization",
@@ -110,7 +110,7 @@
           "完整代码使用只含二次项的线性高斯模型，以 \\(\\epsilon\\in\\{-1,+1\\}\\) 两个等权点准确匹配零均值和单位二阶矩，核对 Autograd 与解析期望的梯度。这是该二次函数的确定性矩检验，不是宣称两个点能精确积分任意非线性 VAE。"
         ],
         "formula": "\\begin{aligned}Z&=\\mu_\\phi(a)+\\exp(\\ell_\\phi(a)/2)\\odot\\epsilon,\\qquad\\epsilon\\sim\\mathcal N(0,I)\\\\ \\nabla_\\phi\\mathbb E[h_\\theta(Z)]&=\\mathbb E_\\epsilon\\!\\left[\\left(\\frac{\\partial Z}{\\partial\\phi}\\right)^{\\!\\top}\\nabla_Zh_\\theta(Z)\\right].\\end{aligned}",
-        "lead": "编码器改变的不只是一次样本的数值，还改变了潜变量的采样分布。直接把采样结果当常量，会漏掉重建目标对编码器的依赖。将随机性移到固定基础噪声后，链式法则才能沿均值和尺度把梯度传回参数。"
+        "lead": "重参数化是把参数相关分布的采样改写为固定噪声经过可微变换的办法。这样参数变化仍能通过样本值影响目标，梯度便可沿变换回传。下面用高斯均值与尺度展示它解决的求导问题。"
       },
       {
         "id": "posterior-collapse",
@@ -123,7 +123,7 @@
           "把负 ELBO 改为重建 \\(\\mathrm{NLL}+\\beta\\,D_{\\rm KL}\\)，或采用 KL warmup、free bits，会改变优化权衡；除 \\(\\beta=1\\) 且其他项一致的标准情形外，不应继续把目标无条件称为原生成模型的同一个 ELBO。也不能仅因 \\(\\beta\\) 较小、重建误差降低就推断先验采样更好。应把表示、重建和生成评估分开。"
         ],
         "formula": "\\mathbb E_{A\\sim p_{\\mathrm{data}}}D_{\\mathrm{KL}}(q_\\phi(Z\\mid A)\\Vert p(Z))=I_q(A;Z)+D_{\\mathrm{KL}}(q(Z)\\Vert p(Z))",
-        "lead": "有了可训练下界，仍可能出现重建不错而潜变量几乎没有被使用的模型。要解释这一现象，需要区分潜变量携带的信息与其整体分布是否匹配先验。先看解码器如何绕开潜变量，再分解平均 KL，才能判断一个 KL 数值究竟说明了什么。"
+        "lead": "后验坍缩指推断分布接近先验、潜变量对重建传递的信息不足的情况。聚合后验则是对所有数据的推断分布作平均后的总体分布。二者描述不同对象，下面从解码器依赖和 KL 权重解释它们。"
       },
       {
         "id": "conditional-latents",
@@ -132,10 +132,11 @@
           "加入条件 \\(c\\) 后，生成模型为 \\(p_\\theta(a,z\\mid c)=p_\\theta(a\\mid z,c)p(z\\mid c)\\)，推断模型为 \\(q_\\phi(z\\mid a,c)\\)。条件 ELBO 在固定 \\(c\\) 下重复前面的推导。先验可以固定为 \\(\\mathcal N(0,I)\\)，也可以依赖 \\(c\\)；只要先验改变，KL 的计算就要相应改变。条件编码器提供的是生成时可得到的信息，训练后验额外看到目标 \\(a\\) 是合法的推断设计。",
           "部署时没有真实未来动作 \\(a\\)，因此不能调用依赖 \\(a\\) 的训练后验来生成。正确的生成路径是从 \\(p(z\\mid c)\\) 采样，再通过 \\(p_\\theta(a\\mid z,c)\\) 产生动作。取 \\(z=0\\) 或后验/先验均值是某些实现采用的确定性选择，它既不是从先验采样，也不等于对所有 \\(z\\) 积分后的条件均值；非线性解码器通常使 \\(f(\\mathbb E[Z])\\ne\\mathbb E[f(Z)]\\)。",
           "在[生成式动作策略中的 ACT](#/learn/generative-policy?tab=theory&section=act-conditional-latent-model)中，潜变量可以概括同一观测下不同动作片段的变化，但具体架构、训练条件和测试时 \\(z\\) 的处理需查看相应实现。不能把条件 VAE 当作所有动作块模型或所有 VLA 的共同组成部分。",
-          "DDPM 同样可以从潜变量模型的变分目标理解，只是潜变量是一整条规定了前向加噪的轨迹；其常用 \\(q\\) 没有另一个学习型编码器。Flow Matching 则以固定概率路径的速度回归为核心训练机制。三者都在学习复杂条件分布，但训练下界、回归目标和采样接口不同。后续的[Diffusion](#/learn/diffusion?tab=theory)与[Score、SDE 和概率流](#/learn/score-sde?tab=theory)继续建立这些联系。"
+          "DDPM 同样可以从潜变量模型的变分目标理解，只是潜变量是一整条规定了前向加噪的轨迹；其常用 \\(q\\) 没有另一个学习型编码器。Flow Matching 则以固定概率路径的速度回归为核心训练机制。三者都在学习复杂条件分布，但训练下界、回归目标和采样接口不同。后续的[Diffusion](#/learn/diffusion?tab=theory)与[Score、SDE 和概率流](#/learn/score-sde?tab=theory)继续建立这些联系。",
+          "VAE 将生成、推断与学习连接成一套概率模型：先验提供潜变量，解码器定义数据分布，编码器近似后验，ELBO 提供训练依据。重建误差与 KL 都应回到这套定义解释，不能脱离观测模型判断好坏。"
         ],
         "formula": "\\mathcal L(a,c)=\\mathbb E_{q_\\phi(z\\mid a,c)}[\\log p_\\theta(a\\mid z,c)]-D_{\\mathrm{KL}}(q_\\phi(z\\mid a,c)\\Vert p(z\\mid c))",
-        "lead": "无条件生成建立了先验、后验与解码器的分工，动作策略则需要在可用观测下生成。加入条件不会取消这些分工，却会改变每条路径能读取的信息。区分训练后验与部署先验，是把 VAE 接入动作块和其他生成方法的关键。"
+        "lead": "条件 VAE 是让生成和推断同时依赖已知条件的潜变量模型。条件说明当前任务，潜变量表示在该条件下仍需表达的变化；生成时不能使用只在训练中可见的目标。下面将这一区分连接到动作潜变量。"
       }
     ],
     "shapes": [
@@ -270,7 +271,7 @@
         ]
       }
     ],
-    "lead": "复杂分布可以通过简单随机变量与条件模型的组合生成，但能够采样并不意味着能够计算观测的边缘概率。潜变量模型把这一困难明确地放在积分和后验推断中，VAE 则用可学习的近似后验建立可优化的下界。本章从线性 Gaussian 例子出发，逐步推导 ELBO、重建似然、KL 和重参数化，使概率与自动微分的基础自然连接到后续扩散和条件动作生成。"
+    "lead": "生成模型用概率分布描述数据，并能从中产生新的样本；潜变量模型通过先采一个未直接观测的变量、再生成数据来实现这种分布。变分自编码器（VAE）在此基础上增加近似推断网络，用可计算的下界训练生成模型。本章先区分采样与密度，再认识先验、后验和解码器，随后推导 ELBO、重参数化与条件生成。"
   },
   {
     "id": "score-sde",
@@ -313,7 +314,7 @@
           "本篇采用前向加噪时间 \\(t\\)：\\(t=0\\) 是数据端，\\(t=T\\) 是高噪声端。随后引入反向时钟 \\(\\tau=T-t\\) 说明生成。与[Flow Matching](#/learn/flow-matching?tab=theory)常用的“噪声 0→数据 1”约定比较时，需要同时转换时间输入、速度符号和积分方向。"
         ],
         "formula": "s_t(x,c)=\\nabla_x\\log p_t(x\\mid c),\\qquad p_t=\\mathcal N(m_t,\\Sigma_t)\\Longrightarrow s_t(x)=-\\Sigma_t^{-1}(x-m_t)",
-        "lead": "一个密度函数可以复杂到难以直接归一化，但其局部变化方向仍可能易于表示。Score 用状态梯度描述这种变化，使分布信息能够进入动力学。先从 Gaussian 密度求导，并区分状态与模型参数，后续去噪和时间反演才不会混淆梯度对象。"
+        "lead": "Score 是对数密度关于状态坐标的梯度，是与样本同维的向量。它描述局部密度变化，不是密度值、分类分数或模型参数梯度。先用高斯直观认识方向与尺度，再进入生成动力学。"
       },
       {
         "id": "score-matching",
@@ -327,7 +328,7 @@
           "Denoising Score Matching 采用另一路径：构造已知的条件加噪核，利用条件 score 回归来得到边际 score。它避免在这个基本训练目标中直接计算高维 score 网络的散度，但并不表示散度在密度计算等其他任务里不再需要。"
         ],
         "formula": "\\begin{aligned}J(\\theta)&=\\tfrac12\\mathbb E_p\\|s_\\theta-\\nabla\\log p\\|^2\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2]-\\int s_\\theta(x)\\cdot\\nabla p(x)\\,dx+C\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2+\\nabla\\cdot s_\\theta]+C.\\end{aligned}",
-        "lead": "定义了目标向量场之后，还面临一个监督问题：数据给出样本，没有给出真实 score。经典 Score Matching 通过展开平方和分部积分，将未知场移出可优化部分。这一步展示如何从样本学习局部密度信息，同时明确它依赖的边界条件。"
+        "lead": "Score Matching 是通过匹配模型向量场与数据 Score 来学习分布信息的方法。真实 Score 通常未知，经典目标利用分部积分将它移出可优化表达式。下面说明这项改写依赖哪些边界条件。"
       },
       {
         "id": "denoising-identity",
@@ -340,7 +341,7 @@
           "当 \\(\\sigma_t\\to0\\) 时，单个条件 score 的尺度可能很大，即使边际场仍有适当极限。训练常需要处理时间端点、权重和数值精度；简单除以极小 \\(\\sigma\\) 并不能自动提高精度。条件 \\(c\\) 存在时，所有期望都应在固定 \\(c\\) 的条件分布中计算，不能混合不同观测的后验权重。"
         ],
         "formula": "\\begin{aligned}s_t(x)&=\\frac{\\int\\nabla_xq_t(x\\mid a)p_{\\rm data}(a)\\,da}{p_t(x)}\\\\&=\\mathbb E[\\nabla_x\\log q_t(x\\mid A)\\mid X_t=x]= -\\frac{\\mathbb E[E\\mid X_t=x]}{\\sigma_t},\\\\\\mathbb E\\|s_\\theta(Z)-Y\\|^2&=\\mathbb E\\|s_\\theta(Z)-\\mathbb E[Y\\mid Z]\\|^2\\\\&\\quad+\\mathbb E\\|Y-\\mathbb E[Y\\mid Z]\\|^2,\\\\\\left\\|s_\\theta+\\frac E{\\sigma_t}\\right\\|^2&=\\frac1{\\sigma_t^2}\\|\\epsilon_\\theta-E\\|^2.\\end{aligned}",
-        "lead": "扩散训练提供了另一种可用监督：原始样本虽然没有 score 标签，加噪条件核却是已知的。对隐藏干净样本取条件平均，可以把这个容易计算的条件 score 变成所需的边际 score。由此才能准确连接噪声预测、去噪回归与时间权重。"
+        "lead": "条件加噪核是在已知干净样本下生成带噪状态的分布，因此其 Score 可以直接计算。边际 Score 则对所有可能干净样本求平均。下面通过这个条件平均关系连接可监督的去噪目标与真正需要的场。"
       },
       {
         "id": "forward-sde",
@@ -356,7 +357,7 @@
           "下面选二次函数 \\(\\varphi(x)=x^\\top Qx\\)，用四个对称点精确提供零均值、单位协方差。由于二次函数没有三阶余项，可以直接核对有限步期望等于生成元加 \\(h f^\\top Qf\\)。这验证二阶系数与噪声尺度，不把四点分布当成 Gaussian，也不声称有限步实验已经证明一般 SDE 的收敛定理。"
         ],
         "formula": "\\begin{aligned}dX_t&=f(X_t,t)\\,dt+g(t)\\,dW_t,\\\\\\frac d{dt}\\mathbb E[\\varphi(X_t)]&=\\mathbb E[f\\cdot\\nabla\\varphi+\\tfrac12g^2\\Delta\\varphi],\\\\\\partial_tp_t&=-\\nabla\\cdot(f p_t)+\\tfrac12g(t)^2\\Delta p_t.\\end{aligned}",
-        "lead": "离散加噪在步长变小时可以形成连续随机过程，漂移与噪声却按不同的步长尺度累积。理解这一区别，是把样本更新转为密度方程的起点。从一个小时间步的均值与协方差出发，可以看清二阶项和扩散系数为何出现。",
+        "lead": "SDE 是同时含确定性漂移和随机增量的微分方程，用来描述单个样本的随机运动；Fokker–Planck 方程描述这些样本形成的密度怎样演化。二者分别观察轨迹与分布，下面从一个小时间步连接起来。",
         "code": "import torch\n\ntorch.set_default_dtype(torch.float64)\nx = torch.tensor([0.4, -0.7])\nQ = torch.tensor([[2., 0.3], [0.3, 1.]])\ndrift, g = -0.5*x, 0.8\n# Four equal-weight points: exact mean 0 and covariance I.\nxi = torch.tensor([[1., 0.], [-1., 0.], [0., 1.], [0., -1.]]) * 2**0.5\ntorch.testing.assert_close(xi.mean(0), torch.zeros(2))\ntorch.testing.assert_close(xi.T @ xi / 4, torch.eye(2))\n\ndef phi(values):\n    return torch.einsum(\"...i,ij,...j->...\", values, Q, values)\n\ngenerator = 2*x @ Q @ drift + g*g*torch.trace(Q)\nfor h in [0.1, 0.01]:\n    noise = g*h**0.5*xi\n    increment = drift*h + noise\n    observed = ((phi(x+increment)-phi(x))/h).mean()\n    finite_step = generator + h*(drift @ Q @ drift)\n    torch.testing.assert_close(observed, finite_step)\n    torch.testing.assert_close(noise.T @ noise / 4, g*g*h*torch.eye(2))\n    print(\"h:\", h, \"finite-step mean:\", observed.item(),\n          \"generator:\", generator.item())\nprint(\"passed: Brownian scale and second-order coefficient\")\n",
         "codeExplanation": "张量 xi 为 [4,2]，四行等权表示四个确定的积分节点；代码没有 Monte Carlo 误差。观测量与有限步公式严格对应，步长减小时剩余项 \\(h f^\\top Qf\\) 缩小。把噪声中的 h**0.5 改成 h，会先破坏协方差断言，也会使每单位时间的扩散贡献错误地趋于零。"
       },
@@ -370,7 +371,7 @@
           "生成需要从 \\(p_T\\) 抽样。若训练日程的终端仍含明显数据信息，直接用 \\(\\mathcal N(0,I)\\) 替代 \\(p_T\\) 会引入先验失配；时间反演定理本身不会修复这个替代。网络 score 的近似误差、数值离散误差和终端分布误差应分开分析。"
         ],
         "formula": "dY_\\tau=\\left[-f(Y_\\tau,T-\\tau)+g(T-\\tau)^2s_{T-\\tau}(Y_\\tau)\\right]d\\tau+g(T-\\tau)\\,d\\bar W_\\tau",
-        "lead": "前向过程不断破坏数据，生成则需要从当前带噪状态推断可能的来路。反转时钟并不足以完成这种推断，因为到达当前位置的概率还取决于中间密度。Score 修正提供了这部分分布信息，必须与时间符号和随机增量一起处理。"
+        "lead": "反向 SDE 描述同一随机过程沿相反时间观察时的演化。它需要依据中间密度修正漂移，不是把前向步长变成负数就完成反演。下面分别定义时钟、Score 修正和反向随机增量。"
       },
       {
         "id": "probability-flow-ode",
@@ -385,7 +386,7 @@
           "完整代码在一个二维高斯混合密度上，用 Autograd 分别计算时间导数、Fokker–Planck 右端和 ODE 连续性方程右端，逐点核对恒等式。这是公式层面的验证；学习到的 score 只有近似准确时，实际生成边际也只能近似遵循上述关系。"
         ],
         "formula": "\\begin{aligned}\\partial_tp_t&=-\\nabla\\cdot(f p_t)+\\tfrac12g^2\\nabla\\cdot(p_ts_t)\\\\&=-\\nabla\\cdot\\!\\left[p_t\\left(f-\\tfrac12g^2s_t\\right)\\right],\\\\u_t(x)&=f(x,t)-\\tfrac12g(t)^2s_t(x).\\end{aligned}",
-        "lead": "同一组边际分布不一定只能由随机路径实现。将扩散产生的密度变化改写为确定性概率通量，就能构造另一个经过这些分布的动力学。这个推导解释了概率流 ODE 的系数，也说明“共享边际”为什么不等于“共享样本轨迹”。"
+        "lead": "概率流 ODE 是与给定扩散过程具有相同边际密度演化的确定性微分方程。它用一个速度场替代随机扰动所产生的概率通量，但样本轨迹分布并不相同。下面从本章的密度方程推导这个速度。"
       },
       {
         "id": "parameterization-bridge",
@@ -400,12 +401,12 @@
           "变换在 \\(\\alpha=0\\) 或 \\(\\sigma=0\\) 的端点可能不再可逆，附近也可能放大预测误差。训练损失还会因缩放而获得不同时间权重。比较参数化时需要同时给出有效时间区间、噪声等级采样、输出转换和损失权重；仅比较网络输出的张量形状没有判别力。"
         ],
         "formula": "\\begin{aligned}\\widehat\\epsilon_t(x)&=-\\sigma_t s_t(x),&\n\\widehat a_t(x)&=\\frac{x+\\sigma_t^2s_t(x)}{\\alpha_t}\\\\v_t(x)&=\\dot\\alpha_t\\widehat a_t(x)+\\dot\\sigma_t\\widehat\\epsilon_t(x)\\\\&=\\frac{\\dot\\alpha_t}{\\alpha_t}x+\n\\left(\\frac{\\dot\\alpha_t}{\\alpha_t}\\sigma_t^2-\\sigma_t\\dot\\sigma_t\\right)s_t(x).\n\\end{aligned}",
-        "lead": "噪声、Score 与速度网络输出同形状的向量，但它们对应不同的数学对象。联系它们需要指定同一条概率路径，并推导路径系数如何转换条件均值。只有在这些条件满足时，输出转换才与生成动力学一致。"
+        "lead": "输出参数化规定网络预测噪声、Score 还是路径速度。它们在声明的加噪路径下可通过条件均值关系联系，却不是给同一个输出换名字。下面明确路径系数与时间方向，再推导转换。"
       },
       {
         "id": "shared-mixture",
         "title": "同一二维分布上的两条路径：从混合责任到速度",
-        "lead": "输出参数化的换算只有放在具体路径上才容易检验。这里沿用 Diffusion 代码中的两个条件、两个 Gaussian 模式，同时构造 VP 和线性插值，把同一数据、相同端点与不同中间密度放在一起比较。因为每个中间分布都能解析计算，网络误差与公式错误不再混在一起。",
+        "lead": "概率路径是一组随时间变化的分布，规定起点、终点之间每个阶段应如何分布。同一对端点可以由不同路径连接。下面用同一个二维混合数据，比较 VP 加噪路径与线性插值路径的中间状态。",
         "body": [
           "沿用[前章的数据分布](#/learn/diffusion?tab=theory&section=0)，以 \\(Y\\) 表示干净数据、\\(Z\\sim\\mathcal N(0,I)\\) 表示独立噪声，\\(c\\) 表示条件。为统一图中的方向，这一例子用生成时钟 \\(r\\in[0,1]\\)：\\(X_r=\\alpha_rY+\\sigma_rZ\\)。线性 FM 取 \\((\\alpha_r,\\sigma_r)=(r,1-r)\\)；VP 图示取 \\((\\sin(\\pi r/2),\\cos(\\pi r/2))\\)。两者起点与终点相同，系数却不相同；不能只把 \\(r\\) 改名就把一条路径变成另一条。",
           "给定混合分量 \\(J=j\\)，独立 Gaussian 相加得到 \\(X_r\\mid J=j,c\\sim\\mathcal N(\\alpha_r\\mu_{cj},q_rI)\\)，其中 \\(q_r=\\alpha_r^2s_d^2+\\sigma_r^2\\)。用 Bayes 公式得到责任权重 \\(\\rho_j=P(J=j\\mid X_r=x,c)\\)：\\[\\rho_j=\\operatorname{softmax}_j\\!\\left(\\log w_{cj}-\\frac{\\|x-\\alpha_r\\mu_{cj}\\|^2}{2q_r}\\right).\\]所有分量共享 \\(q_r\\)，相同的 Gaussian 归一化常数在权重里抵消；密度本身仍必须保留该常数。",
@@ -431,7 +432,8 @@
           "DDIM 在保持相应训练边际与回归接口的同时，构造另一类采样过程；\\(\\eta=0\\) 时给定初始噪声后可以确定性生成。它与连续 ODE 视角相关，但有限网格更新不应未经推导就等同于任意 Euler 或 Heun 离散式。采样过程、训练目标和模型参数化需要分别列清楚。",
           "Flow Matching 直接回归所选概率路径的速度。使用与扩散一致的 Gaussian 路径时，可以把 score 学习和速度学习联系起来；采用线性端点插值等其他路径时，中间分布与数值几何会改变。Rectified Flow 的基础直线路径回归与这种条件流形式密切相关，Reflow 则进一步用学得流重新配对端点。",
           "几种方法都可用于条件动作片段，但训练数据、条件编码器、动作坐标和归一化协议仍是独立设计。理论上的边际对应也不保证有限网络、有限训练、离散采样下达到相同质量。可靠的比较先固定数据与条件，再报告路径、训练权重、网络调用次数、随机性和闭环结果。",
-          "后续的 [Flow Matching 专题](#/learn/flow-matching?tab=theory)保留完整的连续性方程与条件期望推导，并用有解析边际场的二维多峰分布分别测量学习误差和积分误差。SDE 求解器则还需要针对随机误差选择强/弱收敛等评价标准，不能直接用 ODE 的逐路径误差阶数替代。"
+          "后续的 [Flow Matching 专题](#/learn/flow-matching?tab=theory)保留完整的连续性方程与条件期望推导，并用有解析边际场的二维多峰分布分别测量学习误差和积分误差。SDE 求解器则还需要针对随机误差选择强/弱收敛等评价标准，不能直接用 ODE 的逐路径误差阶数替代。",
+          "Score 提供分布的局部信息，SDE 与 ODE 则把局部运动连接到整体密度变化。只有固定路径、时间约定与正则条件，才能判断噪声、Score、速度和采样器之间哪些关系成立。"
         ],
         "comparison": {
           "title": "比较生成方法时固定的四个对象",
@@ -468,7 +470,7 @@
             ]
           ]
         },
-        "lead": "前面的推导建立了若干精确联系，却没有把所有生成算法变成同一件事。训练目标、状态参数化、边际路径和有限步采样器是不同的比较层次。沿这些层次重新整理 DDPM、DDIM、Score 与 Flow，可以避免从局部等式推断整体训练效果相同。"
+        "lead": "方法等价需要说明比较的是哪一层：输出的代数转换、理想边际分布、训练目标，还是有限步采样结果。前面只建立了带条件的联系。下面据此分别定位 DDPM、DDIM、Score 与 Flow。"
       }
     ],
     "shapes": [
@@ -644,6 +646,6 @@
         ]
       }
     ],
-    "lead": "扩散网络可以预测噪声，却没有直接输出样本密度；要解释它为何能驱动生成，需要找到噪声预测与分布变化之间的量。Score 描述对数密度在状态空间中的局部变化，随机微分方程进一步把局部扰动与整体密度演化连接起来。本章从可手算的 Gaussian score 开始，推导去噪恒等式、反向 SDE 和概率流 ODE，明确它们与噪声及速度参数化等价的范围。"
+    "lead": "Score 是对数概率密度对样本坐标的梯度，描述当前位置附近密度增加的方向和速率。随机微分方程（SDE）用漂移与随机扰动描述样本运动，概率流 ODE 则在相应条件下用确定性运动得到同一组边际分布。本章先认识这些对象，再说明怎样从加噪监督学习 Score，以及它怎样用于反向生成和速度场转换。"
   }
 ]

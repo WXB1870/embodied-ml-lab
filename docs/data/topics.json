@@ -3,7 +3,7 @@
     "id": "mlp",
     "title": "MLP：表达、梯度与优化",
     "subtitle": "手算前向与梯度，核对张量形状，再完成带归一化和有效池化的训练实验。",
-    "lead": "MLP 是理解神经网络的最小完整模型：线性组合决定特征怎样混合，非线性改变可表示的函数，损失与反向传播把监督转成参数更新。本章用同一个 2→3→2 网络，从三条输入计算隐藏表示、半均方误差、五组梯度及一次 SGD 更新，并与代码逐项核对。建立计算链后，再讨论激活、有限宽度的表示能力、初始化与序列读出，区分函数能否表达、信息是否保留以及优化是否找到合适参数。",
+    "lead": "多层感知机（MLP）是一种将全连接仿射层与非线性激活交替组合的神经网络，也就是由可学习参数组织的多层函数模型。仿射层混合输入特征，激活使组合能够表达非线性关系，损失与反向传播再让参数从数据中学习。本章沿同一个 2→3→2 网络认识各组成部分，完成前向、损失、五组梯度与一次更新，再讨论表达能力和训练条件。",
     "minutes": 180,
     "prerequisites": [
       "tensor",
@@ -88,7 +88,7 @@
         "takeaway": "函数相同不保证参数梯度或训练轨迹相同；非线性、秩与参数化要分别分析。",
         "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
         "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。",
-        "lead": "已有的矩阵运算可以组合输入特征，但连续叠加线性层是否就能表示更复杂的关系，需要先分清。仿射变换与非线性激活各自改变函数的不同部分。先建立这两个组成单元，才能解释深度为什么可能有用，以及它何时只是换了一种参数化。",
+        "lead": "仿射层用权重混合输入并加偏置，激活函数对所得响应作非线性变换。将两者交替组合才构成这里讨论的 MLP；只有仿射层的堆叠仍然是一个仿射映射。先认识这两个单元，再追踪完整网络。",
         "codeKind": "runnable"
       },
       {
@@ -119,7 +119,7 @@
           "explanation": "[B,T,D] 可以直接送进 Linear(D,H)，得到 [B,T,H]；每个时间位置独立复用相同参数。直接 reshape 成 [B,D,T] 并不是交换时间和通道，它只重新解释线性存储顺序，可能得到形状正常、语义已错的输入。",
           "check": "用 torch.arange 构造每个位置都不同的输入，逐个检查一个指定 b,t 的输出，而不只 assert 最终 shape。"
         },
-        "lead": "数学上相同的仿射变换，在代码中可能采用不同的权重朝向与批次布局。明确每个轴代表样本、位置还是特征，才能同时核对前向乘法、参数共享和反向归约。下面固定一种约定，为后续手算与实现建立共同语言。",
+        "lead": "网络形状约定说明每个数组承载输入、隐藏表示、输出还是参数，以及各轴怎样对应。参数量则计数独立可学习的数值，不随同一权重被多少样本复用而增加。下面固定同一个 2→3→2 模型，为全部手算建立坐标。",
         "codeKind": "fragment"
       },
       {
@@ -200,7 +200,7 @@
           ],
           "conclusion": "前向、目标、反向和更新属于同一组状态；五组梯度中只有四组模型参数交给优化器。完整计算链可以逐项复算，不能由“loss 下降”单独替代梯度正确性验证。"
         },
-        "lead": "前向例子已经给出了预测和损失，接下来需要计算每个参数应如何影响这个损失。反向传播沿相同的依赖关系传递局部导数，并在共享参数处累加贡献。先延续单样本手算，再推广到批量矩阵形式，可以明确每个转置和求和从哪里来。",
+        "lead": "反向传播是沿前向依赖反向应用链式法则、计算损失对各参数梯度的过程。激活的局部导数调节每条路径，共享权重汇总各样本贡献。下面继续使用刚才的输入、参数与损失，逐项算出五组梯度。",
         "comparison": {
           "title": "五组导数：公式、形状与本例数值",
           "columns": [
@@ -255,7 +255,7 @@
         ],
         "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
         "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
-        "lead": "反向传播中，激活函数通过自己的局部导数调节传向上一层的信号。不同激活不仅改变输出曲线，也改变负区间、饱和区和折点附近的更新方式。应将这些导数性质与隐藏层的表达需求、输出层的目标语义分别对应。"
+        "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。"
       },
       {
         "id": "constructive-approximation",
@@ -270,7 +270,7 @@
           "还应区分表示、学习和泛化。本构造直接使用指定节点的准确函数值，没有研究 SGD 能否从随机初值找到这些参数，也没有涵盖带噪标签、有限采样或数据分布改变。前面建立的反向传播只提供寻找参数的局部更新方向，是否找到这组构造仍需分析优化过程；链式法则可复习 [矩阵微分](#/learn/matrix-grad)。输入信息被读出步骤丢弃时，再大的网络也无法恢复未提供的信息。"
         ],
         "formula": "\\begin{gathered}s(x)=f(a)+m_0\\operatorname{ReLU}(x-a)+\\sum_{j=1}^{K-1}(m_j-m_{j-1})\\operatorname{ReLU}(x-t_j),\\quad x\\in[a,b],\\\\ \\|f-s\\|_{\\infty,[a,b]}\\le\\frac{M h^2}{8},\\qquad M=\\sup_{x\\in[a,b]}|f^{\\prime\\prime}(x)|.\\end{gathered}",
-        "lead": "掌握前向和反向计算后，可以进一步问：有限个隐藏单元究竟能够表示什么函数？一维分段线性插值提供了一个能显式写出权重、并直接验证误差的例子。这个构造建立表示能力的依据，同时将“存在一组参数”与“训练能找到它”分开。"
+        "lead": "函数逼近是用选定网络的输出在某个范围和误差标准下接近目标函数。它讨论是否存在合适参数，并不保证训练能找到它们。这里用有限个 ReLU 显式构造一维分段线性函数，使表达能力可以直接核验。"
       },
       {
         "id": "initialization-scaling",
@@ -292,7 +292,7 @@
           "explanation": "若第 j 维目标使用 \\(z_j=\\frac{y_j-\\mu_j}{\\sigma_j}\\)，归一化 MSE 对原单位平方误差的权重就是 \\(\\frac1{\\sigma_j^2}\\)。它能改善优化尺度，却不等于保持原物理单位下所有维度等权。统计量若用验证数据计算，还会引入数据泄漏。",
           "check": "只在训练集拟合统计量；同时报告归一化损失和反归一化后的逐维误差，核对最终评估指标使用哪一个空间。"
         },
-        "lead": "能够写出梯度并不意味着各层会在合适的尺度上学习，随机初值可能让信号很快放大或缩小。初始化分析先控制传播的统计量，输入与目标标准化则进一步改变优化坐标和误差权重。把这些机制分开，才能解释有限数值下仍然缓慢或振荡的训练。"
+        "lead": "初始化为网络选择训练起点，标准化改变输入或目标的数值坐标。两者都影响信号与梯度的尺度，但分别作用于参数和数据。下面在已经明确的前反向计算上分析它们，而不把尺度规则当作收敛保证。"
       },
       {
         "id": "objectives",
@@ -350,7 +350,7 @@
             ]
           ]
         },
-        "lead": "相同的网络输出可以被解释为实数预测、类别分数或多个独立标签，损失会据此定义不同的学习问题。输出变换、监督形状与归约分母必须共同匹配这个解释。除了 API 是否使用正确，还要判断目标的最优预测是否符合实际需要。",
+        "lead": "回归预测连续量，单标签分类从互斥类别中选一个，多标签分类则分别判断多个标签是否成立。这些任务可以使用相似的 MLP，却要求不同输出含义与损失。先定义要预测什么，再确定激活、标签形状与归约。",
         "codeKind": "fragment"
       },
       {
@@ -362,7 +362,7 @@
           "train()/eval() 控制 Dropout、BatchNorm 等模块行为，no_grad() 控制是否记录求导图，它们解决不同问题。推理通常同时 eval 与 no_grad；训练冻结骨干时，如果骨干前面还有需要学习的输入适配器，不能把整个骨干前向无条件放进 no_grad。第二个完整演示保存了输入/输出统计缓冲区，展示从原始单位到标准化训练再回到原始单位的完整过程，并分别报告训练和留出损失。"
         ],
         "takeaway": "通过小批数据、梯度和实际参数位移检查优化链路，再分析大规模训练与泛化。",
-        "lead": "前面的局部计算需要在同一批参数上反复发生，才构成可检查的学习过程。一次更新必须连接正确数据、明确损失、可达梯度和实际参数变化。用固定小数据建立这条闭环，可以把基本实现错误与后续泛化问题分开。"
+        "lead": "训练循环是在同一组参数上反复执行取样、前向、计算损失、反向和更新的过程。它把已经手算过的一次变化变成从数据学习的算法。下面用小数据核对各步顺序与实际参数变化。"
       },
       {
         "id": "tokens-readout",
@@ -393,7 +393,7 @@
         },
         "code": "import torch\n\na = torch.tensor([-1., 1.])\nb = torch.tensor([0., 0.])\nassert a.mean() == b.mean()\nassert a.relu().mean().item() == 0.5\nassert b.relu().mean().item() == 0.\ntorch.testing.assert_close(a.relu().mean(), a.repeat(2).relu().mean())\nprint(\"mean before ReLU:\", a.mean().relu().item(), b.mean().relu().item())\nprint(\"ReLU before mean:\", a.relu().mean().item(), b.relu().mean().item())",
         "codeExplanation": "前两项均值相同，因此池化之后再加多少确定性层都无法区分；先做非线性映射可以保留这一差异。最后一个断言说明平均嵌入仍不能识别整体重复次数。",
-        "lead": "MLP 可以在每个 token 上独立工作，但许多任务最终需要从多个位置产生一个输出。读出步骤决定哪些位置关系或统计量被保留，非线性放在汇聚前后也会改变结果。应先分析读出能区分什么输入，再选择头部宽度和深度。",
+        "lead": "读出是把网络内部表示变成最终预测的操作，池化是其中汇总多个位置的一种方式。逐位置 MLP 本身不交换 Token 信息，因此非线性在汇总前后的位置会改变保留的信息。先定义读出，再比较其顺序。",
         "codeKind": "runnable"
       },
       {
@@ -403,10 +403,11 @@
           "训练损失高时，优先检查目标是否可预测、样本与标签是否对齐、数值范围是否合理、损失分母是否正确，以及参数是否真的更新。检查 grad=None 与数值为零的梯度有助于区分没有参与计算和导数为零，但要结合计算图：并非所有参数都应在每条分支中出现。梯度存在也不代表更新有效，还要看优化器参数列表、学习率、裁剪和精度缩放。",
           "若小批数据可以拟合，而独立验证集表现差，才继续分析数据覆盖、模型容量、正则化和划分方式。训练/验证来自同一条轨迹的相邻帧可能让结果过于乐观；验证集上反复调参也会影响独立性。增加隐藏宽度能提高某些函数的拟合能力，但可能加剧记忆噪声。Dropout、权重衰减和早停各有作用，不能取代检查标签与输入的因果关系。",
           "线性读出与非线性 MLP 读出的比较可以帮助判断表示的可用程度，但它不是对“信息是否存在”的绝对检验：有限数据、优化难度和评价指标都会影响结果。头部训练成功不等于冻结骨干学到了新能力；同样，训练失败也不直接证明骨干完全没有信息。报告实验时应说明骨干是否冻结、读出头结构、输入池化、目标标准化、数据划分，以及实际评价的量。",
-          "读出实验还应防止使用未来信息。例如预测当前动作时，输入特征若由整段轨迹包含未来帧的编码器生成，离线拟合可以很好，实际执行却无法获得相同条件。检查特征缓存时应保存其模型版本、处理方式和时间范围，核对训练所需的信息在推理时确实可用。这样的输入可用性检查与选择网络宽度同样重要。"
+          "读出实验还应防止使用未来信息。例如预测当前动作时，输入特征若由整段轨迹包含未来帧的编码器生成，离线拟合可以很好，实际执行却无法获得相同条件。检查特征缓存时应保存其模型版本、处理方式和时间范围，核对训练所需的信息在推理时确实可用。这样的输入可用性检查与选择网络宽度同样重要。",
+          "一个 MLP 的完整计算由仿射层、非线性、读出和损失构成，训练再沿同一依赖回传梯度并更新参数。能解释这条链以后，表达能力、初始化和泛化就成为对同一个模型不同层面的分析。"
         ],
         "takeaway": "将数据、接口、优化、容量和泛化逐层分开验证，避免用一个损失曲线解释所有问题。",
-        "lead": "小网络也会出现损失不降或验证较差，但这些现象可能来自不同环节。诊断应沿输入信息、计算图、参数更新和数据分布逐步排除假设。只有基础训练链路成立以后，容量或正则化的比较才具有清楚的含义。"
+        "lead": "容量限制、优化失败和泛化不足分别指函数族不够、参数没有学到合适解、以及学得结果无法适用于目标数据。它们可能产生相似误差。下面按输入、计算图、更新和数据分布逐项区分。"
       }
     ],
     "implementations": [
@@ -710,7 +711,7 @@
     "id": "cnn",
     "title": "CNN：卷积、采样与空间表示",
     "subtitle": "局部连接与权重共享，如何决定表达能力、平移响应和空间信息。",
-    "lead": "CNN 用局部连接和参数共享处理空间数据，但理解它不能停在“卷积核滑动”。本章先建立单个输出与空间几何，再用代码页同一个 SmallCNN 贯穿两层卷积、激活、全局池化和分类损失，追踪形状、参数、乘加次数、感受野及梯度。之后区分分组结构的表达限制、采样与边界效应，以及特征图变成视觉 token 或空间坐标时的信息条件，保留每一步可以数值核验的依据。",
+    "lead": "卷积神经网络（CNN）是一类通过局部连接和参数共享处理空间数据的神经网络。同一卷积核在不同位置提取局部特征，多层卷积与非线性逐步组合这些特征，读出模块再形成分类或空间预测。它把图像的局部结构写进了网络连接。本章沿同一个 SmallCNN 追踪图像到输出，再解释窗口几何、感受野、采样与信息保留。",
     "minutes": 200,
     "prerequisites": [
       "tensor",
@@ -806,7 +807,7 @@
           ],
           "conclusion": "卷积的可学习之处是核里的数；相同核在各空间位置重复使用，多个输入通道的结果还要相加。"
         },
-        "lead": "图像中的一个局部模式可能出现在许多位置，若每个位置都学习独立权重，就难以直接复用同一种检测规则。卷积通过局部窗口与共享核表达这种结构。先算清单个输出怎样汇总空间和通道信息，再讨论窗口如何移动。"
+        "lead": "卷积层用同一组小型权重在输入不同位置执行局部加权求和，形成输出特征图。一个输出通道通常同时汇总空间窗口和输入通道，核的空间位置并不是输出通道。先看一个输出怎样得到，再扩大到整张图。"
       },
       {
         "id": "spatial-shape",
@@ -870,7 +871,7 @@
             ]
           ]
         },
-        "lead": "知道一个窗口的计算后，还需要确定它能在输入上放置哪些位置。步幅、填充与空洞率分别改变窗口之间、图像边界和窗口内部的采样关系。输出尺寸可以从最后一个合法采样点推导，而不必孤立记忆公式。",
+        "lead": "步幅是相邻窗口在输入上移动的间隔，填充是在边界补入数值，空洞率是核采样点之间的间隔。它们分别改变窗口位置、边界范围与覆盖跨度。输出尺寸由这些几何规则共同决定。",
         "codeKind": "runnable"
       },
       {
@@ -884,7 +885,7 @@
         ],
         "formula": "P=C_{\\rm out}\\frac{C_{\\rm in}}{G}K_hK_w+C_{\\rm out},\\qquad \\operatorname{MACs}\\approx BH_{\\rm out}W_{\\rm out}C_{\\rm out}\\frac{C_{\\rm in}}G K_hK_w",
         "takeaway": "参数由通道和核决定，计算还取决于输出空间位置；二者必须分开估算。",
-        "lead": "同一组核会在许多位置重复计算，因此卷积的参数量与执行工作量具有不同的增长方式。把共享权重写成局部矩阵乘法，可以同时解释节省来自哪里、计算又花在哪里。这也为比较普通卷积与分组结构提供统一口径。",
+        "lead": "参数共享指不同空间位置使用同一组卷积核权重。参数量计数这组可学习数值，计算量还要计入它们被重复使用多少次。区分二者后，才能解释分辨率增加为何主要增加执行工作量而非核参数。",
         "comparison": {
           "title": "贯穿案例 SmallCNN：逐层形状与成本",
           "columns": [
@@ -983,7 +984,7 @@
           ],
           "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。"
         },
-        "lead": "普通卷积同时完成空间滤波和输入通道混合，而这两项工作都可能带来较高成本。分组与深度可分离卷积通过限制连接或拆分步骤降低成本，表达的函数族也随之改变。先看清哪些输入可以影响哪些输出，再分析这种因子分解的秩限制。"
+        "lead": "分组卷积只允许对应的通道组相互连接；深度可分离卷积则通常先逐通道做空间滤波，再用逐点卷积混合通道。这些结构通过限制连接降低成本，也限制了可表示的变换。下面先看连接，再分析秩。"
       },
       {
         "id": "receptive-field",
@@ -1018,7 +1019,7 @@
         },
         "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.zeros(1, 1, 9, dtype=torch.float64, requires_grad=True)\nw = torch.ones(1, 1, 3, dtype=x.dtype)\nfirst = F.conv1d(x, w, dilation=2)\nout = F.conv1d(first, w, dilation=2)\nout.sum().backward()\nexpected = torch.tensor([1., 0., 2., 0., 3., 0., 2., 0., 1.], dtype=x.dtype)\ntorch.testing.assert_close(x.grad.flatten(), expected)\nprint(\"输入导数:\", x.grad.flatten().tolist())\nprint(\"可达偏移:\", x.grad.flatten().nonzero().flatten().tolist())\n\n# 输出形状相同，并不保证采样中心一致。\npositions = torch.arange(6, dtype=torch.float64)[None, None, :] + 0.5\nkernel = torch.ones(1, 1, 3, dtype=positions.dtype) / 3\nleft_pad = F.conv1d(F.pad(positions, (1, 0)), kernel, stride=2)\nright_pad = F.conv1d(F.pad(positions, (0, 1)), kernel, stride=2)\nassert left_pad.shape == right_pad.shape == (1, 1, 3)\n# 只比较中间窗口，避开人工补零边界；线性坐标的窗口均值恰好等于中心。\ntorch.testing.assert_close(left_pad[0, 0, 1], torch.tensor(2.5, dtype=positions.dtype))\ntorch.testing.assert_close(right_pad[0, 0, 1], torch.tensor(3.5, dtype=positions.dtype))\nprint(\"同形输出的中间采样中心:\", left_pad[0, 0, 1].item(), right_pad[0, 0, 1].item())\n",
         "codeExplanation": "输入全零仍有非零导数，因为这里是无激活的线性卷积。全一卷积核让导数直接等于路径数；用非零梯度找支持集，而不是从输出值是否为零推断连接。两层输出只有一个位置，避免混合多个输出的感受野。 后半段用线性坐标输入验证左、右不对称填充导致的采样中心偏移，选择不含补零的窗口，使均值与几何中心可直接对应。",
-        "lead": "单层输出只读取一个窗口，多层输出却会通过上层单元间接依赖更大的输入范围。要定位这片范围，需要同时追踪每层窗口覆盖多宽、相邻单元隔着多少原始像素。先完成简单叠加，再区分覆盖跨度、真实支持集与局部梯度贡献。",
+        "lead": "感受野是一个输出位置可能依赖的原始输入区域。覆盖跨度、实际有路径相连的支持集、以及当前输入下梯度显著的区域是不同对象。先将两层局部窗口的依赖合并，再区分这三种范围。",
         "codeKind": "runnable"
       },
       {
@@ -1041,7 +1042,7 @@
         "formula": "\\begin{aligned}\\frac{\\partial L}{\\partial x_j}&=\\sum_{u:j\\in\\Omega_u}g_u\\frac{\\partial y_u}{\\partial x_j},\\\\\\frac{\\partial y_u^{\\rm avg}}{\\partial x_j}&=\\frac1K\\quad(j\\in\\Omega_u),\\\\\\frac{\\partial y_u^{\\rm max}}{\\partial x_j}&=\\mathbf1\\{j=j_u^*\\}\\quad\\text{（唯一最大值）}.\\end{aligned}",
         "code": "import torch\nimport torch.nn.functional as F\n\ndtype = torch.float64\nx = torch.tensor([[[[1., 4.], [3., 2.]]]], dtype=dtype,\n                 requires_grad=True)\navg = F.avg_pool2d(x, 2)\nmaximum = F.max_pool2d(x, 2)\ng_avg, = torch.autograd.grad(avg.sum(), x)\ng_max, = torch.autograd.grad(maximum.sum(), x)\ntorch.testing.assert_close(g_avg, torch.full_like(x, 0.25))\ntorch.testing.assert_close(g_max, torch.tensor(\n    [[[[0., 1.], [0., 0.]]]], dtype=dtype))\n\n# Same channel mean, different spatial locations.\nmaps = torch.tensor([[[[4., 0.], [0., 0.]]],\n                     [[[0., 0.], [0., 4.]]]], dtype=dtype)\npooled = F.adaptive_avg_pool2d(maps, 1)\nassert not torch.equal(maps[0], maps[1])\ntorch.testing.assert_close(pooled, torch.ones_like(pooled))\nprint(\"平均/最大池化的梯度和 GAP 空间反例均通过。\")\n",
         "codeExplanation": "先用唯一最大值窗口隔离两种梯度分配，再用两个响应位置不同、均值相同的特征图验证 GAP 的不可区分性。这里没有训练随机模型，断言检验的是明确算子的性质。完整实现进一步检查重叠窗口、BN 反向和运行统计。",
-        "lead": "卷积决定局部特征如何提取与混合，但连续的线性卷积还不足以形成一般的非线性表示。激活改变输入相关的局部映射，归一化改变统计尺度与样本依赖，池化则重新分配空间信息。三者需要分别从前向计算和反向传播理解，才能解释一个 CNN 块怎样学习、又丢弃了什么。",
+        "lead": "激活使卷积特征发生非线性变化，归一化调整指定集合的统计尺度，池化汇总一个局部区域以改变分辨率或读出信息。它们是 CNN 中承担不同职责的模块，不能统称为“提取特征”。下面沿前向与反向分别分析。",
         "codeKind": "runnable"
       },
       {
@@ -1063,7 +1064,7 @@
         },
         "code": "import torch\n\n# 用循环边界排除 Padding 的干扰。\nx = torch.tensor([1., -1.] * 4, dtype=torch.float64)\nshifted = x.roll(1)\nsample = lambda v: v[::2]\nlowpass = lambda v: (v + v.roll(-1)) / 2\nassert torch.equal(sample(x), torch.ones(4, dtype=x.dtype))\nassert torch.equal(sample(shifted), -torch.ones(4, dtype=x.dtype))\ntorch.testing.assert_close(sample(lowpass(x)), sample(lowpass(shifted)))\nprint(\"直接采样:\", sample(x).tolist(), sample(shifted).tolist())\nprint(\"先平均再采样:\", sample(lowpass(x)).tolist())\n",
         "codeExplanation": "roll 使用周期边界，因而两次结果的差异来自步幅采样。两点平均在这个特定最高频例子上完全消除振荡；它不是理想低通滤波器，也不证明所有图像平移后结果相同。",
-        "lead": "核在不同位置共享，使卷积与平移之间存在结构关系，但实际网络还包含边界和下采样。相同图案移动一个像素后，可能落到不同采样相位上。把等变性与采样过程分别分析，才能解释分辨率变化为何可能破坏位置响应的稳定性。",
+        "lead": "平移等变指输入平移后，输出按照对应规则一起平移；平移不变则指输出保持不变。卷积共享结构有助于前者，下采样、边界与池化还会改变具体关系。先分清这两个目标，再讨论采样相位与混叠。",
         "codeKind": "runnable"
       },
       {
@@ -1080,7 +1081,7 @@
         "formula": "\\begin{aligned}P_{\\rm bottleneck}&=2Cb+9b^2,\\\\ P_{\\rm dw+pw}&=k^2C_{\\rm in}+C_{\\rm in}C_{\\rm out},\\\\ P_{\\rm teaching\\ block}&=49C+8C^2.\\end{aligned}",
         "code": "import torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(29)\ntorch.set_num_threads(1)\n\nclass SpatialChannelBlock(nn.Module):\n    \"\"\"隔离空间混合和通道混合的教学块，省略仿射 Norm、偏置和 LayerScale。\"\"\"\n    def __init__(self, channels):\n        super().__init__()\n        self.spatial = nn.Conv2d(channels, channels, 7, padding=3, groups=channels, bias=False)\n        self.norm = nn.LayerNorm(channels, eps=1e-6, elementwise_affine=False)\n        self.expand = nn.Linear(channels, 4 * channels, bias=False)\n        self.project = nn.Linear(4 * channels, channels, bias=False)\n\n    def forward(self, x):\n        h = self.spatial(x).permute(0, 2, 3, 1)  # B,H,W,C；Norm 只统计通道。\n        h = self.project(F.gelu(self.expand(self.norm(h))))\n        return x + h.permute(0, 3, 1, 2)\n\nchannels = 8\nblock = SpatialChannelBlock(channels).double()\nx = torch.randn(2, channels, 5, 7, dtype=torch.float64, requires_grad=True)\ny = block(x)\nassert y.shape == x.shape\nassert sum(p.numel() for p in block.parameters()) == 49 * channels + 8 * channels ** 2 == 904\n\n# 逐像素 Linear 与 1×1 Conv2d 的等价依赖布局变换，不能直接 reshape 交换轴。\nh = block.norm(block.spatial(x).permute(0, 2, 3, 1))\nlinear = block.expand(h).permute(0, 3, 1, 2)\npointwise = F.conv2d(h.permute(0, 3, 1, 2), block.expand.weight[:, :, None, None])\ntorch.testing.assert_close(linear, pointwise)\ny.square().mean().backward()\nassert all(p.grad is not None and torch.isfinite(p.grad).all() for p in block.parameters())\n\n# 末端投影置零使分支严格为零，验证残差恒等关系。\nwith torch.no_grad():\n    block.project.weight.zero_()\ntorch.testing.assert_close(block(x), x)\nprint(\"通过：904 个参数、空间/通道接口、Linear/1×1 等价、梯度与零投影恒等。\")\n",
         "codeExplanation": "C=8 时显式数出 904 个权重；检查 NCHW/NHWC 接口与 Linear/1×1 Conv 等价，核对各参数梯度有限，并以末端投影置零验证恒等旁路。它检验结构关系，不比较各架构的识别准确率或延迟。",
-        "lead": "理解 CNN 的演进，不应把模型名称当成互不相干的知识点。更有用的问题是：空间上下文在何处扩大、通道在何处混合、哪些步骤降采样，以及深层优化通过什么路径传递梯度。下面沿这几种设计选择比较典型结构，参数计算均先忽略偏置和归一化参数。",
+        "lead": "CNN 架构是卷积、非线性、下采样和旁路等模块的组织方式。不同网络主要改变何时扩大空间上下文、何时混合通道，以及怎样保留梯度路径。下面按这些设计选择理解代表结构，再比较其参数与感受野。",
         "codeKind": "runnable",
         "comparison": {
           "title": "四项代表工作：把结构名称对应到设计问题",
@@ -1133,7 +1134,7 @@
         },
         "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.arange(16., dtype=torch.float64).reshape(1, 1, 4, 4)\n# 每个输出通道只选取 2×2 窗口中的一个位置。\nw = torch.eye(4, dtype=x.dtype).reshape(4, 1, 2, 2)\npacked = F.conv2d(x, w, stride=2)   # [1,4,2,2]\nrestored = F.pixel_shuffle(packed, upscale_factor=2)\ntorch.testing.assert_close(restored, x, rtol=0, atol=0)\nprint(\"空间缩小、通道增加:\", tuple(x.shape), \"->\", tuple(packed.shape))\nprint(\"重建最大误差:\", (restored - x).abs().max().item())\n",
         "codeExplanation": "eye(4) 的四行分别选择左上、右上、左下、右下像素。空间位置少了四倍，通道增加四倍，总元素数不变；pixel_shuffle 按对应顺序还原。普通学习到的 patch 投影是否可逆仍取决于秩，后续池化或非线性也可能继续丢失信息。",
-        "lead": "前面的网络仍以特征图组织空间信息，而视觉 Transformer 需要一组 token。局部 patch 投影把这两种表示接起来，但相同输出形状不意味着相同信息损失。先建立卷积与逐块 Linear 的计算等价，再判断投影是否保留了所有输入自由度。",
+        "lead": "Patch 投影是把每个图像小块映射为一个特征向量、形成视觉 Token 序列的操作。特定配置的卷积可实现同一映射，但压缩后的向量未必保留原小块全部信息。先建立计算等价，再判断何时可逆。",
         "codeKind": "runnable"
       },
       {
@@ -1151,7 +1152,7 @@
         "takeaway": "坐标读出需要明确图像处理、特征采样和网格约定；期望位置不等于峰值位置。",
         "code": "import torch\n\nz = torch.tensor([.2, -.3, 1.0], dtype=torch.float64, requires_grad=True)\ngrid = torch.tensor([0., .5, 1.], dtype=z.dtype)\ntau = .7\np = (z / tau).softmax(-1)\nmean = p @ grid\nactual, = torch.autograd.grad(mean, z)\nmanual = p * (grid - mean) / tau\ntorch.testing.assert_close(actual, manual)\npeaks = torch.tensor([1., -1., 1.], dtype=z.dtype)\nfor temperature in (1., .1, .01):\n    coord = (peaks / temperature).softmax(-1) @ grid\n    torch.testing.assert_close(coord, torch.tensor(.5, dtype=z.dtype))\nprint(\"坐标导数:\", actual.tolist())\nprint(\"两个并列峰在低温下仍读出中点\")\n",
         "codeExplanation": "第一部分逐项核对坐标对 logits 的导数。第二部分把两侧峰值设成严格相同，使任何温度下的期望都为 0.5；实际训练中的微小不对称可能打破并列，但不能依赖它保证选中正确目标。",
-        "lead": "空间特征既可以汇聚成全局描述，也可以用于预测具体位置。后者需要保留网格坐标，并选择从热图到坐标的读出规则。空间期望提供可微路径，但它学习的是分布的均值，因此还必须分析梯度与多峰歧义。",
+        "lead": "空间读出是把带位置的特征图转换为坐标或位置分布的操作。空间期望将归一化热图按网格坐标加权求和，因此可微，却可能落在多个峰之间。下面先定义坐标与读出，再推导梯度和双峰歧义。",
         "codeKind": "runnable"
       },
       {
@@ -1161,12 +1162,13 @@
           "验证一个卷积实现时，先选择能暴露错误的输入：非方形图像和核、多输入通道、不相等的步长与 dilation、不同分组数，以及非对称权重。全零、全一或空间对称的数据可能掩盖核翻转、通道遗漏和轴交换错误。除了前向数值，还应给输出施加一个明确的上游梯度，比较输入、权重和偏置的梯度；只检查 shape 不足以证明可训练性。",
           "unfold 后每列是一个窗口，重叠区域的反向贡献需要相加。Fold 对重叠块也使用累加，因此 Fold(Unfold(x)) 一般等于覆盖计数乘 x，并不自动等于 x。无偏置卷积可写成线性矩阵 C；当边界、步幅和输出形状匹配时，ConvTranspose2d 实现对应的转置算子 \\(C^\\top\\)。它满足内积恒等式 \\(\\langle Cx,z\\rangle=\\langle x,C^\\top z\\rangle\\)，这是反向传播需要的性质，而不是 \\(C^\\top C=I\\)。",
           "取一维核 [1,2]、输入长度 3，\\(C=\\begin{bmatrix}1&2&0\\\\0&1&2\\end{bmatrix}\\)。输入 [1,2,3] 得到 [5,8]，再转置卷积得到 [5,18,16]，显然没有恢复原输入。向量 [4,−2,1] 又在 C 的零空间里，x 与 \\(x+[4,-2,1]\\) 具有相同卷积输出，任何逆函数都无法从这一输出同时恢复两者。output_padding 解决某些输出尺寸歧义，不会补回已经丢掉的数值信息。",
-          "第二个演示采用无外部依赖的合成条纹分类，完整执行训练切分、前向、交叉熵、反向、更新和留出评价。这能检查示例的训练路径，不代表真实图像或机器人场景的泛化。实际视觉后训练还应检查预训练输入约定、相机遮挡、数据增强与标签同步、轨迹划分和闭环行为。训练失败时，可先检查一个小 Batch 的预测、梯度和参数变化，再判断是否需要调整网络。"
+          "第二个演示采用无外部依赖的合成条纹分类，完整执行训练切分、前向、交叉熵、反向、更新和留出评价。这能检查示例的训练路径，不代表真实图像或机器人场景的泛化。实际视觉后训练还应检查预训练输入约定、相机遮挡、数据增强与标签同步、轨迹划分和闭环行为。训练失败时，可先检查一个小 Batch 的预测、梯度和参数变化，再判断是否需要调整网络。",
+          "CNN 从局部共享计算开始，经非线性、多层组合和采样得到空间表示，再由读出形成任务输出。核参数、感受野、分辨率与信息可恢复性描述不同层面，只有沿同一图像的数据流才能把它们联系起来。"
         ],
         "takeaway": "先证明运算与梯度一致，再证明指定训练任务能优化；两种证据回答不同问题。",
         "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.tensor([1., 2., 3.], dtype=torch.float64).reshape(1, 1, 1, 3)\nw = torch.tensor([1., 2.], dtype=x.dtype).reshape(1, 1, 1, 2)\ny = F.conv2d(x, w)\nback = F.conv_transpose2d(y, w)\ntorch.testing.assert_close(y.flatten(), torch.tensor([5., 8.], dtype=x.dtype))\ntorch.testing.assert_close(back.flatten(), torch.tensor([5., 18., 16.], dtype=x.dtype))\nnull = torch.tensor([4., -2., 1.], dtype=x.dtype).reshape_as(x)\ntorch.testing.assert_close(F.conv2d(x + null, w), y)\nz = torch.tensor([2., -1.], dtype=x.dtype).reshape_as(y)\ntorch.testing.assert_close((y * z).sum(), (x * F.conv_transpose2d(z, w)).sum())\nprint(\"卷积后再转置卷积:\", back.flatten().tolist())\nprint(\"转置的内积恒等式成立，但它不是逆映射\")\n",
         "codeExplanation": "用高度为 1 的 Conv2d 表示一维例子，同时覆盖输出值、零空间反例与转置的内积定义。这里 stride=1 且无 padding，输出尺寸唯一；更复杂配置还需对齐 output_padding，才能比较同一线性算子的转置。",
-        "lead": "空间几何与前向数值一致以后，还需验证重叠窗口的反向贡献是否正确累加。卷积转置提供了理解这一步的线性算子视角，但转置不自动等于逆运算。用非对称输入和内积关系进行对照，可以把实现正确性与信息可恢复性分开。",
+        "lead": "卷积转置是卷积线性算子的转置所对应的运算，用于理解输出梯度怎样回到输入，通常不是恢复原图的逆运算。重叠窗口的贡献必须在相同输入位置累加。下面用前向、内积关系与梯度对照检验这一点。",
         "codeKind": "runnable"
       }
     ],
@@ -1487,7 +1489,7 @@
     "id": "transformer",
     "title": "Transformer：注意力、残差与序列建模",
     "subtitle": "从注意力梯度与信息路径，理解表示变换、因果训练和缓存。",
-    "lead": "如何让四个输入位置交换信息，并各自预测下一个符号？本章用同一个两层因果 Transformer 回答这个问题：先看输入、输出与完整网络，再拆开内容读取和逐位置变换，最后把多层表示接到损失与增量生成。Attention 是其中负责信息交换的算子，Transformer 则是将它与 FFN、残差和归一化组合起来的网络架构。QKV 梯度、SwiGLU Jacobian、RoPE 和多层可达性的推导，都用于解释这条具体计算链。",
+    "lead": "Transformer 是一种以注意力进行位置间信息交换、以逐位置前馈网络处理特征，并用残差和归一化组合多层计算的神经网络架构。Attention 是其中的读取机制，不等于整个 Transformer；自回归也只是其中一种任务组织方式。本章用两层因果小模型，将四个输入位置映射为下一符号预测，先认识整网与各模块，再追踪前向、损失、梯度和缓存。",
     "minutes": 240,
     "prerequisites": [
       "attention",
@@ -1602,7 +1604,7 @@
         "code": "import torch\n\ntorch.manual_seed(19)\nx = torch.randn(2, 4, 8)\nprojection = torch.nn.Linear(8, 24)\ny = projection(x)\nassert y.shape == (2, 4, 24)\n",
         "codeExplanation": "这里使用 PyTorch 的权重存储约定 `W:[out_features,in_features]`，所以前向写成 \\(XW^\\top\\)。",
         "takeaway": "先确定每个轴表示什么，再判断 reshape、transpose 和 matmul 是否合理。",
-        "lead": "先确定模型要完成什么，再追踪每一步计算。我们让两条短序列各自预测下一个符号；输入位置之间需要交流，但某个预测不能提前读取自己的答案。下图先给出整网，后面的各节再拆开其中的计算。",
+        "lead": "Token 是序列中携带特征的一个位置，Batch 区分彼此独立的样本，Channel 是一个位置内部的特征坐标。主案例先把离散符号映射为这些向量，再经两层网络预测下一符号。下图给出整网，后续小节拆开其中的模块。",
         "codeKind": "runnable",
         "figures": [
           {
@@ -1628,7 +1630,7 @@
         "formula": "Q=XW_Q^\\top,\\ K=XW_K^\\top,\\ V=XW_V^\\top,\\qquad [B,T,D]\\rightarrow[B,T,H,d_h]\\rightarrow[B,H,T,d_h]",
         "code": "q = q_proj(x).reshape(B, T, H, D // H).transpose(1, 2)\nk = k_proj(x).reshape(B, T, H, D // H).transpose(1, 2)\nv = v_proj(x).reshape(B, T, H, D // H).transpose(1, 2)",
         "takeaway": "投影产生计算角色，reshape 拆分通道，transpose 才交换头轴和位置轴。",
-        "lead": "不同位置可能需要根据一种特征寻找对象，却读取另一种特征作为内容。将匹配与读出分别参数化，便得到 Query、Key 和 Value；这些投影提供可学习的选择方式，并非给每个向量预先指定语义。",
+        "lead": "Q、K、V 投影是把当前表示分别转换成查询、匹配线索和待读取内容的可学习映射。分开这三种角色，使模型可以按一类特征选择位置、再读取另一类内容。下面将这个想法落实到同一个小模型的拆头过程。",
         "codeKind": "fragment",
         "codeExplanation": "这是三个独立投影的局部写法，依赖已定义的 torch、x、B/T/H/D 与三个 Linear。完整模型使用等价的打包 `qkv`，可在[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `CausalAttention.forward` 中运行。",
         "figures": [
@@ -1674,7 +1676,7 @@
           "check": "除看权重外，再固定其他输入，对相关信息做有控制的替换或遮挡，比较输出变化，并检查扰动是否产生了分布外输入。"
         },
         "codeExplanation": "Query 长度 2、Key 长度 4、Q/K 宽度 3、Value 宽度 2 刻意不同，避免方形张量掩盖转置错误。随机 g 对应一个明确标量目标；逐项比较三条反向路径，不能只检查总梯度范数。",
-        "lead": "投影得到匹配特征之后，还需要把一组分数变成稳定的内容读取。先计算一个小例子的归一化权重和输出，再解释缩放如何影响分布，最后沿计算图推导三条反向路径。",
+        "lead": "缩放点积注意力用 Query 与各 Key 的点积打分，调整尺度并经过 Softmax 后，对 Value 作加权汇总。这定义了一次完整的内容读取。先完成手算，再解释缩放与三条反向路径，最后回到主案例张量。",
         "codeKind": "runnable"
       },
       {
@@ -1701,7 +1703,7 @@
           ],
           "conclusion": "拆头是在每个token内部切分通道，不能让时间位置混进head维度。"
         },
-        "lead": "单个注意力矩阵让同一位置的所有 Value 通道共享一组读取权重。多头允许不同子空间采用不同的读取方式，但需要正确拆分、重组和投影，才能把这种自由度接回固定宽度的表示。",
+        "lead": "多头注意力并行执行多套投影与读取，再拼接各头结果，用输出投影混合回模型宽度。各头可以选择不同位置关系，输出投影则把这些读出接回同一个表示。下面先追踪合头，再分析参数与表达限制。",
         "codeKind": "fragment",
         "codeExplanation": "局部片段依赖 `per_head`、B/L/H/d_v 和输出投影。对应[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 中 `CausalAttention.forward` 的最后三步；其中自注意力使用 L=T=4、d_v=4。"
       },
@@ -1722,7 +1724,7 @@
         "formula": "J_{\\rm pre}=I+J_FJ_N,\\qquad J_{\\rm post}=J_N(I+J_F)",
         "code": "x = x + dropout(attention(norm1(x), allowed))\nx = x + dropout(ffn(norm2(x)))",
         "takeaway": "残差、归一化范围与顺序都是模型计算的一部分，不只是训练技巧。",
-        "lead": "多头注意力已经返回 [2,4,8]，接下来要决定怎样利用这次读取，同时保留原表示。先看两条残差组成的完整 Block，把逐位置非线性暂记为 F；再进入下一节拆开 F 的内部计算。",
+        "lead": "Transformer Block 是可以重复堆叠的基本网络单元，通常将注意力、逐位置 FFN、残差连接与归一化组合在一起。主案例的 Pre-LN Block 先读取上下文，再处理更新后的特征，每次都把分支结果加回原表示。先看完整结构，再展开 FFN。",
         "codeKind": "fragment",
         "codeExplanation": "这是 Block 的两行核心计算，依赖 attention、两个 norm、ffn 和 dropout。[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `Block.forward` 额外展开 FFN 维度、无效 Query 清零和缓存返回；训练态 Dropout 为 0.1，数值对照在 eval 下关闭。"
       },
@@ -1741,7 +1743,7 @@
         "takeaway": "Attention 混合位置，FFN 混合每个位置上的通道；两个阶段共同构成表示变换。",
         "code": "import torch\nimport torch.nn.functional as F\n\ntorch.manual_seed(4)\ndtype = torch.float64\nx = torch.randn(3, dtype=dtype)\nWg, Wu = (torch.randn(5, 3, dtype=dtype) for _ in range(2))\nWd = torch.randn(3, 5, dtype=dtype)\ndef f(v):\n    return Wd @ (F.silu(Wg @ v) * (Wu @ v))\ng, u = Wg @ x, Wu @ x\nsigmoid = g.sigmoid()\nsilu_derivative = sigmoid + g * sigmoid * (1 - sigmoid)\nmanual = Wd @ (torch.diag(u * silu_derivative) @ Wg\n               + torch.diag(F.silu(g)) @ Wu)\nactual = torch.autograd.functional.jacobian(f, x)\ntorch.testing.assert_close(actual, manual)\nprint(\"SwiGLU Jacobian 最大误差:\", (actual - manual).abs().max().item())\n",
         "codeExplanation": "为对应公式，这段使用列向量和 `W@x`；模型处理一批行向量时通常写 `x@W.T`。两项分别计算门控与内容支路的导数，合起来才与 autograd 一致。无偏置只为简化记号，不改变乘积求导的两条路径。",
-        "lead": "完整 Block 的第二条分支只作用于当前位置。现在把其中的 F 展开：它怎样在不再读取其他 Token 的情况下处理刚获得的上下文？先沿主案例的 8→32→8 计算，再用 SwiGLU 比较另一种通道交互方式。",
+        "lead": "前馈网络（FFN）是在每个 Token 上独立应用、参数共享的多层感知机。它对注意力已经汇入的上下文作非线性通道变换，本身不再读取其他位置。主案例使用 8→32→8 的 GELU 分支，再以 SwiGLU 作为门控变体比较。",
         "codeKind": "runnable"
       },
       {
@@ -1758,7 +1760,7 @@
         ],
         "formula": "\\begin{aligned}R(\\phi)&=\\begin{bmatrix}\\cos\\phi&-\\sin\\phi\\\\\\sin\\phi&\\cos\\phi\\end{bmatrix}\\\\\\widetilde q_m^\\top\\widetilde k_n&=q^\\top R(m\\omega)^\\top R(n\\omega)k=q^\\top R((n-m)\\omega)k\\\\\\omega_r&=10000^{-2r/d_h},\\quad r=0,\\ldots,d_h/2-1\\end{aligned}",
         "takeaway": "位置机制、索引和配对布局必须一起匹配；shape 相同并不能保证缓存等价。",
-        "lead": "内容匹配本身没有规定哪些位置相邻，也没有区分同一组内容的不同排列。位置机制把这些关系引入计算；从无位置时的对称性出发，可以明确绝对编码和旋转位置编码各自改变了什么。",
+        "lead": "位置编码是向序列计算提供位置或相对关系的机制。RoPE 通过按位置旋转 Q/K 的成对通道，使匹配包含相对位置差；它不同于在输入上加绝对位置向量。下面从无位置时的对称性开始，说明为何需要它及怎样计算。",
         "code": "import math\nimport torch\n\ndtype = torch.float64\ndef rotate(z, angle):\n    c, s = math.cos(angle), math.sin(angle)\n    return torch.tensor([[c, -s], [s, c]], dtype=z.dtype) @ z\n\nq = k = torch.tensor([1., 0.], dtype=dtype)\nomega, m, n = math.pi / 6, 1, 3\nqm, kn = rotate(q, m * omega), rotate(k, n * omega)\ndot = qm @ kn\nrelative = q @ rotate(k, (n - m) * omega)\nshifted = rotate(q, (m + 2) * omega) @ rotate(k, (n + 2) * omega)\ntorch.testing.assert_close(dot, torch.tensor(0.5, dtype=dtype))\ntorch.testing.assert_close(dot, relative)\ntorch.testing.assert_close(dot, shifted)\ntorch.testing.assert_close(qm.norm(), q.norm())\ntorch.testing.assert_close(kn.norm(), k.norm())\nprint(\"rotated q/k:\", qm.tolist(), kn.tolist())\nprint(\"original / relative / shifted:\", dot.item(), relative.item(), shifted.item())\nprint(\"distance 0,2,6,12:\", [round(math.cos(d * omega), 6) for d in (0, 2, 6, 12)])\n",
         "codeKind": "runnable",
         "codeExplanation": "这段确定性二维算例与图中的角度相同，验证范数、相对点积和共同平移。完整模型的 `apply_rope` 把相同计算向量化到 `[2,2,4,4]`，采用标准基数 10000；代码页还验证全序列与多种缓存分块的输出和所有参数梯度。",
@@ -1821,7 +1823,7 @@
             ]
           ]
         },
-        "lead": "位置编码提供位置身份，可见性约束则决定哪些信息允许参与当前预测。Mask 必须在正确的计算阶段改变归一化集合，接口中的布尔值含义也必须与这种数学约定一致。",
+        "lead": "注意力 Mask 定义一行 Query 允许读取哪些 Key。布尔 Mask 通过约定表达允许或禁止，浮点 Mask 则直接给分数加偏置；它们在 Softmax 前改变读取集合或偏好。先固定数学含义，再比较库接口。",
         "codeKind": "fragment",
         "codeExplanation": "接口对照片段，依赖 F、q/k/v、allowed 与 allowed_2d；完整可运行的手写及 SDPA 对照见代码页 `manual-mha`。本章统一用 True 表示允许，在库边界才转换。"
       },
@@ -1846,7 +1848,7 @@
           "混合前缀布局：明确每个区域之间是否允许信息流动，并在所有层保持约定。"
         ],
         "takeaway": "先由预测目标决定合法条件，再选择 Attention Mask。",
-        "lead": "一个 Block 输出的新表示会成为下一层的输入，后续匹配因此针对已经包含上下文的信息。先理解这种逐层更新，再追踪信息可能经过的路径，才能同时解释深度的作用和间接泄漏的风险。",
+        "lead": "多层可见性描述信息经过若干层连接后，可能从哪些原始输入到达当前输出。单层 Mask 约束的是直接读取，多层还会产生间接路径。下面沿两层模型说明表示更新、因果性以及间接泄漏。",
         "code": "import math\nimport torch\n\nx = torch.tensor([[1., 0.], [0., 2.], [-1., 1.]], dtype=torch.float64)\ndef layer(z):\n    weights = torch.softmax(z @ z.T / math.sqrt(z.shape[-1]), dim=-1)\n    return z + weights @ z, weights\n\nh, a_first = layer(x)\ny, a_second = layer(h)\nfrozen_readout = h + a_first @ h\nassert not torch.allclose(a_first, a_second)\nassert not torch.allclose(y, frozen_readout)\ntorch.testing.assert_close(a_first.sum(-1), torch.ones(3, dtype=x.dtype))\ntorch.testing.assert_close(a_second.sum(-1), torch.ones(3, dtype=x.dtype))\nprint(\"通过：相同投影与可见性下，更新后的表示改变了第二层读取权重。\")\n",
         "codeExplanation": "这里关闭位置编码、FFN 和学习投影，只保留内容匹配与残差，避免把不同参数的影响混入对照。frozen_readout 刻意重复使用第一层权重；它与真正重新计算第二层注意力不同。多层可达性和完整梯度的验证见代码页中对应实现。",
         "codeKind": "runnable",
@@ -1878,7 +1880,7 @@
           "explanation": "若一行所有分数均为负无穷，普通稳定Softmax中的“减去行最大值”会遇到负无穷减负无穷。用一个很大的负数替代也不自动正确：所有分数相同会产生均匀分布，仍然读入无效Value。",
           "check": "教学实现对全无效Query规定零输出，并检查反向梯度有限；不要假定不同API、精度和内核的空行行为相同。"
         },
-        "lead": "可见性规则还要处理不属于真实序列的位置。禁止读取一个 Key 与规定一个无效 Query 的输出并非同一要求，而没有任何合法 Key 的一行需要额外定义，不能留给数值实现猜测。",
+        "lead": "Padding 是为统一存储长度加入的无效位置；全遮蔽行是某个 Query 没有任何合法 Key 的情况。前者需要分别处理输入读取、Query 输出与损失，后者还需要定义空集合读出的数值行为。",
         "codeKind": "fragment",
         "codeExplanation": "局部核心依赖 torch、有限 scores、布尔 allowed 与 v。可独立运行的完整边界检查见 `safe-masked-attention` 练习；`CausalAttention.forward` 在同一安全归一化后继续处理输出偏置和无效 Query。"
       },
@@ -1896,7 +1898,7 @@
         ],
         "formula": "\\begin{aligned}Q&=\\sqrt2\\ln 2\\begin{bmatrix}1&0\\\\0&1\\end{bmatrix},\\quad K=\\begin{bmatrix}1&0\\\\0&1\\\\0&0\\end{bmatrix},\\quad V=\\begin{bmatrix}2&0\\\\0&4\\\\2&2\\end{bmatrix}\\\\ A&=\\operatorname{softmax}_{\\rm row}(QK^\\top/\\sqrt2)=\\begin{bmatrix}1/2&1/4&1/4\\\\1/4&1/2&1/4\\end{bmatrix}\\\\ O&=AV=\\begin{bmatrix}3/2&3/2\\\\1&5/2\\end{bmatrix}\\end{aligned}",
         "takeaway": "Query 决定输出位置，Key 决定匹配，Value 决定被读取的内容。",
-        "lead": "条件序列与待更新序列不一定来自同一组位置。让一组查询读取另一组内容，便得到交叉注意力；其输出长度、条件压缩和梯度路径都应从这种非对称的数据流推导。",
+        "lead": "Cross-Attention 是让一组位置的 Query 读取另一组条件的 Key/Value 的注意力。输出位置由 Query 数量决定，条件序列可以更长或更短。它是主案例之外的一种连接方式，先用独立算例认识，再比较条件压缩。",
         "code": "import math\nimport torch\n\ndtype = torch.float64\nq = (math.sqrt(2) * math.log(2) * torch.eye(2, dtype=dtype)).requires_grad_()\nk = torch.tensor([[1., 0.], [0., 1.], [0., 0.]], dtype=dtype, requires_grad=True)\nv = torch.tensor([[2., 0.], [0., 4.], [2., 2.]], dtype=dtype, requires_grad=True)\n\ndef read(q, k, v, allowed=None):\n    score = q @ k.T / math.sqrt(q.shape[-1])\n    if allowed is not None:\n        score = score.masked_fill(~allowed, -torch.inf)\n    weight = score.softmax(-1)\n    return weight, weight @ v\n\na3, o3 = read(q, k, v)\na2, o2 = read(q, k[:2], v[:2])\nam, om = read(q, k, v, torch.tensor([[1, 1, 0], [1, 1, 0]], dtype=torch.bool))\ntorch.testing.assert_close(a3, torch.tensor([[.5, .25, .25], [.25, .5, .25]], dtype=dtype))\ntorch.testing.assert_close(o3, torch.tensor([[1.5, 1.5], [1., 2.5]], dtype=dtype))\ntorch.testing.assert_close(o2, torch.tensor([[4/3, 4/3], [2/3, 8/3]], dtype=dtype))\ntorch.testing.assert_close(om, o2)\ntorch.testing.assert_close(am[:, :2], a2)\n# One available key: every query reads the same V; score-path gradients vanish.\na1, o1 = read(q, k[:1], v[:1])\ntorch.testing.assert_close(o1, v[:1].expand(2, -1))\ngq, gk, gv = torch.autograd.grad(o1.sum(), (q, k, v))\nassert torch.count_nonzero(gq) == torch.count_nonzero(gk) == 0\ntorch.testing.assert_close(gv[0], torch.tensor([2., 2.], dtype=dtype))\nprint(\"S=3 weights/output:\", a3.tolist(), o3.tolist())\nprint(\"S=2 weights/output:\", a2.tolist(), o2.tolist())\nprint(\"single-key Q/K gradient maxima:\", gq.abs().max().item(), gk.abs().max().item())\n",
         "codeKind": "runnable",
         "codeExplanation": "固定两个 Query，依次改变可用上下文长度为 3、2、1；输出始终有两行。前两个结果可按整数指数质量手算，最后用 Autograd 检验单 Key 时 Q/K 路径梯度为零而 Value 梯度不为零。多头、批量及一般梯度对照保留在代码页的 `manual-mha`，此处只隔离查询与条件的关系。",
@@ -1954,7 +1956,7 @@
           ]
         },
         "takeaway": "自回归由条件分解和输入约束定义；Decoder 这个名称不能代替对训练目标的检查。",
-        "lead": "同样的注意力与前馈模块，可以按不同的信息可用范围组成编码器或解码器。将计算结构和概率分解分别说明，可以避免仅凭模块名称判断是否自回归，或把一种 VLA 的接口推广到所有策略。",
+        "lead": "Encoder 将已知输入编码成表示，Decoder 根据可用上下文产生目标输出；自回归则规定输出按前缀逐项分解。三者分属结构与概率组织两个层次。下面据此比较 BERT、GPT-2、T5 与本章小模型。",
         "figures": [
           {
             "src": "/assets/figures/transformer-original-encoder-decoder.svg",
@@ -1986,7 +1988,7 @@
           ],
           "conclusion": "监督位置、输入可见性与Padding处理应分别写清，再检查组合后的行为。"
         },
-        "lead": "选定自回归分解之后，每个输出位置必须对应一个尚未读取的目标。训练可以利用已知真实前缀并行计算，但需要精确对齐标签和有效监督，才能把结构上的因果性转化为正确的学习目标。",
+        "lead": "Teacher Forcing 是训练时以真实历史作为下一项预测条件的方法。标签移位把每个输出对应到尚未读取的目标，Loss Mask 再决定哪些预测受监督。下面回到同一条五符号序列，完整连接输出头与反向传播。",
         "codeKind": "fragment",
         "codeExplanation": "依赖完整案例中的 `sequence`、TinyLM 实例 `model`、词表大小 `vocab=7` 与 F。可运行的循环见[两层模型实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm)；模型返回 logits、逐层 cache 与可选 trace，因此这里先解包再计算 CE。"
       },
@@ -2012,7 +2014,7 @@
           ],
           "conclusion": "非方形因果Mask与位置编码都要使用绝对位置。可将整段前向结果与多种分块大小的缓存结果逐项比较。"
         },
-        "lead": "自回归生成每轮只追加新位置，因果结构使过去的计算具备复用的可能。把历史不变性对应到每层的 K/V，再处理局部与全局位置的差别，才能保证增量计算与完整前向等价。"
+        "lead": "KV Cache 是保存各层历史 Key 和 Value、在后续调用中复用的增量计算机制。只有历史表示保持不变时，这份中间结果才仍有效。主案例的因果结构提供这一条件，下面将它连接到位置偏移和等价性。"
       },
       {
         "id": "cost-and-inference",
@@ -2029,7 +2031,7 @@
         "code": "import torch\n\nscores = torch.tensor([1000., 1001., 999., 1002.], dtype=torch.float64)\nvalues = torch.tensor([[1., 0.], [0., 2.], [3., 1.], [-1., 4.]], dtype=scores.dtype)\n\ndef stats(s, v):\n    m = s.max()\n    e = (s - m).exp()\n    return m, e.sum(), e @ v\n\nma, la, ra = stats(scores[:2], values[:2])\nmb, lb, rb = stats(scores[2:], values[2:])\nm = torch.maximum(ma, mb)\nwa, wb = (ma - m).exp(), (mb - m).exp()\nmerged = (wa * ra + wb * rb) / (wa * la + wb * lb)\nfull = scores.softmax(-1) @ values\nwrong = (ra / la + rb / lb) / 2\ntorch.testing.assert_close(merged, full)\nassert not torch.allclose(wrong, full)\nprint(\"全局 / 正确分块:\", full.tolist(), merged.tolist())\nprint(\"直接平均局部输出的误差:\", (wrong - full).abs().max().item())\n",
         "takeaway": "输出、梯度和信息流都要验证；训练速度与内存优化不能代替数学等价性检查。",
         "codeExplanation": "分数约为 1000，直接 `exp(scores)` 会溢出；各块减自己的最大值保持数值稳定，合并时再恢复共同尺度。`ra/la` 是块内归一化的输出，缺少该块的全局概率质量，因而直接平均会改变答案。示例不含 Mask；被完全遮蔽的块需要单独跳过或定义零质量，不能对 \\(-\\infty-(-\\infty)\\) 直接求指数。",
-        "lead": "理解数据流后，才可以可靠地估算哪些张量消耗了计算与显存。显式注意力矩阵、投影和缓存具有不同的规模关系；分块归约则说明如何减少中间存储而保持同一个数学输出。",
+        "lead": "计算量计数需要执行的运算，激活显存计数运行中保存的中间量，缓存则保存供后续复用的状态。它们随序列和宽度的增长方式不同。先按数据流分清对象，再解释分块 Softmax 为什么能减少存储。",
         "codeKind": "runnable"
       },
       {
@@ -2039,14 +2041,15 @@
           "先沿数据流找到输入组织：图像经过何种骨干，语言如何分词，状态怎样投影，动作是离散 token、连续查询还是噪声序列。随后标注 token 排列和每个区域长度，再找构建位置编码与 Attention Mask 的位置。这样能够把配置中的网络宽度、头数、动作长度和前向中的张量对应起来。",
           "再逐层追踪参数更新路径：哪些模块冻结，哪些适配器或动作头训练，Loss 从哪些输出计算，梯度经过哪些条件分支。冻结参数、`no_grad`、`detach`、缓存复用各自改变不同内容，不能相互替代。模型可以把视觉语言骨干与动作生成器分开，也可以通过统一 token 序列交互；后训练修改必须服从具体模型的输入输出和可见性约定。",
           "最后检查训练与部署的一致性：图像处理、tokenizer 特殊符号、归一化统计、时间编号、推理步数、有效位和动作还原必须配套。注意力热图可帮助发现错误连接，却不能单凭高权重断言某个区域就是决策原因：V 的内容、输出投影和后续层都会改变最终影响。需要用受控输入扰动、消融和闭环评估支持模型行为的解释。",
-          "把以上接口放进动作策略后，应继续区分潜变量解码、离散 token 自回归、Diffusion 和 Flow 的生成目标。它们可以共享视觉语言条件编码，却不能互换输出头、时间约定或采样器。[生成式动作策略](#/learn/generative-policy) 将这些接口与 ACT、闭环重规划及后训练目标连接起来。"
+          "把以上接口放进动作策略后，应继续区分潜变量解码、离散 token 自回归、Diffusion 和 Flow 的生成目标。它们可以共享视觉语言条件编码，却不能互换输出头、时间约定或采样器。[生成式动作策略](#/learn/generative-policy) 将这些接口与 ACT、闭环重规划及后训练目标连接起来。",
+          "回看主案例：符号先变成带位置身份的表示，每层注意力读取可见上下文，FFN 重组当前位置特征，残差传递更新，输出头与标签定义学习目标。生成时仍是这个函数，只在历史不变的条件下用 K/V 缓存省去重算。"
         ],
         "bullets": [
           "输入约定 → 投影形状 → 位置与可见性 → Block → 输出头与损失 → 缓存和执行。",
           "先在小张量上建立可重复的对照，再替换优化内核或接入大模型。"
         ],
         "takeaway": "从任务条件到代码证据逐层核对，比只记住 Attention 公式更接近独立修改模型的能力。",
-        "lead": "前面的机制可以作为阅读具体策略模型的共同语言，但不能预先决定某个模型采用哪一种结构。沿实际观测、条件、动作和损失的流向逐项定位，才能把通用理论连接到可靠的后训练修改。"
+        "lead": "VLA 是将视觉与语言条件用于动作预测的模型家族，Transformer 可以承担其观测编码或动作计算。位置、Mask、条件流与损失决定具体接口。下面用本章已定义的机制阅读这些连接，不预设所有 VLA 都有同一架构。"
       }
     ],
     "implementations": [
@@ -2481,7 +2484,7 @@
     "id": "flow-matching",
     "title": "Flow Matching",
     "subtitle": "概率路径、条件回归与数值生成。",
-    "lead": "怎样训练一个网络，把容易采样的高斯噪声变成指定的二维双峰分布？本章先把这个生成任务写成一批可监督的中间状态与速度，再解释网络为什么学习条件平均速度，以及推理时如何沿它积分。贯穿案例沿用同一组分布、条件编号和变量；单高斯只用于解析计算。最后区分学习误差、积分误差与动作接口，并把 Flow Matching 与扩散路径联系起来。",
+    "lead": "Flow Matching（流匹配）是一种训练连续生成流的方法：先规定从噪声到数据的一系列中间分布，再学习推动它们变化的速度场。条件 Flow Matching 用已知训练端点构造可监督的速度样本；推理则从新噪声出发，对学得速度场积分。本章用同一个二维双峰分布认识路径、条件速度、边际速度和网络近似，再推导训练依据与采样误差。",
     "minutes": 240,
     "prerequisites": [
       "probability",
@@ -2634,7 +2637,7 @@
             ]
           ]
         },
-        "lead": "我们能采到目标数据，却很难直接写出一个从随机数到目标样本的函数。先从标准高斯取得许多起点，再学习每个时间、每个位置应该朝哪里移动：这把生成问题变成了速度预测问题。",
+        "lead": "速度场是一个根据当前位置、时间与条件给出瞬时移动方向和速率的函数。许多噪声起点沿它运动，终点集合才构成生成分布。我们先明确要生成的双峰分布，再解释怎样从已有数据为这个函数建立监督。",
         "figures": [
           {
             "src": "assets/experiments/fm-mixture-distributions.svg",
@@ -2656,7 +2659,7 @@
         "code": "import torch\n\nnoise = torch.tensor([[-1.0, 2.0]], dtype=torch.float64)\ndata = torch.tensor([[1.6, 0.6]], dtype=torch.float64)\nt = torch.tensor([[0.25]], dtype=torch.float64)  # [B,1] for [B,2]\nx_t = (1 - t) * noise + t * data\ntarget_velocity = data - noise\ntorch.testing.assert_close(x_t, torch.tensor([[-0.35, 1.65]], dtype=torch.float64))\ntorch.testing.assert_close(target_velocity, torch.tensor([[2.6, -1.4]], dtype=torch.float64))\nfor endpoint, expected in ((0.0, noise), (1.0, data)):\n    torch.testing.assert_close((1-endpoint)*noise + endpoint*data, expected)\neps = 1e-5\nplus = (1-t-eps)*noise + (t+eps)*data\nminus = (1-t+eps)*noise + (t-eps)*data\ntorch.testing.assert_close((plus-minus)/(2*eps), target_velocity)\nprint(\"state / conditional target:\", x_t.tolist(), target_velocity.tolist())\n",
         "codeExplanation": "这段完整代码只验证固定配对的插值与导数，没有训练网络，也没有生成新的数据样本。二维批次用 t:[B,1]；换成动作块 [B,H,D] 时应显式改为 [B,1,1]。两者都让一个样本内的全部坐标共享生成时间。",
         "takeaway": "先核对“路径、导数、端点”三者，再阅读网络结构。",
-        "lead": "要训练速度网络，需要先构造能够直接计算状态和速度的样本路径。线性端点插值提供了最简单的起点：已知两端即可得到中间状态与时间导数。它说明监督从何而来，同时留下一个待解问题——推理时不知道数据端点，网络应当预测哪一种速度。",
+        "lead": "线性条件路径是在固定噪声与数据端点之间进行插值的样本路径。路径在每个时间的位置和导数都可直接算出，因此为速度回归提供训练输入与标签。下面沿同一对二维端点先完成这一步。",
         "codeKind": "runnable"
       },
       {
@@ -2690,7 +2693,7 @@
         },
         "code": "import torch\n\ntarget = torch.tensor([-2.0, 4.0], dtype=torch.float64)\nposterior = torch.tensor([0.75, 0.25], dtype=torch.float64)\nmean = (posterior * target).sum()\nvariance = (posterior * (target - mean).square()).sum()\nprediction = torch.tensor(0.8, dtype=torch.float64, requires_grad=True)\nsample_loss = (posterior * (prediction - target).square()).sum()\nmarginal_loss = (prediction - mean).square()\n(sample_grad,) = torch.autograd.grad(sample_loss, prediction)\n(marginal_grad,) = torch.autograd.grad(marginal_loss, prediction)\nassert torch.allclose(sample_loss, marginal_loss + variance)\nassert torch.allclose(sample_grad, marginal_grad)\n\n# A weight depending on the hidden target changes the conditional mean.\nweights = torch.tensor([1.0, 3.0], dtype=torch.float64)\nweighted_mean = (posterior * weights * target).sum() / (posterior * weights).sum()\nassert torch.allclose(weighted_mean, torch.tensor(1.0, dtype=torch.float64))\nprint('mean / irreducible MSE:', mean.item(), variance.item())\nprint('equal expected gradients:', sample_grad.item(), marginal_grad.item())\nprint('target-weighted mean:', weighted_mean.item())",
         "codeExplanation": "posterior 表示已经给定同一 \\(x\\)、\\(t\\)、\\(c\\) 后两种隐藏目标的概率。完整求和得到期望梯度，因此两个梯度精确相同，为 2.6；只抽其中一个目标则不会逐次相同。给正向目标三倍权重后，最优值从 −0.5 变为 1，说明端点相关加权会改掉原条件均值。",
-        "lead": "同一个中间状态可能由不同端点配对产生，而这些配对给出的速度未必相同。网络只能读取当前状态、时间和条件，因此无法逐一还原隐藏配对。平方误差的最优预测是条件期望；先推导这一回归结果，才能解释所学速度场的含义。"
+        "lead": "本章的条件速度是固定训练端点路径的时间导数；边际速度是在给定中间状态、时间与观测条件后，对可能端点速度求条件平均。网络只看到后面这些可用信息。平方回归为何以这个平均为最优解，是本节要证明的关系。"
       },
       {
         "id": "network-conditioning",
@@ -2708,7 +2711,7 @@
           "explanation": "训练时使用真实目标动作构造\\(x_t\\)属于目标生成过程的一部分，但把目标动作另行作为条件\\(c\\)传入网络会形成另一种任务。未来观测、未来事件和结果标签也不能在部署不可得时充当输入。",
           "check": "列出每个网络输入的获取时刻、来源和推理路径。固定noise与\\(t\\)替换条件时，还应检查网络是否有合理的条件敏感性。"
         },
-        "lead": "理论速度依赖当前状态、生成时间与观测条件，网络接口必须保留这三类不同信息。时间决定当前路径位置，条件决定要生成哪类样本，动作轴决定联合建模范围。逐项对应输入语义，可以避免仅凭形状正确就接受错误广播或条件泄漏。"
+        "lead": "速度网络是将当前生成状态、生成时间与已知条件映射为速度向量的参数化函数。三类输入分别提供“在哪里”“处于哪一阶段”“要生成哪类数据”。先定义接口，才能判断拼接、广播与条件编码是否正确。"
       },
       {
         "id": "training-objective",
@@ -2724,7 +2727,7 @@
         "takeaway": "改变时间采样而不校正权重，会改变模型正在优化的积分目标。",
         "code": "import math\n\n# Midpoint quadrature in U; t=sqrt(U) follows q(t)=2t.\nn = 20000\nnaive = corrected = 0.0\nfor i in range(n):\n    u = (i + 0.5) / n  # avoids the endpoint t=0\n    t = math.sqrt(u)\n    loss_t = t * t\n    naive += loss_t / n\n    corrected += loss_t / (2 * t) / n\nassert abs(naive - 0.5) < 1e-10\nassert abs(corrected - 1 / 3) < 1e-6\nprint('unweighted / importance-corrected:', naive, corrected)",
         "codeExplanation": "这里用确定性中点积分减少抽样噪声，验证的是换测度公式。循环在 \\(U\\) 坐标等距，但 \\(t\\) 坐标不等距；`loss_t/(2*t)` 补回 \\(1/q(t)\\)。它不模拟神经网络，只隔离“改时间分布是否改目标”这一件事。",
-        "lead": "已经明确速度网络的输入和监督后，一次训练只需要抽样、插值与回归，无需先求解生成 ODE。真正影响优化目标的是时间如何抽取、误差如何加权以及哪些坐标有效。把这些选择写成期望，才能判断改动是在估计同一个目标，还是改变了学习问题。",
+        "lead": "CFM 训练目标是模型速度与抽到的条件路径速度之间的平均平方误差。时间采样决定哪些阶段更常出现，权重决定这些误差怎样进入总体目标。先认识一次回归，再判断采样变化是否仍在估计同一个目标。",
         "codeKind": "runnable"
       },
       {
@@ -2758,7 +2761,7 @@
         },
         "code": "import math\n\nfor kh in (0.5, 1.0, 3.0):\n    exact = math.exp(-kh)\n    euler = 1 - kh\n    heun = 1 - kh + 0.5 * kh * kh\n    print(f'kappa*h={kh}: exact={exact:.6f}, Euler={euler:.3f}, Heun={heun:.3f}')\n\ninitial_states = [-2.0, -0.5, 1.0, 3.0]\ncollapsed = [x + 1.0 * (-x) for x in initial_states]\nassert collapsed == [0.0] * len(initial_states)\nassert len(set(math.exp(-1.0) * x for x in initial_states)) == len(initial_states)",
         "codeExplanation": "三个因子直接来自把速度 −κ\\(x\\) 代入更新式。最后取 \\(\\kappa=h=1\\)，所有 Euler 输出变成零，而精确解仍区分四个初值。这证明“确定性更新”“可逆 ODE”和“可逆的离散采样器”不是同一性质。",
-        "lead": "训练得到的是瞬时速度，生成样本还需要把这些局部变化累积到终点。有限步求解器用若干速度评估近似时间积分，因此会引入独立于模型误差的离散化误差。从积分形式推导 Euler 与 Heun，可以解释第二次求值的作用以及步数的成本。",
+        "lead": "ODE 求解器用有限次速度评估，近似连续运动的时间积分。Euler 使用当前速度走一步，Heun 先预测终点再用首尾速度平均修正。它们把同一个学得场转成样本，同时引入独立的数值误差。",
         "codeKind": "runnable"
       },
       {
@@ -2781,7 +2784,7 @@
           ],
           "conclusion": "同一端点分布可以对应不同的耦合和中间路径。独立插值不能用“标准差线性插值”替代。"
         },
-        "lead": "现在可以训练和采样了，但怎样判断网络的速度与积分器分别有没有算对？先把主案例中的混合分布缩成一个高斯分量，使条件平均与精确轨迹都能手推；这是一项解析对照，之后仍回到原来的两个条件与双峰。"
+        "lead": "解析边际场是依据已知分布直接推得、无需神经网络估计的平均速度函数。单高斯端点使这个函数和对应轨迹都可求出，所以适合检查理论与求解器。这里暂时只看一个分量，再回到原双峰案例。"
       },
       {
         "id": "probability-path",
@@ -2795,7 +2798,7 @@
         ],
         "formula": "\\begin{aligned}\\frac{d}{dt}\\mathbb E[\\varphi(X_t)]&=\\mathbb E[\\nabla\\varphi(X_t)\\cdot U_t]\\\\&=\\int\\nabla\\varphi(x)\\cdot u_t(x)p_t(x)\\,dx\\\\&=-\\int\\varphi(x)\\nabla\\!\\cdot(p_tu_t)(x)\\,dx\\\\\\Longrightarrow\\quad\\partial_t p_t&+\\nabla\\!\\cdot(p_tu_t)=0\\end{aligned}",
         "takeaway": "条件期望保留任意测试函数的期望变化，这正是样本速度能够定义边际运输的原因。",
-        "lead": "单高斯中可以直接验证终点分布；换回双峰后，训练配对的直线与实际生成轨迹不再逐条对应。要证明生成仍合理，需要验证条件平均速度保留了每个区域的概率质量变化。下面的推导回答这一问题，不要求实际训练时求解密度方程。"
+        "lead": "概率路径是一组随时间变化的分布，连续性方程描述运动中的概率质量如何流入和流出各区域。条件平均速度应保留这条分布演化，而非复刻每一条训练直线。下面证明这项连接为何成立。"
       },
       {
         "id": "conditional-mixture-experiment",
@@ -2870,7 +2873,7 @@
             "caption": "训练直线与实际积分轨迹分开绘制。速度箭头是 \\(t=0.5\\) 的瞬时场切片；误差图使用共同初始噪声，实线度量积分误差，虚线包含学习场与解析场的偏差。 速度箭头使用统一显示比例，不代表某个固定积分步长。"
           }
         ],
-        "lead": "前面已经完成路径、回归、训练和采样，并证明理想边际场的运输关系。现在回到开篇的两个条件、四个分量中心和标准差 0.28，检查实际学习场距理想场还有多远，以及有限步求解又增加了多少误差。"
+        "lead": "混合分布的责任权重，是给定当前状态后各分量的后验概率；它用于组合各分量的边际场。主案例保留可解析的参考场，因此能分别衡量网络学习偏差与同一场上的积分误差。下面回到开篇数据作这个对照。"
       },
       {
         "title": "耦合决定中间分布与路径难度",
@@ -2883,7 +2886,7 @@
         "id": "endpoint-coupling",
         "formula": "\\begin{aligned}\\operatorname{Cov}((1-t)X_0+tX_1)&=(1-t)^2\\Sigma_0+t^2\\Sigma_1\\\\&\\quad+t(1-t)(C_{01}+C_{01}^{\\top}),\\\\\\Sigma_i&=\\operatorname{Cov}(X_i),\\quad C_{01}=\\operatorname{Cov}(X_0,X_1).\\end{aligned}",
         "takeaway": "配对方式是概率路径设计的一部分；相同端点不意味着相同训练难度。",
-        "lead": "解析例子已经显示，训练中的随机端点配对通常不会被生成轨迹逐一复刻。配对方式还会改变中间分布本身，即使起点与终点分布完全不变。把耦合写进协方差和路径定义，可以进一步理解独立配对、最优运输和重新配对各自改变什么。"
+        "lead": "端点耦合是同时规定噪声与数据怎样成对出现的联合分布。它不只给出两端各自的分布，还决定中间插值与监督速度。改变耦合可能改变学习难度，但条件直线本身不表示已找到全局最优运输。"
       },
       {
         "id": "reverse-time",
@@ -2905,7 +2908,7 @@
           ],
           "conclusion": "读仓库时成组核对插值、target与采样网格；变量名称无法代替端点定义。"
         },
-        "lead": "不同实现可能把噪声放在时间零点，也可能放在时间终点；这两种记号都可以描述同一生成过程。关键在于路径的导数也要随时钟变换。通过链式法则同时处理速度、时间输入与积分方向，才能可靠地比较训练和推理代码。"
+        "lead": "时间重参数化是用另一个时钟描述同一条运动，例如把噪声端从零改记为一。它同时改变时间输入、路径导数和积分步长。下面用链式法则说明怎样成套转换，而非只改变目标的一个符号。"
       },
       {
         "id": "chunk-masking",
@@ -2923,7 +2926,7 @@
           "explanation": "设两条动作块长度上限均为2，每步有2个有效动作维度，实际有效时间步总数为3。若每个有效标量的平方误差都是4，总误差为24，逐元素MSE应为\\(24/6=4\\)。只除以3会得到8。",
           "check": "把Mask显式扩展到损失形状，核对求和与分母；改变Padding数量不应改变有效元素等权的目标。"
         },
-        "lead": "把生成变量扩展为动作块后，并非每个坐标都具有有效监督。轨迹末尾、异构动作维和缺失标签需要形成明确的有效集合。损失分母和网络输入协议分别控制监督权重与信息流，不能用同一个 Mask 名称代替两项设计。"
+        "lead": "动作块是一次联合生成的多步命令数组，有效监督集合是其中真正有标签的标量坐标。输入可见性与损失有效位控制不同关系。下面分别定义它们，再计算变长或异构动作的分母。"
       },
       {
         "id": "action-units",
@@ -2936,7 +2939,7 @@
         ],
         "formula": "a=\\mu+Sz,\\quad v_a=Sv_z,\\quad \\|\\hat v_z-v_z\\|^2=(\\hat v_a-v_a)^TS^{-T}S^{-1}(\\hat v_a-v_a),\\quad A_0\\sim\\mathcal N(\\mu,SS^T)",
         "takeaway": "保存动作单位、坐标系、相对/绝对定义、归一化统计与输出维度表，和保存权重同样必要。",
-        "lead": "速度回归发生在模型采用的动作坐标中，而机器人最终读取的是物理命令。标准化不仅改变误差权重，也改变对应的初始噪声和路径尺度。沿同一个坐标变换追踪状态与时间导数，可以解释哪些量必须一起转换，哪些不能直接下发执行。"
+        "lead": "动作标准化是物理动作与模型坐标之间的固定变换，速度则是同一生成轨迹在相应坐标中的时间导数。尺度变化既改变误差度量，也改变物理坐标下的起始噪声。它不是仅对最后输出换一个单位。"
       },
       {
         "id": "diffusion-rectified",
@@ -2954,11 +2957,11 @@
         ],
         "formula": "\\begin{aligned}\nu_t(x)&=\\frac{\\dot\\alpha_t}{\\alpha_t}x+\n\\left(\\frac{\\dot\\alpha_t}{\\alpha_t}\\sigma_t^2-\\sigma_t\\dot\\sigma_t\\right)s_t(x),\\\\\n\\mathbb E\\|Z_1-Z_0\\|^2\n&=\\mathbb E\\left\\|\\int_0^1u_t(Z_t)\\,dt\\right\\|^2\\\\\n&\\le\\int_0^1\\mathbb E\\|u_t(Z_t)\\|^2dt\n\\le\\mathbb E\\|X_1-X_0\\|^2 .\n\\end{aligned}",
         "takeaway": "“预测的是谁、沿哪条路径、用什么方程采样”比模型被统称为 diffusion 或 flow 更有辨别力。",
-        "lead": "前面从路径与回归建立了 Flow Matching，现在可以用同一语言比较 Diffusion 和 Rectified Flow。比较的起点应是路径系数、条件均值与耦合，而不是算法输出是否随机。先推导 Score 到速度的转换，再讨论 Reflow 改变端点配对的作用。"
+        "lead": "Rectified Flow 用端点直线的速度回归构造生成流，Reflow 再用已有流产生的新端点耦合重新训练。Diffusion 与这些方法可在声明的概率路径和参数化下比较。下面先定义路径系数，再区分重新配对与更换求解器。"
       },
       {
         "id": "multimodal-and-evaluation",
-        "title": "多模态、可逆性与有限时间的边界",
+        "title": "多峰分布、可逆性与有限时间的边界",
         "body": [
           "固定条件与初始噪声后，ODE 给出一个确定终点；不同噪声进入场的不同位置，可以被运输到不同高密度区域。速度是局部条件平均，不是对所有最终动作求一个全局平均。因此连续、非线性的流可以产生多峰密度，确定性动力学不等于单点输出。",
           "可逆性说明的是另一个问题。对足够光滑、在整段时间中解存在且唯一的场，记流映射为 \\(\\phi_t\\)，初值 Jacobian 为 \\(J_t=\\frac{\\partial\\phi_t}{\\partial x_0}\\)。它满足 \\(\\frac{dJ_t}{dt}=(\\nabla_xu_t)J_t\\)、\\(J_0=I\\)，所以：",
@@ -2971,7 +2974,7 @@
         ],
         "takeaway": "局部平均速度能产生多峰密度；正则可逆流、奇异终点与粗离散更新仍需区分。",
         "formula": "\\frac{dJ_t}{dt}=\\nabla_xu_t(\\phi_t)J_t,\\qquad \\det J_t=\\exp\\!\\left(\\int_0^t\\nabla\\!\\cdot u_s(\\phi_s)\\,ds\\right)",
-        "lead": "一个确定性 ODE 可以把不同噪声送向不同高密度区域，因此确定性并不排斥多峰生成。另一方面，光滑流的可逆性也限制了它在有限时间内能够精确表示哪些分布。将这些性质与有限步采样分开，才能合理解释模式覆盖和采样失败。"
+        "lead": "多峰分布指同一条件下的密度具有多个峰，不是图像与语言所说的多模态输入。不同噪声沿确定性场可以到达不同区域；流的可逆性则约束这种变换能在有限时间内精确表示什么。下面分别讨论这两件事。"
       },
       {
         "id": "debugging-workflow",
@@ -2979,7 +2982,8 @@
         "body": [
           "第一步冻结所有随机性，直接打印一组 noise、action、\\(t\\)、\\(x_t\\) 和 target，核对端点、有限差分与张量轴。第二步用常量场或解析线性场代替神经网络，独立测试积分器：若方向、步长或第二阶段求值有误，应优先修正采样器。第三步固定少量完整三元组，检查参数确实收到有限梯度并发生更新；这个任务可以过拟合，但不能据此宣称在持续重采样的真实目标上达到零风险。",
           "第四步恢复噪声与时间采样，并按时间区间、动作维度和轨迹长度分别报告误差。只有一个总 Loss 时，容易忽略某些区间严重失真，或者被大量低难度 Padding 掩盖。检查预测速度与目标速度的范数、有效分母、梯度范数和优化器参数集合。条件高维时，可在固定 noise 与 \\(t\\) 的情况下替换条件，确认目标网络确实对相关条件敏感，而不是只输出与观测无关的平均动作。",
-          "第五步固定网络和初始噪声，逐渐增加积分预算，区分数值误差、模型误差和条件错误；同时记录 NFE 和真实耗时。第六步用同一条样本贯通训练预处理、保存加载、推理后处理，逐维比对单位、归一化、相机顺序和 Action Chunk 对齐。若离线目标正常而部署异常，先完成这条一致性检查，再归因于模型容量或数据不足。每次只改变一个可解释因素，并保留反例与输出证据。"
+          "第五步固定网络和初始噪声，逐渐增加积分预算，区分数值误差、模型误差和条件错误；同时记录 NFE 和真实耗时。第六步用同一条样本贯通训练预处理、保存加载、推理后处理，逐维比对单位、归一化、相机顺序和 Action Chunk 对齐。若离线目标正常而部署异常，先完成这条一致性检查，再归因于模型容量或数据不足。每次只改变一个可解释因素，并保留反例与输出证据。",
+          "Flow Matching 将生成连接成三个环节：路径提供可监督样本，平方回归估计边际速度，求解器从新噪声积分产生数据。条件速度、理想边际场、学得场与有限步轨迹分别属于不同环节，解释误差时应始终区分。"
         ],
         "bullets": [
           "最小对照：固定数据、噪声、时间、模型权重和采样网格。",

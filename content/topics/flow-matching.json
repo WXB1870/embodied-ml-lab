@@ -2,7 +2,7 @@
   "id": "flow-matching",
   "title": "Flow Matching",
   "subtitle": "概率路径、条件回归与数值生成。",
-  "lead": "怎样训练一个网络，把容易采样的高斯噪声变成指定的二维双峰分布？本章先把这个生成任务写成一批可监督的中间状态与速度，再解释网络为什么学习条件平均速度，以及推理时如何沿它积分。贯穿案例沿用同一组分布、条件编号和变量；单高斯只用于解析计算。最后区分学习误差、积分误差与动作接口，并把 Flow Matching 与扩散路径联系起来。",
+  "lead": "Flow Matching（流匹配）是一种训练连续生成流的方法：先规定从噪声到数据的一系列中间分布，再学习推动它们变化的速度场。条件 Flow Matching 用已知训练端点构造可监督的速度样本；推理则从新噪声出发，对学得速度场积分。本章用同一个二维双峰分布认识路径、条件速度、边际速度和网络近似，再推导训练依据与采样误差。",
   "minutes": 240,
   "prerequisites": [
     "probability",
@@ -155,7 +155,7 @@
           ]
         ]
       },
-      "lead": "我们能采到目标数据，却很难直接写出一个从随机数到目标样本的函数。先从标准高斯取得许多起点，再学习每个时间、每个位置应该朝哪里移动：这把生成问题变成了速度预测问题。",
+      "lead": "速度场是一个根据当前位置、时间与条件给出瞬时移动方向和速率的函数。许多噪声起点沿它运动，终点集合才构成生成分布。我们先明确要生成的双峰分布，再解释怎样从已有数据为这个函数建立监督。",
       "figures": [
         {
           "src": "assets/experiments/fm-mixture-distributions.svg",
@@ -177,7 +177,7 @@
       "code": "import torch\n\nnoise = torch.tensor([[-1.0, 2.0]], dtype=torch.float64)\ndata = torch.tensor([[1.6, 0.6]], dtype=torch.float64)\nt = torch.tensor([[0.25]], dtype=torch.float64)  # [B,1] for [B,2]\nx_t = (1 - t) * noise + t * data\ntarget_velocity = data - noise\ntorch.testing.assert_close(x_t, torch.tensor([[-0.35, 1.65]], dtype=torch.float64))\ntorch.testing.assert_close(target_velocity, torch.tensor([[2.6, -1.4]], dtype=torch.float64))\nfor endpoint, expected in ((0.0, noise), (1.0, data)):\n    torch.testing.assert_close((1-endpoint)*noise + endpoint*data, expected)\neps = 1e-5\nplus = (1-t-eps)*noise + (t+eps)*data\nminus = (1-t+eps)*noise + (t-eps)*data\ntorch.testing.assert_close((plus-minus)/(2*eps), target_velocity)\nprint(\"state / conditional target:\", x_t.tolist(), target_velocity.tolist())\n",
       "codeExplanation": "这段完整代码只验证固定配对的插值与导数，没有训练网络，也没有生成新的数据样本。二维批次用 t:[B,1]；换成动作块 [B,H,D] 时应显式改为 [B,1,1]。两者都让一个样本内的全部坐标共享生成时间。",
       "takeaway": "先核对“路径、导数、端点”三者，再阅读网络结构。",
-      "lead": "要训练速度网络，需要先构造能够直接计算状态和速度的样本路径。线性端点插值提供了最简单的起点：已知两端即可得到中间状态与时间导数。它说明监督从何而来，同时留下一个待解问题——推理时不知道数据端点，网络应当预测哪一种速度。",
+      "lead": "线性条件路径是在固定噪声与数据端点之间进行插值的样本路径。路径在每个时间的位置和导数都可直接算出，因此为速度回归提供训练输入与标签。下面沿同一对二维端点先完成这一步。",
       "codeKind": "runnable"
     },
     {
@@ -211,7 +211,7 @@
       },
       "code": "import torch\n\ntarget = torch.tensor([-2.0, 4.0], dtype=torch.float64)\nposterior = torch.tensor([0.75, 0.25], dtype=torch.float64)\nmean = (posterior * target).sum()\nvariance = (posterior * (target - mean).square()).sum()\nprediction = torch.tensor(0.8, dtype=torch.float64, requires_grad=True)\nsample_loss = (posterior * (prediction - target).square()).sum()\nmarginal_loss = (prediction - mean).square()\n(sample_grad,) = torch.autograd.grad(sample_loss, prediction)\n(marginal_grad,) = torch.autograd.grad(marginal_loss, prediction)\nassert torch.allclose(sample_loss, marginal_loss + variance)\nassert torch.allclose(sample_grad, marginal_grad)\n\n# A weight depending on the hidden target changes the conditional mean.\nweights = torch.tensor([1.0, 3.0], dtype=torch.float64)\nweighted_mean = (posterior * weights * target).sum() / (posterior * weights).sum()\nassert torch.allclose(weighted_mean, torch.tensor(1.0, dtype=torch.float64))\nprint('mean / irreducible MSE:', mean.item(), variance.item())\nprint('equal expected gradients:', sample_grad.item(), marginal_grad.item())\nprint('target-weighted mean:', weighted_mean.item())",
       "codeExplanation": "posterior 表示已经给定同一 \\(x\\)、\\(t\\)、\\(c\\) 后两种隐藏目标的概率。完整求和得到期望梯度，因此两个梯度精确相同，为 2.6；只抽其中一个目标则不会逐次相同。给正向目标三倍权重后，最优值从 −0.5 变为 1，说明端点相关加权会改掉原条件均值。",
-      "lead": "同一个中间状态可能由不同端点配对产生，而这些配对给出的速度未必相同。网络只能读取当前状态、时间和条件，因此无法逐一还原隐藏配对。平方误差的最优预测是条件期望；先推导这一回归结果，才能解释所学速度场的含义。"
+      "lead": "本章的条件速度是固定训练端点路径的时间导数；边际速度是在给定中间状态、时间与观测条件后，对可能端点速度求条件平均。网络只看到后面这些可用信息。平方回归为何以这个平均为最优解，是本节要证明的关系。"
     },
     {
       "id": "network-conditioning",
@@ -229,7 +229,7 @@
         "explanation": "训练时使用真实目标动作构造\\(x_t\\)属于目标生成过程的一部分，但把目标动作另行作为条件\\(c\\)传入网络会形成另一种任务。未来观测、未来事件和结果标签也不能在部署不可得时充当输入。",
         "check": "列出每个网络输入的获取时刻、来源和推理路径。固定noise与\\(t\\)替换条件时，还应检查网络是否有合理的条件敏感性。"
       },
-      "lead": "理论速度依赖当前状态、生成时间与观测条件，网络接口必须保留这三类不同信息。时间决定当前路径位置，条件决定要生成哪类样本，动作轴决定联合建模范围。逐项对应输入语义，可以避免仅凭形状正确就接受错误广播或条件泄漏。"
+      "lead": "速度网络是将当前生成状态、生成时间与已知条件映射为速度向量的参数化函数。三类输入分别提供“在哪里”“处于哪一阶段”“要生成哪类数据”。先定义接口，才能判断拼接、广播与条件编码是否正确。"
     },
     {
       "id": "training-objective",
@@ -245,7 +245,7 @@
       "takeaway": "改变时间采样而不校正权重，会改变模型正在优化的积分目标。",
       "code": "import math\n\n# Midpoint quadrature in U; t=sqrt(U) follows q(t)=2t.\nn = 20000\nnaive = corrected = 0.0\nfor i in range(n):\n    u = (i + 0.5) / n  # avoids the endpoint t=0\n    t = math.sqrt(u)\n    loss_t = t * t\n    naive += loss_t / n\n    corrected += loss_t / (2 * t) / n\nassert abs(naive - 0.5) < 1e-10\nassert abs(corrected - 1 / 3) < 1e-6\nprint('unweighted / importance-corrected:', naive, corrected)",
       "codeExplanation": "这里用确定性中点积分减少抽样噪声，验证的是换测度公式。循环在 \\(U\\) 坐标等距，但 \\(t\\) 坐标不等距；`loss_t/(2*t)` 补回 \\(1/q(t)\\)。它不模拟神经网络，只隔离“改时间分布是否改目标”这一件事。",
-      "lead": "已经明确速度网络的输入和监督后，一次训练只需要抽样、插值与回归，无需先求解生成 ODE。真正影响优化目标的是时间如何抽取、误差如何加权以及哪些坐标有效。把这些选择写成期望，才能判断改动是在估计同一个目标，还是改变了学习问题。",
+      "lead": "CFM 训练目标是模型速度与抽到的条件路径速度之间的平均平方误差。时间采样决定哪些阶段更常出现，权重决定这些误差怎样进入总体目标。先认识一次回归，再判断采样变化是否仍在估计同一个目标。",
       "codeKind": "runnable"
     },
     {
@@ -279,7 +279,7 @@
       },
       "code": "import math\n\nfor kh in (0.5, 1.0, 3.0):\n    exact = math.exp(-kh)\n    euler = 1 - kh\n    heun = 1 - kh + 0.5 * kh * kh\n    print(f'kappa*h={kh}: exact={exact:.6f}, Euler={euler:.3f}, Heun={heun:.3f}')\n\ninitial_states = [-2.0, -0.5, 1.0, 3.0]\ncollapsed = [x + 1.0 * (-x) for x in initial_states]\nassert collapsed == [0.0] * len(initial_states)\nassert len(set(math.exp(-1.0) * x for x in initial_states)) == len(initial_states)",
       "codeExplanation": "三个因子直接来自把速度 −κ\\(x\\) 代入更新式。最后取 \\(\\kappa=h=1\\)，所有 Euler 输出变成零，而精确解仍区分四个初值。这证明“确定性更新”“可逆 ODE”和“可逆的离散采样器”不是同一性质。",
-      "lead": "训练得到的是瞬时速度，生成样本还需要把这些局部变化累积到终点。有限步求解器用若干速度评估近似时间积分，因此会引入独立于模型误差的离散化误差。从积分形式推导 Euler 与 Heun，可以解释第二次求值的作用以及步数的成本。",
+      "lead": "ODE 求解器用有限次速度评估，近似连续运动的时间积分。Euler 使用当前速度走一步，Heun 先预测终点再用首尾速度平均修正。它们把同一个学得场转成样本，同时引入独立的数值误差。",
       "codeKind": "runnable"
     },
     {
@@ -302,7 +302,7 @@
         ],
         "conclusion": "同一端点分布可以对应不同的耦合和中间路径。独立插值不能用“标准差线性插值”替代。"
       },
-      "lead": "现在可以训练和采样了，但怎样判断网络的速度与积分器分别有没有算对？先把主案例中的混合分布缩成一个高斯分量，使条件平均与精确轨迹都能手推；这是一项解析对照，之后仍回到原来的两个条件与双峰。"
+      "lead": "解析边际场是依据已知分布直接推得、无需神经网络估计的平均速度函数。单高斯端点使这个函数和对应轨迹都可求出，所以适合检查理论与求解器。这里暂时只看一个分量，再回到原双峰案例。"
     },
     {
       "id": "probability-path",
@@ -316,7 +316,7 @@
       ],
       "formula": "\\begin{aligned}\\frac{d}{dt}\\mathbb E[\\varphi(X_t)]&=\\mathbb E[\\nabla\\varphi(X_t)\\cdot U_t]\\\\&=\\int\\nabla\\varphi(x)\\cdot u_t(x)p_t(x)\\,dx\\\\&=-\\int\\varphi(x)\\nabla\\!\\cdot(p_tu_t)(x)\\,dx\\\\\\Longrightarrow\\quad\\partial_t p_t&+\\nabla\\!\\cdot(p_tu_t)=0\\end{aligned}",
       "takeaway": "条件期望保留任意测试函数的期望变化，这正是样本速度能够定义边际运输的原因。",
-      "lead": "单高斯中可以直接验证终点分布；换回双峰后，训练配对的直线与实际生成轨迹不再逐条对应。要证明生成仍合理，需要验证条件平均速度保留了每个区域的概率质量变化。下面的推导回答这一问题，不要求实际训练时求解密度方程。"
+      "lead": "概率路径是一组随时间变化的分布，连续性方程描述运动中的概率质量如何流入和流出各区域。条件平均速度应保留这条分布演化，而非复刻每一条训练直线。下面证明这项连接为何成立。"
     },
     {
       "id": "conditional-mixture-experiment",
@@ -391,7 +391,7 @@
           "caption": "训练直线与实际积分轨迹分开绘制。速度箭头是 \\(t=0.5\\) 的瞬时场切片；误差图使用共同初始噪声，实线度量积分误差，虚线包含学习场与解析场的偏差。 速度箭头使用统一显示比例，不代表某个固定积分步长。"
         }
       ],
-      "lead": "前面已经完成路径、回归、训练和采样，并证明理想边际场的运输关系。现在回到开篇的两个条件、四个分量中心和标准差 0.28，检查实际学习场距理想场还有多远，以及有限步求解又增加了多少误差。"
+      "lead": "混合分布的责任权重，是给定当前状态后各分量的后验概率；它用于组合各分量的边际场。主案例保留可解析的参考场，因此能分别衡量网络学习偏差与同一场上的积分误差。下面回到开篇数据作这个对照。"
     },
     {
       "title": "耦合决定中间分布与路径难度",
@@ -404,7 +404,7 @@
       "id": "endpoint-coupling",
       "formula": "\\begin{aligned}\\operatorname{Cov}((1-t)X_0+tX_1)&=(1-t)^2\\Sigma_0+t^2\\Sigma_1\\\\&\\quad+t(1-t)(C_{01}+C_{01}^{\\top}),\\\\\\Sigma_i&=\\operatorname{Cov}(X_i),\\quad C_{01}=\\operatorname{Cov}(X_0,X_1).\\end{aligned}",
       "takeaway": "配对方式是概率路径设计的一部分；相同端点不意味着相同训练难度。",
-      "lead": "解析例子已经显示，训练中的随机端点配对通常不会被生成轨迹逐一复刻。配对方式还会改变中间分布本身，即使起点与终点分布完全不变。把耦合写进协方差和路径定义，可以进一步理解独立配对、最优运输和重新配对各自改变什么。"
+      "lead": "端点耦合是同时规定噪声与数据怎样成对出现的联合分布。它不只给出两端各自的分布，还决定中间插值与监督速度。改变耦合可能改变学习难度，但条件直线本身不表示已找到全局最优运输。"
     },
     {
       "id": "reverse-time",
@@ -426,7 +426,7 @@
         ],
         "conclusion": "读仓库时成组核对插值、target与采样网格；变量名称无法代替端点定义。"
       },
-      "lead": "不同实现可能把噪声放在时间零点，也可能放在时间终点；这两种记号都可以描述同一生成过程。关键在于路径的导数也要随时钟变换。通过链式法则同时处理速度、时间输入与积分方向，才能可靠地比较训练和推理代码。"
+      "lead": "时间重参数化是用另一个时钟描述同一条运动，例如把噪声端从零改记为一。它同时改变时间输入、路径导数和积分步长。下面用链式法则说明怎样成套转换，而非只改变目标的一个符号。"
     },
     {
       "id": "chunk-masking",
@@ -444,7 +444,7 @@
         "explanation": "设两条动作块长度上限均为2，每步有2个有效动作维度，实际有效时间步总数为3。若每个有效标量的平方误差都是4，总误差为24，逐元素MSE应为\\(24/6=4\\)。只除以3会得到8。",
         "check": "把Mask显式扩展到损失形状，核对求和与分母；改变Padding数量不应改变有效元素等权的目标。"
       },
-      "lead": "把生成变量扩展为动作块后，并非每个坐标都具有有效监督。轨迹末尾、异构动作维和缺失标签需要形成明确的有效集合。损失分母和网络输入协议分别控制监督权重与信息流，不能用同一个 Mask 名称代替两项设计。"
+      "lead": "动作块是一次联合生成的多步命令数组，有效监督集合是其中真正有标签的标量坐标。输入可见性与损失有效位控制不同关系。下面分别定义它们，再计算变长或异构动作的分母。"
     },
     {
       "id": "action-units",
@@ -457,7 +457,7 @@
       ],
       "formula": "a=\\mu+Sz,\\quad v_a=Sv_z,\\quad \\|\\hat v_z-v_z\\|^2=(\\hat v_a-v_a)^TS^{-T}S^{-1}(\\hat v_a-v_a),\\quad A_0\\sim\\mathcal N(\\mu,SS^T)",
       "takeaway": "保存动作单位、坐标系、相对/绝对定义、归一化统计与输出维度表，和保存权重同样必要。",
-      "lead": "速度回归发生在模型采用的动作坐标中，而机器人最终读取的是物理命令。标准化不仅改变误差权重，也改变对应的初始噪声和路径尺度。沿同一个坐标变换追踪状态与时间导数，可以解释哪些量必须一起转换，哪些不能直接下发执行。"
+      "lead": "动作标准化是物理动作与模型坐标之间的固定变换，速度则是同一生成轨迹在相应坐标中的时间导数。尺度变化既改变误差度量，也改变物理坐标下的起始噪声。它不是仅对最后输出换一个单位。"
     },
     {
       "id": "diffusion-rectified",
@@ -475,11 +475,11 @@
       ],
       "formula": "\\begin{aligned}\nu_t(x)&=\\frac{\\dot\\alpha_t}{\\alpha_t}x+\n\\left(\\frac{\\dot\\alpha_t}{\\alpha_t}\\sigma_t^2-\\sigma_t\\dot\\sigma_t\\right)s_t(x),\\\\\n\\mathbb E\\|Z_1-Z_0\\|^2\n&=\\mathbb E\\left\\|\\int_0^1u_t(Z_t)\\,dt\\right\\|^2\\\\\n&\\le\\int_0^1\\mathbb E\\|u_t(Z_t)\\|^2dt\n\\le\\mathbb E\\|X_1-X_0\\|^2 .\n\\end{aligned}",
       "takeaway": "“预测的是谁、沿哪条路径、用什么方程采样”比模型被统称为 diffusion 或 flow 更有辨别力。",
-      "lead": "前面从路径与回归建立了 Flow Matching，现在可以用同一语言比较 Diffusion 和 Rectified Flow。比较的起点应是路径系数、条件均值与耦合，而不是算法输出是否随机。先推导 Score 到速度的转换，再讨论 Reflow 改变端点配对的作用。"
+      "lead": "Rectified Flow 用端点直线的速度回归构造生成流，Reflow 再用已有流产生的新端点耦合重新训练。Diffusion 与这些方法可在声明的概率路径和参数化下比较。下面先定义路径系数，再区分重新配对与更换求解器。"
     },
     {
       "id": "multimodal-and-evaluation",
-      "title": "多模态、可逆性与有限时间的边界",
+      "title": "多峰分布、可逆性与有限时间的边界",
       "body": [
         "固定条件与初始噪声后，ODE 给出一个确定终点；不同噪声进入场的不同位置，可以被运输到不同高密度区域。速度是局部条件平均，不是对所有最终动作求一个全局平均。因此连续、非线性的流可以产生多峰密度，确定性动力学不等于单点输出。",
         "可逆性说明的是另一个问题。对足够光滑、在整段时间中解存在且唯一的场，记流映射为 \\(\\phi_t\\)，初值 Jacobian 为 \\(J_t=\\frac{\\partial\\phi_t}{\\partial x_0}\\)。它满足 \\(\\frac{dJ_t}{dt}=(\\nabla_xu_t)J_t\\)、\\(J_0=I\\)，所以：",
@@ -492,7 +492,7 @@
       ],
       "takeaway": "局部平均速度能产生多峰密度；正则可逆流、奇异终点与粗离散更新仍需区分。",
       "formula": "\\frac{dJ_t}{dt}=\\nabla_xu_t(\\phi_t)J_t,\\qquad \\det J_t=\\exp\\!\\left(\\int_0^t\\nabla\\!\\cdot u_s(\\phi_s)\\,ds\\right)",
-      "lead": "一个确定性 ODE 可以把不同噪声送向不同高密度区域，因此确定性并不排斥多峰生成。另一方面，光滑流的可逆性也限制了它在有限时间内能够精确表示哪些分布。将这些性质与有限步采样分开，才能合理解释模式覆盖和采样失败。"
+      "lead": "多峰分布指同一条件下的密度具有多个峰，不是图像与语言所说的多模态输入。不同噪声沿确定性场可以到达不同区域；流的可逆性则约束这种变换能在有限时间内精确表示什么。下面分别讨论这两件事。"
     },
     {
       "id": "debugging-workflow",
@@ -500,7 +500,8 @@
       "body": [
         "第一步冻结所有随机性，直接打印一组 noise、action、\\(t\\)、\\(x_t\\) 和 target，核对端点、有限差分与张量轴。第二步用常量场或解析线性场代替神经网络，独立测试积分器：若方向、步长或第二阶段求值有误，应优先修正采样器。第三步固定少量完整三元组，检查参数确实收到有限梯度并发生更新；这个任务可以过拟合，但不能据此宣称在持续重采样的真实目标上达到零风险。",
         "第四步恢复噪声与时间采样，并按时间区间、动作维度和轨迹长度分别报告误差。只有一个总 Loss 时，容易忽略某些区间严重失真，或者被大量低难度 Padding 掩盖。检查预测速度与目标速度的范数、有效分母、梯度范数和优化器参数集合。条件高维时，可在固定 noise 与 \\(t\\) 的情况下替换条件，确认目标网络确实对相关条件敏感，而不是只输出与观测无关的平均动作。",
-        "第五步固定网络和初始噪声，逐渐增加积分预算，区分数值误差、模型误差和条件错误；同时记录 NFE 和真实耗时。第六步用同一条样本贯通训练预处理、保存加载、推理后处理，逐维比对单位、归一化、相机顺序和 Action Chunk 对齐。若离线目标正常而部署异常，先完成这条一致性检查，再归因于模型容量或数据不足。每次只改变一个可解释因素，并保留反例与输出证据。"
+        "第五步固定网络和初始噪声，逐渐增加积分预算，区分数值误差、模型误差和条件错误；同时记录 NFE 和真实耗时。第六步用同一条样本贯通训练预处理、保存加载、推理后处理，逐维比对单位、归一化、相机顺序和 Action Chunk 对齐。若离线目标正常而部署异常，先完成这条一致性检查，再归因于模型容量或数据不足。每次只改变一个可解释因素，并保留反例与输出证据。",
+        "Flow Matching 将生成连接成三个环节：路径提供可监督样本，平方回归估计边际速度，求解器从新噪声积分产生数据。条件速度、理想边际场、学得场与有限步轨迹分别属于不同环节，解释误差时应始终区分。"
       ],
       "bullets": [
         "最小对照：固定数据、噪声、时间、模型权重和采样网格。",
