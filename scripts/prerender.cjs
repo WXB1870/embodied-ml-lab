@@ -39,7 +39,7 @@ function page(route,title,description,expression,{noindex=false,redirect}={}){
  if(!noindex)pages.push({path:route,title,bytes:Buffer.byteLength(html)});
 }
 for(const name of ['learn','topics','practice','guide'])fs.rmSync(path.join(dist,name),{recursive:true,force:true});
-page('/','机器学习、生成模型与具身策略','从数学机制到可验证实现的技术教材，涵盖神经网络、Transformer、生成模型、策略后训练与闭环评估。','renderCatalog()');
+page('/','机器学习、生成模型与具身策略','个人自用的机器学习与具身智能学习网站，整理原理笔记、代码示例和练习。','renderCatalog()');
 for(const lesson of lessons){
  for(const [tab,suffix] of [['theory',''],['code','code/'],['exercise','exercise/']]){
   const route='/learn/'+lesson.id+'/'+suffix;
