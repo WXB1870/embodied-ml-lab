@@ -195,13 +195,37 @@ def experiment():
     torch.manual_seed(20261106)
     torch.set_num_threads(1)
     model = TeachingVLA().double()
-    images = torch.randn(4, 2, 3, 8, 8, dtype=torch.float64)
-    words = torch.tensor([[1, 2, 3], [2, 3, 0], [3, 1, 2], [1, 2, 0]])
+    # A planar teaching task: move to the named colour and then close the gripper.
+    # Vocabulary: 0=padding, 1=move, 2=red, 3=blue, 4=close.
+    words = torch.tensor([[1, 2, 4], [1, 3, 0], [1, 3, 4], [1, 2, 0]])
+    # Top-left (row, column) of each 2x2 square: [sample, red/blue, row/column].
+    locations = torch.tensor([[[1, 1], [5, 5]], [[1, 5], [5, 1]],
+                              [[5, 1], [1, 5]], [[5, 5], [1, 1]]])
+    images = torch.zeros(4, 2, 3, 8, 8, dtype=torch.float64)
+    for b in range(4):
+        for colour, channel in enumerate((0, 2)):  # RGB red or blue
+            row, column = locations[b, colour].tolist()
+            images[b, :, channel, row:row+2, column:column+2] = 1.0
+    # Both views render the same grid; these are not calibrated physical cameras.
     iv = torch.tensor([[1, 1], [1, 0], [1, 1], [1, 1]], dtype=torch.bool)
     wv = words != 0
     av = torch.tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 0]], dtype=torch.bool)
-    state = torch.randn(4, 4, dtype=torch.float64)
-    actions = torch.tanh(state[:, None, :3] + 0.1 * torch.arange(3)[None, :, None])
+    state = torch.tensor([[0.0, 0.0, 0.0, 0.0], [0.25, -0.25, 0.0, 0.0],
+                          [-0.25, 0.25, 0.0, 0.0], [0.1, 0.2, 0.0, 0.0]],
+                         dtype=torch.float64)  # [x, y, vx, vy], grid units
+    selected = (words[:, 1] == 3).long()
+    # Map square centres from pixel indices to the declared [-1,1] grid frame.
+    centres = (locations.flip(-1).double() + 0.5) / 7.0 * 2.0 - 1.0
+    target_xy = centres[torch.arange(4), selected]
+    requested_steps = av.sum(-1)
+    delta = (target_xy - state[:, :2]) / requested_steps[:, None]
+    actions = torch.cat((delta[:, None].expand(-1, 3, -1),
+                         -torch.ones(4, 3, 1, dtype=torch.float64)), dim=-1).clone()
+    actions[torch.arange(4), requested_steps - 1, 2] = 1.0  # close on last step
+    # Independent label checks: integrate displacements; switch the requested colour.
+    reached = state[:, :2] + torch.where(av[..., None], actions[..., :2], 0.0).sum(1)
+    torch.testing.assert_close(reached, target_xy)
+    assert (target_xy - centres[torch.arange(4), 1 - selected]).abs().sum(-1).min() > 0
     actions[~av] = torch.nan
     batch = (images, words, state, actions, iv, wv, av)
     noise = torch.randn(4, 3, 3, dtype=torch.float64)
@@ -282,7 +306,11 @@ def experiment():
               'cache_velocity_max_error': float((full - cached).abs().max()),
               'cache_sample_max_error': float((generated - generated_full).abs().max()),
               'stale_cache_max_error': float((stale - fresh).abs().max()),
-              'checks': ['finite valid-mask FM loss', 'two parameter groups receive gradients',
+              'task': 'planar named-colour approach; dx, dy, gripper in grid units',
+              'target_xy': target_xy.tolist(),
+              'checks': ['label displacements reach the named colour',
+                         'switching colour changes the target label',
+                         'finite valid-mask FM loss', 'two parameter groups receive gradients',
                          'full/cache velocity and Euler equality', 'changed-image cache invalidation',
                          'missing-view isolation', 'graph-preserving cache gradient equality',
                          'frozen parameter versus input gradient', 'no_grad cuts input route',

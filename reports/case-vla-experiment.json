@@ -1,6 +1,6 @@
 {
   "seed": 20261106,
-  "torch": "2.15.0+cpu",
+  "torch": "2.15.0",
   "dtype": "float64",
   "shapes": {
     "images": [
@@ -26,18 +26,39 @@
       3
     ]
   },
-  "loss_before": 1.287935188682425,
-  "loss_after_40_updates": 0.08756648812250836,
+  "loss_before": 2.3771188980402953,
+  "loss_after_40_updates": 0.14263712399147743,
   "first_step_gradient_norms": {
-    "vision": 0.426417696187561,
-    "language": 0.054512596003486,
-    "prefix": 1.2979475041405437,
-    "expert": 3.901721677225518
+    "vision": 0.2022121367548402,
+    "language": 0.08521978855570553,
+    "prefix": 1.2444440465855955,
+    "expert": 4.067802428801788
   },
-  "cache_velocity_max_error": 4.440892098500626e-16,
-  "cache_sample_max_error": 4.440892098500626e-16,
-  "stale_cache_max_error": 0.13542782422104205,
+  "cache_velocity_max_error": 7.771561172376096e-16,
+  "cache_sample_max_error": 2.636779683484747e-16,
+  "stale_cache_max_error": 0.2560311459972162,
+  "task": "planar named-colour approach; dx, dy, gripper in grid units",
+  "target_xy": [
+    [
+      -0.5714285714285714,
+      -0.5714285714285714
+    ],
+    [
+      -0.5714285714285714,
+      0.5714285714285714
+    ],
+    [
+      0.5714285714285714,
+      -0.5714285714285714
+    ],
+    [
+      0.5714285714285714,
+      0.5714285714285714
+    ]
+  ],
   "checks": [
+    "label displacements reach the named colour",
+    "switching colour changes the target label",
     "finite valid-mask FM loss",
     "two parameter groups receive gradients",
     "full/cache velocity and Euler equality",

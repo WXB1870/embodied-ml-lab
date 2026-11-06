@@ -1,7 +1,7 @@
 {
   "html_pages": 158,
   "lessons": 50,
-  "internal_targets_checked": 6370,
+  "internal_targets_checked": 6377,
   "errors": [],
   "archives": [
     {
@@ -137,7 +137,7 @@
     {
       "path": "/learn/behavior-cloning/",
       "ids": 16,
-      "links": 47,
+      "links": 48,
       "assets": 10
     },
     {
@@ -377,19 +377,19 @@
     {
       "path": "/learn/flow-matching/code/",
       "ids": 16,
-      "links": 30,
+      "links": 31,
       "assets": 10
     },
     {
       "path": "/learn/flow-matching/exercise/",
       "ids": 39,
-      "links": 35,
+      "links": 36,
       "assets": 10
     },
     {
       "path": "/learn/flow-matching/",
       "ids": 33,
-      "links": 76,
+      "links": 79,
       "assets": 12
     },
     {
@@ -893,7 +893,7 @@
     {
       "path": "/learn/transformer/",
       "ids": 26,
-      "links": 107,
+      "links": 106,
       "assets": 16
     },
     {
@@ -929,7 +929,7 @@
     {
       "path": "/learn/vla-architecture/",
       "ids": 18,
-      "links": 78,
+      "links": 80,
       "assets": 13
     },
     {

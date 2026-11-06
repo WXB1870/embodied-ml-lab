@@ -2,15 +2,13 @@
   "id": "transformer",
   "title": "Transformer：注意力、残差与序列建模",
   "subtitle": "从注意力梯度与信息路径，理解表示变换、因果训练和缓存。",
-  "lead": "MLP 在每个位置重组特征，卷积通过局部窗口交流信息，而语言、多视角观测与动作序列还需要根据内容选择远处的信息。Transformer 将这种选择写成可学习的注意力，并与逐位置非线性、残差和归一化组成深层网络。本章从一次可手算的读取开始建立完整 Block，再沿位置与可见性分析多层交互，最后连接自回归训练、缓存和 VLA 条件编码，使公式、张量与生成过程具有一致解释。",
+  "lead": "如何让四个输入位置交换信息，并各自预测下一个符号？本章用同一个两层因果 Transformer 回答这个问题：先看输入、输出与完整网络，再拆开内容读取和逐位置变换，最后把多层表示接到损失与增量生成。Attention 是其中负责信息交换的算子，Transformer 则是将它与 FFN、残差和归一化组合起来的网络架构。QKV 梯度、SwiGLU Jacobian、RoPE 和多层可达性的推导，都用于解释这条具体计算链。",
   "minutes": 240,
   "prerequisites": [
-    "tensor",
-    "matrix-grad",
-    "probability",
-    "mlp",
+    "attention",
+    "residual",
     "normalization",
-    "residual"
+    "embeddings"
   ],
   "relatedLessons": [
     "attention",
@@ -107,20 +105,29 @@
   "sections": [
     {
       "id": "tokens-and-axes",
-      "title": "Batch、Token 与 Channel",
+      "title": "从四个输入位置到下一符号：先看完整模型",
       "body": [
         "一个 token 是某个位置上的特征向量，不必是一个词。语言模型把离散 ID 查表为向量；视觉模型可把图像 Patch 投影为向量；状态编码器可把关节位置、速度等投影为向量。序列的来源可以不同，但进入同一注意力模块后，各轴的含义必须明确。设输入 \\(X\\in\\mathbb{R}^{B\\times T\\times D}\\)：\\(B\\) 是互不相干的样本，\\(T\\) 是同一样本中的位置，\\(D\\) 是该位置携带的特征。",
-        "本章沿一个两层因果语言模型展开：两条样本、每条四个输入位置、表示宽度八，记为 \\(B=2,T=4,D=8\\)；两头注意力给出 \\(H=2,d_h=4\\)，层数另记 \\(N_{\\rm layer}=2\\)，避免与 Query 长度 \\(L\\) 混淆。词表有七个符号，输入 ID 为 `[[0,1,2,3],[3,4,5,6]]`，Embedding 查表得到 `[2,4,8]`。`Linear(8,24)` 在每个位置独立产生二十四个通道，并不混合四个位置；下一节才将这些通道拆成 Q/K/V。",
+        "主案例的完整序列是两条五符号序列：[[0,1,2,3,4],[3,4,5,6,0]]。前四个 ID 构成输入，后四个构成标签，所以 \\(B=2,T=4,D=8\\)；两头注意力取 \\(H=2,d_h=4\\)，层数记为 \\(N_{\\rm layer}=2\\)。Embedding 把输入变成 [2,4,8]，两个 Block 保持这个形状，最后读出头输出 [2,4,7] 的词表分数。第一条样本的位置 2 要预测符号 3，只能读取输入中的 0、1、2。七个 ID 只是教学符号，没有额外语言语义。",
         "阅读真实模型时，先记录每一段 token 对应什么：相机、图像格子、文本、状态、噪声动作、历史帧或特殊标记。再记录拼接顺序、长度、有效位和位置编号。来自同一时间的多相机 token、沿时间排列的动作 token，不应因为都在 T 轴上就被当成同一种顺序。一个良好的输入约定要能把输出位置映射回它的物理或语义来源。",
         "`nn.Linear` 总是映射最后一维；`nn.MultiheadAttention` 默认 `batch_first=False`，使用 `[B,T,D]` 时需要明确设置 `batch_first=True`。约定应在模块边界统一，不能依靠 B 与 T 恰好相等的输入通过形状检查。",
-        "这组尺寸贯穿下面的注意力、残差、FFN、输出头和缓存讨论。[两层模型完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 中，`TinyLM.forward` 是入口，`Block.forward` 连接两条残差，`CausalAttention.forward` 展开注意力，`apply_rope` 处理位置。主案例采用 decoder-only、Pre-LN、GELU 和 RoPE；它用于理解共同机制，不冒充原论文的 Encoder–Decoder 架构。原论文结构在后文单独对照。"
+        "先沿图的左侧从 Embedding 走到输出头，再看右侧一个 Block 的展开：注意力负责跨位置读取，FFN 负责重组当前位置的通道，两次更新分别加回残差。完整实现的 TinyLM.forward、Block.forward 和 CausalAttention.forward 与这三个层次一一对应。主案例采用 decoder-only、Pre-LN、GELU 和 RoPE；原论文的 Encoder–Decoder 是后面的比较对象。现在先进入注意力支路：同一个位置为什么需要分别产生用于匹配和用于读出的向量？"
       ],
       "formula": "X\\in\\mathbb{R}^{B\\times T\\times D},\\qquad \\operatorname{Linear}(X)=XW^\\top+b",
       "code": "import torch\n\ntorch.manual_seed(19)\nx = torch.randn(2, 4, 8)\nprojection = torch.nn.Linear(8, 24)\ny = projection(x)\nassert y.shape == (2, 4, 24)\n",
       "codeExplanation": "这里使用 PyTorch 的权重存储约定 `W:[out_features,in_features]`，所以前向写成 \\(XW^\\top\\)。",
       "takeaway": "先确定每个轴表示什么，再判断 reshape、transpose 和 matmul 是否合理。",
-      "lead": "在讨论信息怎样交流之前，需要先确定一次交流发生在哪些对象之间。Token 是携带特征的位置，Batch 则区分独立样本；明确这两个层次，才能判断后续投影和注意力有没有跨错维度。",
-      "codeKind": "runnable"
+      "lead": "先确定模型要完成什么，再追踪每一步计算。我们让两条短序列各自预测下一个符号；输入位置之间需要交流，但某个预测不能提前读取自己的答案。下图先给出整网，后面的各节再拆开其中的计算。",
+      "codeKind": "runnable",
+      "figures": [
+        {
+          "src": "/assets/figures/transformer-preln-case.svg",
+          "title": "两层教学模型与单层 Pre-LN 数据流",
+          "alt": "同一 B=2,T=4,D=8,H=2 的 decoder-only 模型，从 Embedding 经过两层 Block 到词表头与 CE；右侧展开两条残差、逐位置 FFN 和每层 K/V。",
+          "caption": "本章原创结构图。图中的位置、形状与代码页 TinyLM 一致；为保持可读性省略 Dropout 和 Padding 清零，源码保留二者。Pre-LN 的归一化位置参照 [Xiong et al.](https://proceedings.mlr.press/v119/xiong20b.html)，不是原论文 Encoder–Decoder 的复刻。",
+          "afterParagraph": 2
+        }
+      ]
     },
     {
       "id": "qkv-projections",
@@ -154,7 +161,7 @@
       "title": "从缩放点积到注意力的前向与反向",
       "body": [
         "对某一个 Query 向量 \\(q_i\\)，与所有 Key 向量 \\(k_j\\) 做点积，得到它对各位置的匹配分数。除以 \\(\\sqrt{d_h}\\) 后，沿 Key 轴做 Softmax，得到非负、和为一的权重，再加权求和 \\(V\\)。Query 长度 \\(L\\) 与 Key 长度 \\(S\\) 可以不同；结果的长度仍是 \\(L\\)，因为每个 Query 得到一个读出向量。\\(V\\) 的最后一维也可以与 Q/K 不同。",
-        "手算一例：\\(q=(1,0)\\)、\\(k_1=(1,0)\\)、\\(k_2=(0,1)\\)，则缩放分数为 \\((1/\\sqrt{2},0)\\)，权重约为 \\((0.670,0.330)\\)。若 \\(v_1=(2,0)\\)、\\(v_2=(0,4)\\)，输出约为 \\((1.340,1.321)\\)。将第二个 Key 禁止后，第一项权重应变为一，输出为 \\((2,0)\\)。这个例子同时检查缩放、Softmax 轴、Mask 和 \\(V\\) 的加权方向。",
+        "先隔离一个可以手算的读取，见本节下方的两个 Key 算例；它只缩小一头的通道与候选位置，不替换开篇的训练任务。核对权重与输出之后，再推导缩放和梯度，最后回到主案例 [2,2,4,4] 的张量，判断这些局部规则怎样被批量执行。",
         "缩放因子可以从二阶矩推导，但必须写明假设。令 \\(q,k\\in\\mathbb{R}^{d_h}\\) 是相互独立、零均值的随机向量，协方差分别为 \\(\\Sigma_q,\\Sigma_k\\)。此时 \\(\\mathbb{E}[q^\\top k]=0\\)，方差等于二阶矩。展开 \\((q^\\top k)^2\\) 后，独立性使 \\(\\mathbb{E}[q_iq_jk_ik_j]=\\mathbb{E}[q_iq_j]\\mathbb{E}[k_ik_j]\\)，于是 \\(\\operatorname{Var}(q^\\top k)=\\sum_{i,j}(\\Sigma_q)_{ij}(\\Sigma_k)_{ij}=\\operatorname{tr}(\\Sigma_q\\Sigma_k)\\)。当两者协方差均为 \\(I\\) 时，方差为 \\(d_h\\)；除以 \\(\\sqrt{d_h}\\) 后为 1。各维方差分别为 \\(\\sigma_q^2,\\sigma_k^2\\) 且无相关时，缩放后的方差则为 \\(\\sigma_q^2\\sigma_k^2\\)，不必等于 1。",
         "真实 Self-Attention 的 \\(q,k\\) 可能由同一输入投影而来，因而未必相互独立；训练也会改变其均值、协方差与范数。上述结论解释标准初始化附近的典型 Logit 尺度，不能当作任意 Q/K 的恒等式。缩放使用每头 Q/K 宽度 \\(d_h\\)，而非总模型宽度或序列长度。分数差过大时，Softmax 可能接近 one-hot；分数尺度很小又会接近均匀分布。缩放控制这项变化，不保证模型一定学到合适的选择性。",
         "将[注意力一章推得的 Softmax 导数](#/learn/attention?section=2)写成矩阵前，先记一行缩放分数为 \\((s_1,\\ldots,s_S)\\)、归一化分母为 \\(Z=\\sum_j e^{s_j}\\)，\\(\\delta_{ij}\\) 表示 i=j 时为 1、否则为 0。其 Jacobian 为：\\(J=\\operatorname{diag}(a)-aa^\\top\\)，其中 \\(a\\) 是一个 Query 对所有 Key 的概率列向量。由 \\(J\\mathbf1=0\\)，可知共同平移分数不会改变概率；由 \\(\\operatorname{tr}(J)=1-\\sum_i a_i^2\\)，可见该局部敏感度在 one-hot 极限趋于零。把它接入完整多头计算图时，需要继续区分分数路径与 Value 路径，不能把此极限当成整层所有梯度消失的证明。",
@@ -214,6 +221,27 @@
       "codeExplanation": "局部片段依赖 `per_head`、B/L/H/d_v 和输出投影。对应[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 中 `CausalAttention.forward` 的最后三步；其中自注意力使用 L=T=4、d_v=4。"
     },
     {
+      "id": "block-and-normalization",
+      "title": "把读取结果加回表示：组成可堆叠的 Block",
+      "body": [
+        "一个常见 Pre-LN Block 先归一化输入，再做注意力并加回残差，然后再次归一化，进入 FFN 并加回残差。残差让一条恒等路径与可学习变换并存；层数增加时，下一层操作的是上一层已经整合上下文后的表示。每层通常有自己的 Q/K/V 和 FFN 参数，不是反复应用同一张固定注意力图。 两个子层依次执行：FFN 接收的是已经加过注意力残差的新表示，而不是再次读取原始 x；把两条分支都从同一个旧 x 计算会得到不同的网络。",
+        "以 \\(X\\in\\mathbb R^{B\\times T\\times D}\\) 为一个 Block 的输入，记两套独立参数的归一化为 \\(N_1,N_2\\)，注意力为 \\(A\\)，逐位置网络为 \\(F\\)。Pre-LN 的前向是\\[H=X+A(N_1(X)),\\qquad Y=H+F(N_2(H)).\\]其中 \\(F(U)=\\phi(UW_1^\\top+b_1)W_2^\\top+b_2\\)，\\(W_1\\in\\mathbb R^{D_{\\rm ff}\\times D}\\)、\\(W_2\\in\\mathbb R^{D\\times D_{\\rm ff}}\\)，偏置沿样本与位置广播。两条分支都返回宽度 \\(D\\)，因此相加有定义；下一层读取完整的 \\(Y\\)，并重新计算匹配与非线性。",
+        "主案例的 blocks[0] 和 blocks[1] 都保持 [2,4,8]，但参数独立。第一层输出作为第二层输入，后者重新生成 Q/K/V、注意力权重与 FFN 激活；它不是重复使用第一层的注意力矩阵。两层结束后，最终 LayerNorm 与 readout:8→7 才得到 [2,4,7] 的 Logit。回看开篇整网图：最终 Norm 属于读出前处理，没有把每个 Pre-LN Block 改成 Post-LN。",
+        "Post-LN 把归一化放在残差相加之后，Pre-LN 把它放在分支内部。二者改变梯度路径和激活尺度，不能在加载已有权重时随意交换。Pre-LN 常用于改善深层优化，但这不意味着任意模型都无需 warm-up，也不证明它在所有设置下更优。比较实现时，还应核对最后是否有一次独立的归一化以及 epsilon 的数值。",
+        "标准 LayerNorm 对每个 token 的通道求均值和方差，再使用可学习的缩放与偏移；它通常不会把其他 token 或其他 Batch 混进去。RMSNorm 使用通道均方根进行缩放，省去均值中心化，标准形式只含缩放参数。两者不是可直接互换的函数。把 `normalized_shape` 错设为包含 T 的维度，会改变归一化范围，也可能破坏因果性：较早位置的统计量可能受到未来 token 影响。",
+        "设 Norm 的 Jacobian 为 \\(J_N\\)、分支为 \\(J_F\\)。Pre-Norm 局部 Jacobian 是 \\(J_{\\mathrm{pre}}=I+J_FJ_N\\)，Post-Norm 是 \\(J_{\\mathrm{post}}=J_N(I+J_F)\\)，各项在对应的输入位置求值。前者的恒等旁路没有穿过 \\(J_N\\)；后者的全部梯度都经过它。将分支 \\(F\\) 置零时，Pre-Norm 是恒等映射，Post-Norm 仍是 \\(\\operatorname{Norm}(x)\\)，所以两者应使用不同的零分支测试。",
+        "归一化影响哪些方向，已在[LayerNorm 的 Jacobian 推导](#/learn/normalization?section=2)中建立。这里使用其中的结果：标准化会删除共同平移方向，并压缩整体尺度方向。因此是否让恒等旁路穿过归一化，是实际的函数与梯度差别；若包含学习仿射参数，还需将它的逐通道缩放纳入 \\(J_N\\)，不能直接沿用纯标准化的矩阵。",
+        "恒等项也不能保证梯度范数下界：分支导数可能与它抵消。残差流的尺度还取决于 \\(\\operatorname{Cov}(x,F(x))\\)，不能只用“每层加一点”判断多层累积。Pre-Norm 保留了可用路径，但稳定训练仍依赖初始化、深度、分支尺度和优化设置。",
+        "到这里，残差的两次相加与归一化位置已经确定，但 F 还只是一个符号。注意力把别处的信息带到当前位置之后，网络还需要对这些内容进行非线性重组；这正是下一节 FFN 的工作。"
+      ],
+      "formula": "J_{\\rm pre}=I+J_FJ_N,\\qquad J_{\\rm post}=J_N(I+J_F)",
+      "code": "x = x + dropout(attention(norm1(x), allowed))\nx = x + dropout(ffn(norm2(x)))",
+      "takeaway": "残差、归一化范围与顺序都是模型计算的一部分，不只是训练技巧。",
+      "lead": "多头注意力已经返回 [2,4,8]，接下来要决定怎样利用这次读取，同时保留原表示。先看两条残差组成的完整 Block，把逐位置非线性暂记为 F；再进入下一节拆开 F 的内部计算。",
+      "codeKind": "fragment",
+      "codeExplanation": "这是 Block 的两行核心计算，依赖 attention、两个 norm、ffn 和 dropout。[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `Block.forward` 额外展开 FFN 维度、无效 Query 清零和缓存返回；训练态 Dropout 为 0.1，数值对照在 eval 下关闭。"
+    },
+    {
       "id": "ffn-and-gating",
       "title": "从逐位置 MLP 到门控前馈网络",
       "body": [
@@ -228,37 +256,8 @@
       "takeaway": "Attention 混合位置，FFN 混合每个位置上的通道；两个阶段共同构成表示变换。",
       "code": "import torch\nimport torch.nn.functional as F\n\ntorch.manual_seed(4)\ndtype = torch.float64\nx = torch.randn(3, dtype=dtype)\nWg, Wu = (torch.randn(5, 3, dtype=dtype) for _ in range(2))\nWd = torch.randn(3, 5, dtype=dtype)\ndef f(v):\n    return Wd @ (F.silu(Wg @ v) * (Wu @ v))\ng, u = Wg @ x, Wu @ x\nsigmoid = g.sigmoid()\nsilu_derivative = sigmoid + g * sigmoid * (1 - sigmoid)\nmanual = Wd @ (torch.diag(u * silu_derivative) @ Wg\n               + torch.diag(F.silu(g)) @ Wu)\nactual = torch.autograd.functional.jacobian(f, x)\ntorch.testing.assert_close(actual, manual)\nprint(\"SwiGLU Jacobian 最大误差:\", (actual - manual).abs().max().item())\n",
       "codeExplanation": "为对应公式，这段使用列向量和 `W@x`；模型处理一批行向量时通常写 `x@W.T`。两项分别计算门控与内容支路的导数，合起来才与 autograd 一致。无偏置只为简化记号，不改变乘积求导的两条路径。",
-      "lead": "注意力已经把其他位置的信息汇入当前表示，接下来需要对这些内容进行非线性处理。逐位置 FFN 承接 MLP 的机制，再通过门控扩展特征交互；它与跨位置读取承担不同作用。",
+      "lead": "完整 Block 的第二条分支只作用于当前位置。现在把其中的 F 展开：它怎样在不再读取其他 Token 的情况下处理刚获得的上下文？先沿主案例的 8→32→8 计算，再用 SwiGLU 比较另一种通道交互方式。",
       "codeKind": "runnable"
-    },
-    {
-      "id": "block-and-normalization",
-      "title": "Transformer Block：残差、归一化与逐层组合",
-      "body": [
-        "一个常见 Pre-LN Block 先归一化输入，再做注意力并加回残差，然后再次归一化，进入 FFN 并加回残差。残差让一条恒等路径与可学习变换并存；层数增加时，下一层操作的是上一层已经整合上下文后的表示。每层通常有自己的 Q/K/V 和 FFN 参数，不是反复应用同一张固定注意力图。 两个子层依次执行：FFN 接收的是已经加过注意力残差的新表示，而不是再次读取原始 x；把两条分支都从同一个旧 x 计算会得到不同的网络。",
-        "以 \\(X\\in\\mathbb R^{B\\times T\\times D}\\) 为一个 Block 的输入，记两套独立参数的归一化为 \\(N_1,N_2\\)，注意力为 \\(A\\)，逐位置网络为 \\(F\\)。Pre-LN 的前向是\\[H=X+A(N_1(X)),\\qquad Y=H+F(N_2(H)).\\]其中 \\(F(U)=\\phi(UW_1^\\top+b_1)W_2^\\top+b_2\\)，\\(W_1\\in\\mathbb R^{D_{\\rm ff}\\times D}\\)、\\(W_2\\in\\mathbb R^{D\\times D_{\\rm ff}}\\)，偏置沿样本与位置广播。两条分支都返回宽度 \\(D\\)，因此相加有定义；下一层读取完整的 \\(Y\\)，并重新计算匹配与非线性。",
-        "在主案例中，`blocks[0]` 和 `blocks[1]` 都保持 `[2,4,8]`，但参数独立。第一层输出作为第二层的新输入，因而后者重新生成 Q/K/V、注意力权重与 FFN 激活；这不是把第一层的权重矩阵再乘一次。两层结束后才使用 `TinyLM.norm` 和 `readout:8→7`，得到 `[2,4,7]` 的类别 Logit。图中展开一层的两个残差相加点，外框说明重复次数；最终 LayerNorm 属于整网读出前处理，并非把每个 Pre-LN Block 改成 Post-LN。",
-        "Post-LN 把归一化放在残差相加之后，Pre-LN 把它放在分支内部。二者改变梯度路径和激活尺度，不能在加载已有权重时随意交换。Pre-LN 常用于改善深层优化，但这不意味着任意模型都无需 warm-up，也不证明它在所有设置下更优。比较实现时，还应核对最后是否有一次独立的归一化以及 epsilon 的数值。",
-        "标准 LayerNorm 对每个 token 的通道求均值和方差，再使用可学习的缩放与偏移；它通常不会把其他 token 或其他 Batch 混进去。RMSNorm 使用通道均方根进行缩放，省去均值中心化，标准形式只含缩放参数。两者不是可直接互换的函数。把 `normalized_shape` 错设为包含 T 的维度，会改变归一化范围，也可能破坏因果性：较早位置的统计量可能受到未来 token 影响。",
-        "设 Norm 的 Jacobian 为 \\(J_N\\)、分支为 \\(J_F\\)。Pre-Norm 局部 Jacobian 是 \\(J_{\\mathrm{pre}}=I+J_FJ_N\\)，Post-Norm 是 \\(J_{\\mathrm{post}}=J_N(I+J_F)\\)，各项在对应的输入位置求值。前者的恒等旁路没有穿过 \\(J_N\\)；后者的全部梯度都经过它。将分支 \\(F\\) 置零时，Pre-Norm 是恒等映射，Post-Norm 仍是 \\(\\operatorname{Norm}(x)\\)，所以两者应使用不同的零分支测试。",
-        "归一化影响哪些方向，已在[LayerNorm 的 Jacobian 推导](#/learn/normalization?section=2)中建立。这里使用其中的结果：标准化会删除共同平移方向，并压缩整体尺度方向。因此是否让恒等旁路穿过归一化，是实际的函数与梯度差别；若包含学习仿射参数，还需将它的逐通道缩放纳入 \\(J_N\\)，不能直接沿用纯标准化的矩阵。",
-        "恒等项也不能保证梯度范数下界：分支导数可能与它抵消。残差流的尺度还取决于 \\(\\operatorname{Cov}(x,F(x))\\)，不能只用“每层加一点”判断多层累积。Pre-Norm 保留了可用路径，但稳定训练仍依赖初始化、深度、分支尺度和优化设置。"
-      ],
-      "formula": "J_{\\rm pre}=I+J_FJ_N,\\qquad J_{\\rm post}=J_N(I+J_F)",
-      "code": "x = x + dropout(attention(norm1(x), allowed))\nx = x + dropout(ffn(norm2(x)))",
-      "takeaway": "残差、归一化范围与顺序都是模型计算的一部分，不只是训练技巧。",
-      "lead": "注意力与 FFN 还需要组成一个可以堆叠的完整计算单元。先按前向顺序写出两次残差更新，再把归一化放入对应分支，才能解释 Pre-Norm 和 Post-Norm 为何具有不同的梯度路径。",
-      "codeKind": "fragment",
-      "codeExplanation": "这是 Block 的两行核心计算，依赖 attention、两个 norm、ffn 和 dropout。[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `Block.forward` 额外展开 FFN 维度、无效 Query 清零和缓存返回；训练态 Dropout 为 0.1，数值对照在 eval 下关闭。",
-      "figures": [
-        {
-          "src": "/assets/figures/transformer-preln-case.svg",
-          "title": "两层教学模型与单层 Pre-LN 数据流",
-          "alt": "同一 B=2,T=4,D=8,H=2 的 decoder-only 模型，从 Embedding 经过两层 Block 到词表头与 CE；右侧展开两条残差、逐位置 FFN 和每层 K/V。",
-          "caption": "本章原创结构图。图中的位置、形状与代码页 TinyLM 一致；为保持可读性省略 Dropout 和 Padding 清零，源码保留二者。Pre-LN 的归一化位置参照 [Xiong et al.](https://proceedings.mlr.press/v119/xiong20b.html)，不是原论文 Encoder–Decoder 的复刻。",
-          "afterParagraph": 3
-        }
-      ]
     },
     {
       "id": "position-and-rope",
@@ -483,12 +482,12 @@
     },
     {
       "id": "teacher-forcing-and-loss",
-      "title": "Teacher Forcing、标签与 Loss Mask",
+      "title": "让每个输出对应一个尚未读取的标签",
       "body": [
-        "训练下一 token 预测时，可以把 `[BOS,抓,杯,EOS]` 拆成输入 `[BOS,抓,杯]` 与目标 `[抓,杯,EOS]`。完整输出 `logits` 的形状为 \\([B,T,V_{\\mathrm{vocab}}]\\)，其中 \\(V_{\\mathrm{vocab}}\\) 是词表大小；每个位置预测其下一个 token，因果 Mask 确保模型只能读取输入中的合法前缀。这种并行训练称为 Teacher Forcing，因为输入使用已知的真实前缀；推理则使用模型自己此前生成的内容，二者访问的数据分布可能不同。",
+        "回到开篇第一条序列 [0,1,2,3,4]：输入 [0,1,2,3]，标签 [1,2,3,4]。位置 2 的 Logit 用输入前缀 [0,1,2] 预测 3，位置 3 再预测 4。因果 Mask 允许四个位置并行计算，又使每项预测遵守自己的前缀边界。Teacher Forcing 指训练输入使用真实前缀；生成时则要把模型此前输出的符号接回输入。",
         "标签需要恰好移位一次。有的模型 forward 接受原始 labels 并内部移位；手写训练循环则可能在外部切片。先用带编号的短序列写出每个 logits 位置应该对应哪个 label，再确认是谁执行切片。直接给 logits 同位置的输入 token 当目标，模型可能学到复制；在模型内外各移一次，则会学到跨两步预测，训练仍可能下降。",
         "指令微调常只对回答或动作 token 计 Loss，但 Prompt token 仍是条件上下文。把 Prompt 的 label 设为忽略，不等于把它从注意力中移除。先得到逐 token CE，再用有效位选择并按明确分母归约；若没有任何有效监督，应拒绝该 Batch 或显式跳过，而不是除以零。动作去噪模型的目标可能是噪声、速度或动作回归，不应机械套用词表 CE 和语言式移位。",
-        "主案例的完整序列是 `[[0,1,2,3,4],[3,4,5,6,0]]`，用前四个 ID 作输入、后四个作标签，得到八个监督位置。`readout` 的 `[2,4,7]` Logit 展平为 `[8,7]`，标签展平为 `[8]`，CE 对八个位置平均；其 Logit 梯度为 \\((p_{b,i,k}-\\mathbf1[k=y_{b,i}])/8\\)，再通过读出头、最终 Norm、两层 Block 回到 Embedding。完整代码调用 `loss.backward()`，检查全部参数梯度有限，再裁剪并更新 AdamW。两条循环序列的 Loss 下降只检验训练闭环，不构成语言建模或策略泛化结果。"
+        "两条主案例序列共有八个监督位置。readout 的 [2,4,7] Logit 展平为 [8,7]，标签展平为 [8]，CE 对八个位置平均；其 Logit 梯度为 \\((p_{b,i,k}-\\mathbf1[k=y_{b,i}])/8\\)，再通过读出头、最终 Norm、两层 Block 回到 Embedding。完整代码调用 loss.backward()，检查全部参数梯度有限，再裁剪并更新 AdamW。两条循环序列的 Loss 下降只检验训练闭环；接下来的缓存测试回答另一个问题：能否在保持同一输出的前提下省去历史重算？"
       ],
       "formula": "\\mathcal L=-\\frac{1}{\\sum_{b,i}m_{bi}}\\sum_{b,i}m_{bi}\\log p_\\theta(y_{bi}\\mid x_{b,\\le i}),\\qquad y_i=x_{i+1}",
       "code": "inputs, labels = sequence[:, :-1], sequence[:, 1:]\nlogits, _, _ = model(inputs)\nloss = F.cross_entropy(logits.reshape(-1, vocab), labels.reshape(-1))\nloss.backward()",
@@ -496,8 +495,8 @@
       "example": {
         "title": "输入、目标与损失位置分别对齐",
         "steps": [
-          "序列为[A,B,C,EOS]。最小下一token任务可以用输入[A,B,C]预测目标`[B,C,EOS]`，每个位置的logits有V个类别。",
-          "如果A、B属于只提供上下文的提示，可以屏蔽相应的损失项，但它们仍可作为后续token的注意力Key；Loss Mask并不自动屏蔽信息流。",
+          "仍用输入 [0,1,2,3] 与标签 [1,2,3,4]。四行 Logit 分别预测 1、2、3、4，不能拿同位置的输入 0、1、2、3 当答案。",
+          "若输入 0、1 属于只提供上下文的提示，就把前两项损失忽略；输入 0、1 仍应作为后续位置可读取的 Key。忽略标签与删除上下文是不同操作。",
           "如果模型封装已经内部shift，而数据侧又提前shift一次，就变成跨两步预测。应该打印一个样本每个logit位置对应的目标token，而不是只观察总loss。"
         ],
         "conclusion": "监督位置、输入可见性与Padding处理应分别写清，再检查组合后的行为。"

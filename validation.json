@@ -1,6 +1,6 @@
 {
-  "checked_at": "2026-11-06T16:27:09Z",
-  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "checked_at": "2026-11-06T19:38:30Z",
+  "python": "3.14.7 | packaged by Anaconda, Inc. | (main, Aug 14 2026, 10:13:42) [Clang 20.1.8 ]",
   "environment": "CPU; isolated process and temporary directory per executed example; unchanged previously executed sources reuse recorded results",
   "total": 152,
   "passed": 151,
@@ -608,7 +608,9 @@
       "status": "passed",
       "source_sha256": "a6775e61ae0297e1ebdd76eea8e641724cc0a5b94cf40acf95b5d8204d22fad6",
       "seconds": 1.611,
-      "output": "registers=0: tokens=(2, 7, 8), grid=(2, 8, 2, 3)\nregisters=4: tokens=(2, 11, 8), grid=(2, 8, 2, 3)\npassed: spatial order, prefix gradient exclusion, layout errors, LayerNorm vs L2\n"
+      "output": "registers=0: tokens=(2, 7, 8), grid=(2, 8, 2, 3)\nregisters=4: tokens=(2, 11, 8), grid=(2, 8, 2, 3)\npassed: spatial order, prefix gradient exclusion, layout errors, LayerNorm vs L2\n",
+      "reused_unchanged_result": true,
+      "original_checked_at": "2026-11-06T16:27:09Z"
     },
     {
       "lesson": "contrastive-pretraining",
@@ -1046,11 +1048,9 @@
       "case": "demo",
       "passed": true,
       "status": "passed",
-      "source_sha256": "154767e762e3863559d2418578fd851b24e55d9f45168413fc2dcf7d11b55e6e",
-      "seconds": 2.493,
-      "output": "{\n  \"seed\": 20261106,\n  \"torch\": \"2.15.0+cpu\",\n  \"dtype\": \"float64\",\n  \"shapes\": {\n    \"images\": [\n      4,\n      2,\n      3,\n      8,\n      8\n    ],\n    \"prefix\": [\n      4,\n      11,\n      16\n    ],\n    \"suffix\": [\n      4,\n      4,\n      12\n    ],\n    \"velocity\": [\n      4,\n      3,\n      3\n    ]\n  },\n  \"loss_before\": 1.287935188682425,\n  \"loss_after_40_updates\": 0.08756648812250836,\n  \"first_step_gradient_norms\": {\n    \"vision\": 0.426417696187561,\n    \"language\": 0.054512596003486,\n    \"prefix\": 1.2979475041405437,\n    \"expert\": 3.901721677225518\n  },\n  \"cache_velocity_max_error\": 4.440892098500626e-16,\n  \"cache_sample_max_error\": 4.440892098500626e-16,\n  \"stale_cache_max_error\": 0.13542782422104205,\n  \"checks\": [\n    \"finite valid-mask FM loss\",\n    \"two parameter groups receive gradients\",\n    \"full/cache velocity and Euler equality\",\n    \"changed-image cache invalidation\",\n    \"missing-view isolation\",\n    \"graph-preserving cache gradient equality\",\n    \"frozen parameter versus input gradient\",\n    \"no_grad cuts input route\",\n    \"empty supervision rejected\"\n  ]\n}\n",
-      "reused_unchanged_result": true,
-      "original_checked_at": "2026-11-06T15:47:51Z"
+      "source_sha256": "89ff4cfa9017fab36163d0653dff0abca314be77e287741ad4bd606eaf115391",
+      "seconds": 1.436,
+      "output": "{\n  \"seed\": 20261106,\n  \"torch\": \"2.15.0\",\n  \"dtype\": \"float64\",\n  \"shapes\": {\n    \"images\": [\n      4,\n      2,\n      3,\n      8,\n      8\n    ],\n    \"prefix\": [\n      4,\n      11,\n      16\n    ],\n    \"suffix\": [\n      4,\n      4,\n      12\n    ],\n    \"velocity\": [\n      4,\n      3,\n      3\n    ]\n  },\n  \"loss_before\": 2.3771188980402953,\n  \"loss_after_40_updates\": 0.14263712399147743,\n  \"first_step_gradient_norms\": {\n    \"vision\": 0.2022121367548402,\n    \"language\": 0.08521978855570553,\n    \"prefix\": 1.2444440465855955,\n    \"expert\": 4.067802428801788\n  },\n  \"cache_velocity_max_error\": 7.771561172376096e-16,\n  \"cache_sample_max_error\": 2.636779683484747e-16,\n  \"stale_cache_max_error\": 0.2560311459972162,\n  \"task\": \"planar named-colour approach; dx, dy, gripper in grid units\",\n  \"target_xy\": [\n    [\n      -0.5714285714285714,\n      -0.5714285714285714\n    ],\n    [\n      -0.5714285714285714,\n      0.5714285714285714\n    ],\n    [\n      0.5714285714285714,\n      -0.5714285714285714\n    ],\n    [\n      0.5714285714285714,\n      0.5714285714285714\n    ]\n  ],\n  \"checks\": [\n    \"label displacements reach the named colour\",\n    \"switching colour changes the target label\",\n    \"finite valid-mask FM loss\",\n    \"two parameter groups receive gradients\",\n    \"full/cache velocity and Euler equality\",\n    \"changed-image cache invalidation\",\n    \"missing-view isolation\",\n    \"graph-preserving cache gradient equality\",\n    \"frozen parameter versus input gradient\",\n    \"no_grad cuts input route\",\n    \"empty supervision rejected\"\n  ]\n}\n/Users/xavier/Documents/Codex/2026-11-07/new-chat/work/venv/lib/python3.14/site-packages/torch/_subclasses/functional_tensor.py:377: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:82.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n"
     },
     {
       "lesson": "vla-architecture",
@@ -1678,5 +1678,5 @@
       "original_checked_at": "2026-11-06T09:23:15Z"
     }
   ],
-  "torch": "2.15.0+cpu"
+  "torch": "2.15.0"
 }

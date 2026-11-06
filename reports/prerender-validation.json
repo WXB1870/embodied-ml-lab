@@ -1,11 +1,11 @@
 {
   "pages": 153,
-  "formulasRendered": 3649,
+  "formulasRendered": 3637,
   "entries": [
     {
       "path": "/",
       "title": "机器学习、生成模型与具身策略",
-      "bytes": 23206
+      "bytes": 23925
     },
     {
       "path": "/learn/tensor/",
@@ -235,7 +235,7 @@
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 644712
+      "bytes": 629389
     },
     {
       "path": "/learn/transformer/code/",
@@ -355,7 +355,7 @@
     {
       "path": "/learn/diffusion/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM",
-      "bytes": 595903
+      "bytes": 600042
     },
     {
       "path": "/learn/diffusion/code/",
@@ -385,22 +385,22 @@
     {
       "path": "/learn/flow-matching/",
       "title": "Flow Matching",
-      "bytes": 679805
+      "bytes": 679984
     },
     {
       "path": "/learn/flow-matching/code/",
       "title": "Flow Matching · 代码",
-      "bytes": 91141
+      "bytes": 91221
     },
     {
       "path": "/learn/flow-matching/exercise/",
       "title": "Flow Matching · 练习",
-      "bytes": 72344
+      "bytes": 72424
     },
     {
       "path": "/learn/behavior-cloning/",
       "title": "行为克隆",
-      "bytes": 110405
+      "bytes": 126487
     },
     {
       "path": "/learn/behavior-cloning/code/",
@@ -475,12 +475,12 @@
     {
       "path": "/learn/vla-architecture/",
       "title": "VLA：从视觉语言骨干到动作专家",
-      "bytes": 371562
+      "bytes": 378980
     },
     {
       "path": "/learn/vla-architecture/code/",
       "title": "VLA：从视觉语言骨干到动作专家 · 代码",
-      "bytes": 59856
+      "bytes": 65586
     },
     {
       "path": "/learn/vla-architecture/exercise/",

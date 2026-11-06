@@ -1,6 +1,6 @@
 {
   "release": "Embodied ML Lab · 机器学习与具身策略",
-  "reviewedAt": "2026-11-06",
+  "reviewedAt": "2026-11-07",
   "sourceFiles": [
     "foundations",
     "architecture",
@@ -23,7 +23,7 @@
       "id": "foundations",
       "name": "数学与机器学习基础",
       "short": "数学与机器学习基础",
-      "desc": "概率、微分、损失与优化，建立训练的共同语言。",
+      "desc": "从张量与概率说明模型在计算什么，再用微分、损失和优化解释参数怎样学习；这些工具同时服务于感知、生成与策略课程。",
       "lessons": [
         "tensor",
         "matrix-grad",
@@ -39,7 +39,7 @@
       "id": "neural",
       "name": "神经网络与表示学习",
       "short": "神经网络与表示学习",
-      "desc": "非线性表示、梯度传播、归一化与卷积结构。",
+      "desc": "由 MLP 建立可训练的非线性映射；残差与归一化支持深层组合，CNN 则沿空间局部性形成另一条表示学习分支。",
       "lessons": [
         "mlp",
         "activation-init",
@@ -52,7 +52,7 @@
       "id": "transformers",
       "name": "Transformer 与多模态模型",
       "short": "Transformer 与多模态模型",
-      "desc": "注意力、位置表示、视觉语言接口与增量推理。",
+      "desc": "把表示学习扩展到序列之间的信息交换：先学注意力与位置，再组合 Transformer；视觉语言融合和自回归推理在此分支展开。",
       "lessons": [
         "attention",
         "embeddings",
@@ -69,7 +69,7 @@
       "id": "generative",
       "name": "生成模型与连续时间建模",
       "short": "生成模型与连续时间建模",
-      "desc": "从潜变量与变分目标到扩散、Score、连续流及数值采样。",
+      "desc": "研究怎样生成一个分布。扩散 → Score/SDE 与 Flow Matching 是可以并行学习的路线；后者从概率、MLP 与回归出发，最后再比较二者的概率路径。",
       "lessons": [
         "latent-variable-models",
         "diffusion",
@@ -81,7 +81,7 @@
       "id": "policies",
       "name": "模仿学习、策略模型与 VLA 后训练",
       "short": "模仿学习、策略模型与 VLA 后训练",
-      "desc": "动作语义、条件生成、参数微调与奖励驱动的策略优化。",
+      "desc": "将观测表示与生成模型接成动作策略：先确定示教目标、动作语义与时间，再读 VLA；监督微调与奖励驱动后训练按任务需要分支学习。",
       "lessons": [
         "behavior-cloning",
         "action-representation",
@@ -98,7 +98,7 @@
       "id": "engineering",
       "name": "数据处理与训练工程",
       "short": "数据处理与训练工程",
-      "desc": "数据分布、参数状态、计算精度、资源与训练诊断。",
+      "desc": "把已学的模型与目标变成可复现的训练过程。可在完成 MLP 和自动微分后开始，与后续模型课程并行，再按资源需求进入混合精度与分布式训练。",
       "lessons": [
         "modules",
         "dataloader",
@@ -117,7 +117,7 @@
       "id": "execution",
       "name": "策略执行、评估与泛化",
       "short": "策略执行、评估与泛化",
-      "desc": "分布偏移、执行时序、统计证据与训练部署一致性。",
+      "desc": "回到策略实际访问的数据与执行时间：连接分布偏移、动作时效和闭环统计，检查离线训练得到的函数是否按约定被部署与评估。",
       "lessons": [
         "distribution-shift",
         "execution-latency",

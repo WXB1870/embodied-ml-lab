@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-11-06T16:27:09Z",
+  "checked_at": "2026-11-06T19:39:06Z",
   "total": 181,
   "passed": 180,
   "failed": 0,
   "environment_blocked": 1,
-  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
-  "torch": "2.15.0+cpu",
+  "python": "3.14.7 | packaged by Anaconda, Inc. | (main, Aug 14 2026, 10:13:42) [Clang 20.1.8 ]",
+  "torch": "2.15.0",
   "environment": "CPU; isolated process and temporary directory per executed example; unchanged previously executed sources reuse recorded results",
   "blocked_cases": [
     {
@@ -17,6 +17,6 @@
   ],
   "foundation_total": 152,
   "topic_total": 29,
-  "foundation_checked_at": "2026-11-06T16:27:09Z",
-  "topic_checked_at": "2026-11-06T16:27:07Z"
+  "foundation_checked_at": "2026-11-06T19:38:30Z",
+  "topic_checked_at": "2026-11-06T19:39:06Z"
 }
