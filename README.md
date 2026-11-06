@@ -2,9 +2,9 @@
 
 网站：**https://wxb1870.github.io/embodied-ml-lab/**
 
-本仓库保留从 Sites v11 恢复的完整教材源码。推送到 `main` 后，GitHub Actions 会重新组装课程、生成静态页面并发布 `dist/`，无需运行服务器。
+本仓库保留从 Sites v11 恢复的完整教材源码。GitHub Pages 从 `main` 分支的 `docs/` 目录发布，无需运行服务器。GitHub Actions 负责验证教材构建和页面链接。
 
-本地生成页面：`python3 scripts/assemble.py`，然后 `node scripts/prerender.cjs`。部署地址由 `SITE_URL` 指定，默认使用上述 GitHub Pages 地址。
+更新教材后，依次运行 `python3 scripts/assemble.py`、`node scripts/prerender.cjs`，再用 `cp -R dist/. docs/` 同步发布目录并推送到 `main`。部署地址由 `SITE_URL` 指定，默认使用上述 GitHub Pages 地址。
 
 A public Chinese technical textbook connecting modern machine learning, generative action policies and embodied-model post-training. The emphasis is on derivations, assumptions, counterexamples and executable checks.
 

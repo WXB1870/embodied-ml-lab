@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://wxb1870.github.io/embodied-ml-lab/sitemap.xml

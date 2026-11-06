@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><script>window.EML_BASE_PATH="/embodied-ml-lab";</script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff">
+<title>下载与运行 · Embodied ML Lab</title>
+<meta name="description" content="下载完整讲义、PyTorch 代码及练习，配置本地运行环境。">
+<link rel="icon" href="/embodied-ml-lab/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/embodied-ml-lab/vendor/katex/katex.min.css"><link rel="stylesheet" href="/embodied-ml-lab/styles.css">
+<script defer src="/embodied-ml-lab/vendor/katex/katex.min.js"></script><script defer src="/embodied-ml-lab/math.js"></script>
+<script defer src="/embodied-ml-lab/explorers.js"></script><script defer src="/embodied-ml-lab/p0-explorers.js"></script><script defer src="/embodied-ml-lab/deep-explorers.js"></script><script defer src="/embodied-ml-lab/reader.js"></script><script defer src="/embodied-ml-lab/app.js"></script>
+<link rel="canonical" href="https://wxb1870.github.io/embodied-ml-lab/guide/"></head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+<header class="site-header"><div class="header-inner">
+<a href="/embodied-ml-lab/" class="brand" aria-label="Embodied ML 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Embodied <b>ML</b></a>
+<nav aria-label="主导航"><a href="/embodied-ml-lab/" data-nav="catalog">课程目录</a><a href="/embodied-ml-lab/practice/" data-nav="practice">课程练习</a></nav>
+<button class="search-trigger" data-action="search" aria-label="搜索全文"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span>搜索</span><kbd>⌘ K</kbd></button>
+</div></header>
+<main id="main" tabindex="-1" data-prerendered><div class="page narrow"><header class="page-heading"><h1>下载与运行</h1></header><section class="guide-section"><h2>讲义与代码</h2><p>完整包包含文章、实现、练习题、参考答案和测试。练习与答案分开放置，也可以离线阅读 Markdown 讲义。</p><div class="download-links"><a class="button primary" href="/embodied-ml-lab/downloads/embodied-ml-study-pack.zip" download>下载完整学习包</a><a href="/embodied-ml-lab/downloads/embodied-ml-topics.zip" download>仅下载四个核心专题</a></div></section><section class="guide-section"><h2>本地 PyTorch 环境</h2><p>示例使用 Python 3.11 / 3.12，默认在 CPU 上运行。</p><div class="code-frame" ><div class="code-toolbar"><span>终端</span><div></div></div><pre class="code-block" tabindex="0"><span class="code-line" data-n="1">python -m venv .venv</span><span class="code-line" data-n="2">source .venv/bin/activate  <span class="tok-comment"># Windows: .venv\Scripts\Activate.ps1</span></span><span class="code-line" data-n="3">python -m pip install torch</span><span class="code-line" data-n="4">python demos/01_tensor_demo.py</span></pre></div><p>GPU 版本按 <a href="https://pytorch.org/get-started/locally/" target="_blank" rel="noopener">PyTorch 官方安装说明 ↗</a>选择。浏览器练习使用 Python 标准库，不包含 PyTorch。</p><details class="detail-box"><summary>代码验证范围</summary><div class="detail-body"><p>演示和参考答案包含断言测试，验证记录随学习包提供。相同源码保留已有执行结果，修改后的代码单独复核。</p><p>DDP 演示需要两个 Gloo 进程的本机通信权限，当前验证环境限制了该通信，因此这一项明确记为未完成运行；CUDA 分支需要相应硬件。教学测试不等同于完整机器人系统评估。</p></div></details></section><section class="guide-section" id="drafts"><details class="detail-box"><summary>草稿备份</summary><div class="detail-body"><p>练习草稿保存在当前浏览器。导出可保留草稿及此前保存的笔记和记录；导入会合并草稿和笔记。</p><div class="download-links"><button class="button" data-action="export-drafts">导出备份</button><button class="button" data-action="import-drafts">导入备份</button></div></div></details></section><section class="guide-section about"><h2>关于课程</h2><p>内容面向具身模型后训练，按数学基础、模型结构、训练工程与动作生成组织。公式和接口约定的依据列在各篇参考资料中。</p><p>网站不需要账户。界面参考 <a href="https://rl-robotics.github.io/" target="_blank" rel="noopener">RL × Robotics ↗</a> 的文档阅读结构。</p></section></div></main>
+<footer class="site-footer"><span>Embodied ML</span><a href="/embodied-ml-lab/guide/">下载与说明</a><a href="https://rl-robotics.github.io/" target="_blank" rel="noopener">界面参考</a></footer>
+<dialog id="search-dialog" aria-label="搜索全文"><div class="search-head"><input id="search-input" type="search" maxlength="120" placeholder="搜索概念、推导或代码，例如：LayerNorm 梯度" aria-label="搜索全文" autocomplete="off"><button class="icon-button" data-action="close-search" aria-label="关闭搜索">×</button></div><div id="search-results"></div><div class="search-foot">搜索文章正文与代码 <kbd>Esc 关闭</kbd></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div><input id="import-drafts" type="file" accept="application/json,.json" hidden>
+<noscript><p class="noscript-note">正文、公式和代码可直接阅读；在线练习与搜索需要 JavaScript。</p></noscript>
+</body></html>
