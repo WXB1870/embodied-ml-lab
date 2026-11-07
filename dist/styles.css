@@ -91,5 +91,5 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
 .research-figure>a{display:block;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;border-radius:4px}.research-figure>.figure-reading-hint{display:none}.research-figure>a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(max-width:760px){.research-figure img{min-width:800px;max-width:none}.research-figure>.figure-reading-hint{display:block;font-size:11px;line-height:1.7;color:#647287;margin:0 0 9px}}
 /* These classic overview figures remain readable when shown in full. */
-@media(max-width:760px){.research-figure img[src$="residual-d2l-classic.svg"],.research-figure img[src$="transformer-vaswani-figure1.png"]{min-width:0;max-width:100%}}
+@media(max-width:760px){.research-figure img[src$="residual-d2l-classic.svg"],.research-figure img[src$="transformer-vaswani-figure1.png"],.research-figure img[src$="-d2l.svg"]{min-width:0;max-width:100%}}
 @media print{.research-figure>a{overflow:visible}.research-figure img{min-width:0;max-width:100%}.research-figure>.figure-reading-hint{display:none}}

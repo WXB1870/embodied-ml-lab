@@ -1,16 +1,16 @@
 {
   "html_pages": 158,
   "lessons": 50,
-  "internal_targets_checked": 6618,
+  "internal_targets_checked": 6636,
   "errors": [],
   "archives": [
     {
       "name": "embodied-ml-study-pack.zip",
-      "files": 395
+      "files": 400
     },
     {
       "name": "embodied-ml-topics.zip",
-      "files": 87
+      "files": 92
     }
   ],
   "pages": [
@@ -83,8 +83,8 @@
     {
       "path": "/learn/activation-init/",
       "ids": 16,
-      "links": 50,
-      "assets": 10
+      "links": 57,
+      "assets": 12
     },
     {
       "path": "/learn/attention/code/",
@@ -317,8 +317,8 @@
     {
       "path": "/learn/embeddings/",
       "ids": 16,
-      "links": 46,
-      "assets": 10
+      "links": 56,
+      "assets": 13
     },
     {
       "path": "/learn/evaluation/code/",
@@ -677,8 +677,8 @@
     {
       "path": "/learn/optimization/",
       "ids": 16,
-      "links": 50,
-      "assets": 10
+      "links": 54,
+      "assets": 11
     },
     {
       "path": "/learn/partial-observability/code/",

@@ -8,6 +8,26 @@ License source: https://github.com/d2l-ai/d2l-en/blob/master/LICENSE
 License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0).
 Reuse: Original SVG reproduced without content changes. Only its displayed size is controlled by the webpage. The separate Chinese reading notes are supplied by Embodied ML Lab.
 
+Additional original figures reproduced unchanged:
+
+- position-waves-d2l.svg: Positional encoding channels 6–9, D=32, positions 0–59.
+  Chapter: https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html
+  Original: https://d2l.ai/_images/output_self-attention-and-positional-encoding_ce9eb6_48_0.svg
+- position-matrix-d2l.svg: The 60-by-32 positional encoding heatmap.
+  Same chapter as above.
+  Original: https://d2l.ai/_images/output_self-attention-and-positional-encoding_ce9eb6_78_0.svg
+- relu-d2l.svg: ReLU activation curve, Section 5.1.2.1.
+  Chapter: https://d2l.ai/chapter_multilayer-perceptrons/mlp.html
+  Original: https://d2l.ai/_images/output_mlp_76f463_18_0.svg
+- sigmoid-d2l.svg: Sigmoid activation curve, Section 5.1.2.2.
+  Same chapter as above.
+  Original: https://d2l.ai/_images/output_mlp_76f463_48_0.svg
+- gradient-descent-d2l.svg: One-dimensional gradient descent for f(x)=x^2, eta=0.2.
+  Chapter: https://d2l.ai/chapter_optimization/gd.html
+  Original: https://d2l.ai/_images/output_gd_79c039_27_0.svg
+
+These figures have the same Dive into Deep Learning attribution and CC BY-SA 4.0 license stated above. Separate Chinese reading prompts and examples are provided by Embodied ML Lab. Display sizing and HTML image dimensions do not alter the original SVG content.
+
 Full license text follows:
 
 Creative Commons Attribution-ShareAlike 4.0 International Public License

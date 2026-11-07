@@ -113,7 +113,7 @@ function renderSection(s,index,kind,item){
 }
 function renderFigures(section,afterParagraph){
  const figures=section.figures||(section.figure?[section.figure]:[]);
- return figures.filter(f=>f.afterParagraph===afterParagraph).map(f=>{const src=f.src.startsWith('/')?f.src:'/'+f.src;return `<figure class="research-figure"><p class="figure-reading-hint">${src.endsWith('.gif')?'点击图片可打开原动图。':'横向滚动可查看完整图示；点击图片可打开原图。'}</p><a href="${esc(src)}" target="_blank" rel="noopener" aria-label="${esc((f.alt||section.title)+'（打开原图）')}"><img src="${esc(src)}" alt="${esc(f.alt||section.title)}" loading="lazy"></a><figcaption>${inline(f.caption||'')}</figcaption></figure>`;}).join('');
+ return figures.filter(f=>f.afterParagraph===afterParagraph).map(f=>{const src=f.src.startsWith('/')?f.src:'/'+f.src;const dimensions=Number.isInteger(f.width)&&Number.isInteger(f.height)&&f.width>0&&f.height>0?` width="${f.width}" height="${f.height}"`:'';return `<figure class="research-figure"><p class="figure-reading-hint">${src.endsWith('.gif')?'点击图片可打开原动图。':'图片较宽时可横向滚动；点击可打开原图。'}</p><a href="${esc(src)}" target="_blank" rel="noopener" aria-label="${esc((f.alt||section.title)+'（打开原图）')}"><img${dimensions} src="${esc(src)}" alt="${esc(f.alt||section.title)}" loading="lazy"></a><figcaption>${inline(f.caption||'')}</figcaption></figure>`;}).join('');
 }
 function renderInlineVisual(id){
  const visual=P0_VISUALS.find(x=>x.id===id);if(!visual)return '';

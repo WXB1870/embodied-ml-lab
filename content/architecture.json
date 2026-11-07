@@ -408,7 +408,9 @@
             "src": "/assets/figures/residual-d2l-classic.svg",
             "alt": "《动手学深度学习》的普通块与残差块对照：左侧直接学习映射，右侧学习修正量并通过旁路与输入相加。",
             "caption": "先比较左右两图：左侧直接学习 f(x)，右侧学习 g(x)=f(x)−x，再由旁路把 x 加回来。本文把图中的 g 记作 F，y=x+F(x) 表示加法核心；图顶端的激活另计。原图：[《动手学深度学习》图 8.6.2](https://d2l.ai/chapter_convolutional-modern/resnet.html#residual-blocks)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
-            "afterParagraph": 0
+            "afterParagraph": 0,
+            "width": 373,
+            "height": 296
           }
         ]
       },
@@ -1205,12 +1207,42 @@
       {
         "title": "多频正弦编码",
         "body": [
-          "给定位置或时间 s，可以用多组 \\(\\sin(\\omega_i s)\\)、\\(\\cos(\\omega_i s)\\) 表示，再由 MLP 映射到模型宽度。低频成分随 s 缓慢变化，高频成分分辨较近的位置；频率范围、输入尺度与特征排列共同决定实际表示。把原本在 [0,1] 的时间改成 [0,1000] 却仍用同一频率，会显著改变输入分布。网络有时间嵌入并不能替代正确的时间定义。",
+          "先看原始 Transformer 的正弦位置编码。把位置 m 写成宽度为 D 的向量，D 为偶数，第 i 个通道对定义为 \\(P_{m,2i}=\\sin(m/10000^{2i/D})\\)、\\(P_{m,2i+1}=\\cos(m/10000^{2i/D})\\)，其中 \\(i=0,\\ldots,D/2-1\\)。每对通道使用同一频率、不同相位；频率随通道对编号增大而降低。",
+          "将所有位置排成矩阵 P，每一行就是一个位置向量。原始 Transformer 将它与对应位置的内容向量逐元素相加：\\(H_{m,:}=E_{\\mathrm{id}_m,:}+P_{m,:}\\)。内容相同时，不同位置也能给出不同的模型输入；这项相加本身不改变序列长度和特征宽度。它提供位置线索，后续模型仍需学习怎样把位置与内容用于任务。",
+          "更一般地，给定标量 s，可以用多组 \\(\\sin(\\omega_i s)\\)、\\(\\cos(\\omega_i s)\\) 表示。低频成分随 s 缓慢变化，高频成分分辨较近的位置；频率范围、输入尺度与特征排列共同定义表示。在扩散或 Flow 模型中，连续生成时间的这些特征还常经过 MLP，再作为条件使用；这是另一套接入方式。把 [0,1] 的时间改为 [0,1000] 却沿用频率，会显著改变输入分布，时间嵌入不能替代时间定义。",
           "对一组频率，令 \\(e(s)=[\\sin(\\omega s),\\cos(\\omega s)]\\)。由余弦差角公式，\\(e(s)^\\top e(t)=\\cos(\\omega(s-t))\\)，所以两个位置的内积可以反映相对差；多频率拼接后，内积是这些余弦项之和。这说明特征为何具有可组合的位置关系，但并不表示任意远距离都可以被唯一、稳定地区分。",
           "正弦特征能对未见过的标量计算数值，但这不保证模型在远超训练范围时仍有效。周期性也意味着单一频率存在别名，多频率只是提供更丰富的编码，不是自动解决所有外推问题。核对实现时应比较同一输入在两个端点、中间点和相邻点的编码，确认是否乘了额外尺度、是否交错 sin/cos，以及输出是否与后续权重布局一致。"
         ],
         "id": "3",
-        "lead": "正弦位置编码用多组不同频率的正弦与余弦值表示一个位置或时间。它把单个数值转换为多尺度变化特征，再供网络使用。频率和输入单位共同定义编码，不能只因输出宽度相同就互换。"
+        "lead": "正弦位置编码用多组不同频率的正弦与余弦值表示一个位置或时间。它把单个数值转换为多尺度变化特征，再供网络使用。频率和输入单位共同定义编码，不能只因输出宽度相同就互换。",
+        "figures": [
+          {
+            "src": "/assets/figures/position-waves-d2l.svg",
+            "alt": "宽度为32的正弦位置编码中，第6至9通道随60个位置变化的曲线，相邻通道成对且不同通道对的变化速度不同。",
+            "afterParagraph": 1,
+            "caption": "先沿横轴读位置 0…59，再比较 Col 6/7 与 Col 8/9：同一对是一条正弦和一条余弦，后一对变化更慢。纵轴是编码值，整条曲线由公式确定。原图：[《动手学深度学习》§11.6.3](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html#positional-encoding)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "width": 507,
+            "height": 244
+          },
+          {
+            "src": "/assets/figures/position-matrix-d2l.svg",
+            "alt": "60个位置、32个编码通道组成的正弦位置编码矩阵，纵轴是位置，横轴是通道，蓝色深浅表示编码值。",
+            "afterParagraph": 2,
+            "caption": "竖着看一列，追踪同一通道随位置怎样变化；横着看一行，读出该位置的完整向量。再比较左右两侧的通道对，观察频率差异。图中使用 D=32；位置 0 的正弦列为 0、余弦列为 1，所以第一行并不全零。原图：[《动手学深度学习》§11.6.3.1](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html#absolute-positional-information)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "width": 285,
+            "height": 358
+          }
+        ],
+        "example": {
+          "title": "从图中的第 6、7 通道核对一对数值",
+          "afterParagraph": 2,
+          "steps": [
+            "沿用图中的 D=32。通道 6、7 对应 i=3，所以 \\(\\omega=10000^{-6/32}\\approx0.177828\\)。",
+            "位置 m=0 得到 \\((\\sin0,\\cos0)=(0,1)\\)；位置 m=1 得到 \\((\\sin\\omega,\\cos\\omega)\\approx(0.1769,0.9842)\\)。",
+            "在波形图中核对这两条曲线的起点，再在矩阵图第一行找到同一对值。将位置向量与内容相加时，使用的是这些通道值，而不是把原始位置编号直接填满整行。"
+          ],
+          "conclusion": "波形、矩阵和公式描述同一套编码；先读清轴与通道编号，再把位置向量接到模型输入。"
+        }
       },
       {
         "title": "RoPE 与相对位置",
@@ -1231,7 +1263,17 @@
           "afterParagraph": 1
         },
         "id": "4",
-        "lead": "旋转位置编码（RoPE）按位置旋转 Query 和 Key 的成对通道，使点积中包含相对位置差。它改变匹配时使用的表示，不是在输入上简单加一个位置向量。下面先看二维旋转，再推广到完整头宽。"
+        "lead": "旋转位置编码（RoPE）按位置旋转 Query 和 Key 的成对通道，使点积中包含相对位置差。它改变匹配时使用的表示，不是在输入上简单加一个位置向量。下面先看二维旋转，再推广到完整头宽。",
+        "figures": [
+          {
+            "src": "/assets/figures/rope-roformer-figure1.svg",
+            "alt": "RoFormer 原图：二维Query和Key按位置旋转，下部展示多个通道对及其不同频率。",
+            "afterParagraph": 0,
+            "caption": "上部先看一对通道，位置 m 通过角度 mθ 决定旋转；下部把同一规则推广到多对通道。读图后再用正文的二维向量算例核对相对夹角。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)，按 [CC BY-NC-ND 4.0](/assets/figures/rope-figure1-LICENSE.txt) 原样复用。",
+            "width": 1083,
+            "height": 605
+          }
+        ]
       },
       {
         "title": "位置偏移与 KV Cache",
@@ -1383,6 +1425,10 @@
       {
         "title": "Attention Is All You Need：正弦位置编码",
         "url": "https://arxiv.org/abs/1706.03762"
+      },
+      {
+        "title": "动手学深度学习：正弦位置编码的波形与矩阵",
+        "url": "https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html"
       }
     ],
     "level": "P0",

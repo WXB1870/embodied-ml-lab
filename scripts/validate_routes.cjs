@@ -31,6 +31,12 @@ test('Deployment paths cover assets, downloads and repeated normalization',()=>{
  assert.ok(html.includes('href="'+basePath+'/practice/"'));
  assert.equal(evaluate(`normalizeInternalLinks(${JSON.stringify(html)})`),html);
  assert.equal(evaluate(`routeHref(${JSON.stringify(basePath+'/')})`),basePath+'/');
+ for(const resource of ['/assets/figures/d2l-classic-LICENSE.txt','/assets/figures/transformer-vaswani-figure1.png?download=1#figure','/downloads/embodied-ml-study-pack.zip']){
+  assert.equal(evaluate(`routeHref(${JSON.stringify(resource)})`),basePath+resource);
+  assert.equal(evaluate(`routeHref(${JSON.stringify(basePath+resource)})`),basePath+resource);
+ }
+ const caption=evaluate(`normalizeInternalLinks(inline('[许可](/assets/figures/d2l-classic-LICENSE.txt)'))`);
+ assert.ok(caption.includes('href="'+basePath+'/assets/figures/d2l-classic-LICENSE.txt"'));
 });
 
 for(const lesson of lessons){

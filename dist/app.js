@@ -50,6 +50,7 @@ function parseRoute(){
 function routeHref(raw){
  const url=new URL(raw.startsWith('#/')?raw.slice(1):raw,location.origin);
  if(url.origin!==location.origin)return raw;
+ if(/^\/(assets|downloads)\//.test(localPath(url.pathname)))return sitePath(localPath(url.pathname))+url.search+url.hash;
  const parts=localPath(url.pathname).split('/').filter(Boolean),params=url.searchParams;
  if(parts[0]==='topics'&&parts[1]){
   const topic=topicById[parts[1]],id=Object.keys(CORE_LESSON_TOPIC).find(k=>CORE_LESSON_TOPIC[k]===parts[1]);
