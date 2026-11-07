@@ -41,10 +41,12 @@
         ],
         "figures": [
           {
-            "src": "/assets/figures/vla-system.svg",
+            "src": "/assets/figures/vla-system-v2.svg",
             "alt": "π₀ 风格的两条表示流在每层联合注意力中交互，视觉语言前缀不读取动态动作后缀，动作专家输出速度再经求解器得到动作块。",
-            "caption": "图 1 · 模型与执行的边界。中间框是逐层耦合的计算，而非先跑完 VLM 再把一个向量交给动作头。图中采用 π₀ 的连续状态路径；π₀.₅ 的区别在状态接入小节和 Mask 图中给出。",
-            "afterParagraph": 3
+            "caption": "观测前缀与动作后缀逐层交互，动作专家输出速度，经积分和解码得到动作块。",
+            "afterParagraph": 3,
+            "width": 1200,
+            "height": 675
           }
         ]
       },
@@ -111,10 +113,12 @@
         "formula": "M^{\\rm allow}_{bij}=\\mathbf 1[g_j\\le g_i]\\,m_{bi}m_{bj},\\qquad g_i=\\sum_{r\\le i}{\\rm block\\_start}_r",
         "figures": [
           {
-            "src": "/assets/figures/vla-joint-mask.svg",
+            "src": "/assets/figures/vla-joint-mask-v2.svg",
             "alt": "左侧显示两组参数在每层投影到共同注意力空间；右侧显示 π₀ 的前缀、状态、动作三块可见性和 π₀.₅ 默认的两块可见性。",
-            "caption": "图 2 · OpenPI 固定版本的层内交互与 Mask。行是 Query，列是 Key；深色块为允许读取。π₀.₅ 图只画公开 Flow 路径，不含论文联合训练中的 FAST 监督序列。",
-            "afterParagraph": 1
+            "caption": "π₀ 与 π₀.₅ 公开 Flow 路径的联合注意力。左侧为两组参数的投影与交互，右侧为各输入块的可见性矩阵。",
+            "afterParagraph": 1,
+            "width": 1200,
+            "height": 850
           }
         ]
       },
@@ -218,10 +222,12 @@
         "formula": "\\begin{aligned}X_1&=Z,\\quad \\Delta t=-1/N,\\quad X_{t+\\Delta t}=X_t+\\Delta t\\,v_\\theta(X_t,t,c)\\\\\\tau&=1-t,\\qquad v_{\\tau}(x,\\tau,c)=-v_t(x,1-\\tau,c)\\\\\\#\\mathrm{cache\\ elements}&=2L_bBn_{kv}N_pd_h\\end{aligned}",
         "figures": [
           {
-            "src": "/assets/figures/vla-training-inference.svg",
+            "src": "/assets/figures/vla-training-inference-v2.svg",
             "alt": "训练从示范动作和噪声构造输入与速度标签，经完整前后向更新两参数组；推理先建立前缀缓存，再在 t 从1到0的循环中重算动态动作，最后解码执行。",
-            "caption": "图 3 · 同一模型的训练与生成。实线表示前向数据；训练区的虚线表示梯度。采样没有干净动作答案，缓存仅在一次固定条件的生成中复用。",
-            "afterParagraph": 2
+            "caption": "训练用示范动作与噪声构造监督；推理读取前缀缓存，迭代生成动作，再解码执行。虚线表示训练中的梯度。",
+            "afterParagraph": 2,
+            "width": 1200,
+            "height": 880
           }
         ]
       },

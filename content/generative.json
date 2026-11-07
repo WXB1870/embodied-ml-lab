@@ -57,10 +57,12 @@
         "lead": "潜变量是模型中未直接观测、用于组织生成过程的随机变量。先验规定生成前它怎样分布，解码器规定给定它如何产生数据，后验则反过来描述观测数据后它可能取什么值。下面用这条双向关系解释边缘积分的困难。",
         "figures": [
           {
-            "src": "/assets/figures/vae-definition.svg",
+            "src": "/assets/figures/vae-definition-v2.svg",
             "alt": "VAE 训练从观测数据经编码器、近似后验和重参数化到解码器；生成从先验采样后直接使用同一个解码器。",
-            "caption": "先区分两个方向：生成模型从潜变量走向数据；训练时的编码器从观测数据近似推断潜变量。上排采用对角高斯近似后验，重建项与 KL 项稍后展开；下排生成新样本时从先验出发。依据 [Kingma & Welling §2](https://arxiv.org/abs/1312.6114) 独立绘制。",
-            "afterParagraph": 1
+            "caption": "训练时，编码器由观测推断潜变量，再经重参数化送入解码器；生成时，从先验采样并使用同一个解码器。机制参考 [Kingma & Welling §2](https://arxiv.org/abs/1312.6114)。",
+            "afterParagraph": 1,
+            "width": 1120,
+            "height": 575
           }
         ]
       },
@@ -468,7 +470,7 @@
           {
             "src": "/assets/figures/generative-shared-paths.svg",
             "alt": "同一条件双峰数据经过线性与 VP 两条路径时，端点相同而内部密度不同",
-            "caption": "原创计算图：固定条件 c=0，用同一组混合参数解析计算 pᵣ。列方向为噪声到数据；每一格是一个时刻的密度，不是某条 Brownian 样本轨迹。VP 行采用用于比较的连续余弦/正弦日程，与 DDPM 演示的有限离散日程区分。",
+            "caption": "同一条件双峰分布在线性路径与 VP 路径上的密度切片，按噪声到数据的方向排列。",
             "afterParagraph": 2
           }
         ]

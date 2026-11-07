@@ -170,9 +170,11 @@
       },
       "figures": [
         {
-          "src": "/assets/figures/mlp-computation-chain.svg",
+          "src": "/assets/figures/mlp-computation-chain-v2.svg",
           "alt": "17 参数两层 MLP 的前向张量、参数支路与反向梯度路径",
-          "caption": "原创计算图，与 manual-backprop 的 B=3、D=2、H=3、O=2 完全对应。前向值沿蓝色路径传递；反向从标量损失开始，偏置梯度沿共享批次轴求和。输入梯度用于验证，不参与这次模型参数更新。"
+          "caption": "2→3→2 网络的前向与反向。蓝色路径传递前向值，反向从标量损失逐层求导；共享偏置的梯度沿 Batch 轴求和。",
+          "width": 1100,
+          "height": 510
         }
       ]
     },

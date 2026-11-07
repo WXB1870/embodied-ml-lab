@@ -40,10 +40,12 @@
         "lead": "统计轴是一次归一化共同计算均值或尺度的那些维度，统计集合则是这些轴覆盖的元素。它决定一个输出是否依赖其他样本或时间位置。认识归一化时，应先圈出这组元素，再讨论具体公式。",
         "figures": [
           {
-            "src": "/assets/figures/normalization-definition.svg",
+            "src": "/assets/figures/normalization-definition-v2.svg",
             "alt": "对同一个 B×T×D 张量，LayerNorm 按每个 token 的 D 个通道归一化；训练态 BatchNorm 按每个通道的 B×T 个位置归一化。",
-            "caption": "每个高亮区域表示一次共同计算统计量的集合：左图横着取同一 token 的通道，右图竖着取同一通道的样本与位置。右图对应转置为 [B,D,T] 后的训练态 BatchNorm1d。借鉴 [Wu & He, Figure 2](https://arxiv.org/abs/1803.08494) 的分组表达方式，按本文序列张量独立绘制。",
-            "afterParagraph": 0
+            "caption": "绿色区域表示共同计算统计量的元素：LayerNorm 按同一 Token 的通道分组，训练态 BatchNorm 按同一通道的样本与位置分组。统计分组参考 [Wu & He, Figure 2](https://arxiv.org/abs/1803.08494)。",
+            "afterParagraph": 0,
+            "width": 1120,
+            "height": 540
           }
         ]
       },
@@ -2545,9 +2547,11 @@
         "lead": "模型参数是当前函数的可学习数值，梯度是损失对它们的局部变化率，优化器状态是更新规则保存的历史信息。一次训练步先计算前两者的关系，再使用后者改变参数。把这些对象分开，才能追踪更新顺序。",
         "figures": [
           {
-            "src": "/assets/figures/training-state-lifecycle.svg",
+            "src": "/assets/figures/training-state-lifecycle-v2.svg",
             "alt": "共同训练项目中样本、有效误差、累积窗口、参数更新和 epoch 边界恢复的状态时间线",
-            "caption": "原创数据与状态图，函数名对应同一份 shared-training-project。两个微批次的有效标量数为 10 和 30，因此每一项反向都使用共同分母 40；保存点在完整 epoch 结束，恢复校验覆盖下一整轮。"
+            "caption": "数据经过组批、前向和有效误差归约，再进入梯度累积与参数更新。两个微批次的共同分母为 40；保存与恢复位于 epoch 边界。",
+            "width": 1100,
+            "height": 680
           }
         ]
       },

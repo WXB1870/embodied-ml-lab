@@ -985,10 +985,12 @@
         "lead": "前向加噪是一个预先规定的过程，将干净样本逐步衰减并加入已知随机噪声。噪声等级标记数据被破坏的阶段，而不是机器人执行时刻。先定义这个过程、终端先验和索引，再讨论反向生成。",
         "figures": [
           {
-            "src": "/assets/figures/diffusion-definition.svg",
+            "src": "/assets/figures/diffusion-definition-v2.svg",
             "alt": "扩散模型固定的前向链从干净样本 a 走向带噪状态，学习的反向链从高斯先验逐步生成数据。",
-            "caption": "先分清方向：上排前向链固定，下排反向链需要学习。训练可以直接抽取一个噪声等级，生成则从高噪声状态出发。依据 [Ho et al., Figure 2](https://arxiv.org/abs/2006.11239) 独立绘制；本文用 a 表示干净样本，x[0] 已经过第一次加噪，与原论文用 x₀ 表示干净样本的记号不同。",
-            "afterParagraph": 1
+            "caption": "前向链逐步加噪，反向链逐步生成；训练抽取一个等级拟合噪声，生成从新噪声出发反复更新。机制参考 [Ho et al., Figure 2](https://arxiv.org/abs/2006.11239)。",
+            "afterParagraph": 1,
+            "width": 1120,
+            "height": 530
           }
         ]
       },
@@ -1603,10 +1605,12 @@
         "lead": "LoRA 是在冻结的线性权重旁增加两个小矩阵，其乘积构成低秩权重增量的方法。它用较少可训练参数限制增量的表达方式。下面先定义两因子形状，再计算前向和参数量。",
         "figures": [
           {
-            "src": "/assets/figures/lora-definition.svg",
+            "src": "/assets/figures/lora-definition-v2.svg",
             "alt": "LoRA 输入并行通过冻结的基座权重 W0 与可训练的 A、B 低秩分支，缩放后逐元素相加。",
-            "caption": "先看两路相加：蓝色基座权重保持冻结，橙色 A、B 学习低秩增量。图中按本文 PyTorch 行向量约定标出转置，参数形状与源码一致。依据 [Hu et al., Figure 1 与 §4.1](https://arxiv.org/abs/2106.09685) 独立绘制。",
-            "afterParagraph": 0
+            "caption": "冻结的基座分支与可训练的 A、B 分支相加，形成低秩权重更新。机制参考 [Hu et al., Figure 1](https://arxiv.org/abs/2106.09685)。",
+            "afterParagraph": 0,
+            "width": 1120,
+            "height": 475
           }
         ]
       },

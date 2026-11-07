@@ -171,9 +171,11 @@
         },
         "figures": [
           {
-            "src": "/assets/figures/mlp-computation-chain.svg",
+            "src": "/assets/figures/mlp-computation-chain-v2.svg",
             "alt": "17 参数两层 MLP 的前向张量、参数支路与反向梯度路径",
-            "caption": "原创计算图，与 manual-backprop 的 B=3、D=2、H=3、O=2 完全对应。前向值沿蓝色路径传递；反向从标量损失开始，偏置梯度沿共享批次轴求和。输入梯度用于验证，不参与这次模型参数更新。"
+            "caption": "2→3→2 网络的前向与反向。蓝色路径传递前向值，反向从标量损失逐层求导；共享偏置的梯度沿 Batch 轴求和。",
+            "width": 1100,
+            "height": 510
           }
         ]
       },
@@ -966,9 +968,11 @@
         },
         "figures": [
           {
-            "src": "/assets/figures/cnn-small-network.svg",
+            "src": "/assets/figures/cnn-small-network-v2.svg",
             "alt": "SmallCNN 两层卷积保持空间网格，GAP 汇聚所有位置，再产生两类 logits 的结构图",
-            "caption": "原创结构图，对应现有 cnn-training-and-patches。两个 3×3 局部核的理论跨度依次为 3、5；两层 stride 都是 1。GAP 后的分类梯度依赖整幅输入，不能把最终分类器的感受野仍写成 5×5。"
+            "caption": "两层 3×3 卷积的局部覆盖跨度依次为 3 和 5；GAP 再汇聚整幅特征图，形成分类输出。",
+            "width": 1120,
+            "height": 650
           }
         ]
       },
@@ -1630,11 +1634,13 @@
         "codeKind": "runnable",
         "figures": [
           {
-            "src": "/assets/figures/transformer-preln-case.svg",
+            "src": "/assets/figures/transformer-preln-case-v2.svg",
             "title": "两层教学模型与单层 Pre-LN 数据流",
             "alt": "同一 B=2,T=4,D=8,H=2 的 decoder-only 模型，从 Embedding 经过两层 Block 到词表头与 CE；右侧展开两条残差、逐位置 FFN 和每层 K/V。",
-            "caption": "本章原创结构图。图中的位置、形状与代码页 TinyLM 一致；为保持可读性省略 Dropout 和 Padding 清零，源码保留二者。Pre-LN 的归一化位置参照 [Xiong et al.](https://proceedings.mlr.press/v119/xiong20b.html)，不是原论文 Encoder–Decoder 的复刻。",
-            "afterParagraph": 2
+            "caption": "左侧是两层 decoder-only 模型，右侧展开一个 Pre-LN Block：Attention 与 FFN 分别通过残差更新表示。归一化位置参照 [Xiong et al.](https://proceedings.mlr.press/v119/xiong20b.html)。",
+            "afterParagraph": 2,
+            "width": 1000,
+            "height": 910
           }
         ]
       },
@@ -1657,11 +1663,13 @@
         "codeExplanation": "这是三个独立投影的局部写法，依赖已定义的 torch、x、B/T/H/D 与三个 Linear。完整模型使用等价的打包 `qkv`，可在[完整实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm) 的 `CausalAttention.forward` 中运行。",
         "figures": [
           {
-            "src": "/assets/figures/transformer-attention-flow.svg",
+            "src": "/assets/figures/transformer-attention-flow-v2.svg",
             "title": "Attention 投影、头轴与读出形状",
             "alt": "QKV 从 [2,4,24] 拆分并转为 [2,2,4,4]，Q/K 旋转后计算 Mask 和 Softmax，再读取 V、合头并投影回 [2,4,8]。",
-            "caption": "先沿箭头识别 Q/K/V 三条路径与最终读出，图中的具体拆头形状在下文逐步展开。本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
-            "afterParagraph": 1
+            "caption": "Q/K 打分并归一化后读取 V，各头读出再合并、投影回模型宽度。机制参考 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762)。",
+            "afterParagraph": 1,
+            "width": 1020,
+            "height": 810
           }
         ]
       },
@@ -1873,11 +1881,13 @@
         "codeKind": "runnable",
         "figures": [
           {
-            "src": "/assets/figures/transformer-two-layer-reachability.svg",
+            "src": "/assets/figures/transformer-two-layer-reachability-v2.svg",
             "title": "两层 Mask 的间接泄漏路径",
             "alt": "第一层额外允许 token 0 读 token 3，第二层仍采用因果 Mask，但输出 1 可以沿输入 3、第一层 0、第二层 1 的路径受未来影响。",
-            "caption": "本章原创布尔可达性示意，与现有 layerwise-information-flow 实现中的反例逐项对应；灰色虚线只示意恒等边，其他合法连接为清晰起见未全部画出。有路径不保证当前 Jacobian 非零；具体数值由代码同时以导数、有限差分与输入扰动检查。基本因果约束来源：[Attention Is All You Need §3.1](https://arxiv.org/abs/1706.03762)。",
-            "afterParagraph": 8
+            "caption": "第一层的位置 0 读取输入 3，第二层的位置 1 再读取中间位置 0，形成 3→0→1 的间接路径。因果注意力参考 [Attention Is All You Need §3.1](https://arxiv.org/abs/1706.03762)。",
+            "afterParagraph": 8,
+            "width": 1020,
+            "height": 470
           }
         ]
       },
@@ -1923,11 +1933,13 @@
         "codeExplanation": "固定两个 Query，依次改变可用上下文长度为 3、2、1；输出始终有两行。前两个结果可按整数指数质量手算，最后用 Autograd 检验单 Key 时 Q/K 路径梯度为零而 Value 梯度不为零。多头、批量及一般梯度对照保留在代码页的 `manual-mha`，此处只隔离查询与条件的关系。",
         "figures": [
           {
-            "src": "/assets/figures/transformer-cross-attention.svg",
+            "src": "/assets/figures/transformer-cross-attention-v2.svg",
             "title": "不同 Query 如何读取同一组条件",
             "alt": "两个 Query 读取三个二维 Key/Value，得到不同的两行输出；上下文缩短为两项后重新归一化，输出长度仍由 Query 决定。",
-            "caption": "本章原创矩阵算例，数值由本节 PyTorch 代码逐项验证。机制参照 [Attention Is All You Need §3.2.3](https://arxiv.org/abs/1706.03762)。图省略 Batch、Head 和输出投影，只隔离非方形读出及上下文长度的影响。",
-            "afterParagraph": 4
+            "caption": "两条 Query 分别读取同一组条件；条件从三项减为两项后，权重重新归一化，输出仍有两行。机制参考 [Attention Is All You Need §3.2.3](https://arxiv.org/abs/1706.03762)。",
+            "afterParagraph": 4,
+            "width": 980,
+            "height": 700
           }
         ]
       },
@@ -2681,7 +2693,7 @@
           {
             "src": "assets/experiments/fm-mixture-distributions.svg",
             "alt": "条件为 0 时的初始噪声、双峰目标数据与学习场生成样本",
-            "caption": "贯穿案例，固定条件 \\(c=0\\)：左为噪声、中为目标双峰、右为后文学习场的 64 步 Heun 生成结果。各栏是同一次已记录实验的 200 个样本；先比较左、中两栏确立问题，读完采样后再检查右栏。有限点云不证明分布已被精确恢复。",
+            "caption": "条件 \\(c=0\\) 下的噪声、目标双峰与 64 步 Heun 生成结果，各含 200 个样本。",
             "afterParagraph": 2
           }
         ]
@@ -2912,7 +2924,7 @@
           {
             "src": "assets/experiments/fm-mixture-dynamics.svg",
             "alt": "训练端点直线、\\(t\\)等于0.5的速度场、学习场的ODE轨迹及不同NFE的误差",
-            "caption": "训练直线与实际积分轨迹分开绘制。速度箭头是 \\(t=0.5\\) 的瞬时场切片；误差图使用共同初始噪声，实线度量积分误差，虚线包含学习场与解析场的偏差。 速度箭头使用统一显示比例，不代表某个固定积分步长。"
+            "caption": "训练端点直线、\\(t=0.5\\) 的速度场与 ODE 轨迹。误差曲线中，实线表示积分误差，虚线还包含学习场的偏差。"
           }
         ],
         "lead": "混合分布的责任权重，是给定当前状态后各分量的后验概率；它用于组合各分量的边际场。主案例保留可解析的参考场，因此能分别衡量网络学习偏差与同一场上的积分误差。下面回到开篇数据作这个对照。"

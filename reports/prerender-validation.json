@@ -130,7 +130,7 @@
     {
       "path": "/learn/mlp/",
       "title": "MLP：表达、梯度与优化",
-      "bytes": 430648
+      "bytes": 430582
     },
     {
       "path": "/learn/mlp/code/",
@@ -160,7 +160,7 @@
     {
       "path": "/learn/normalization/",
       "title": "归一化：统计轴、梯度与不变性",
-      "bytes": 257339
+      "bytes": 257271
     },
     {
       "path": "/learn/normalization/code/",
@@ -190,7 +190,7 @@
     {
       "path": "/learn/cnn-receptive-field/",
       "title": "CNN：卷积、采样与空间表示",
-      "bytes": 491337
+      "bytes": 491247
     },
     {
       "path": "/learn/cnn-receptive-field/code/",
@@ -235,7 +235,7 @@
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 639209
+      "bytes": 638840
     },
     {
       "path": "/learn/transformer/code/",
@@ -340,7 +340,7 @@
     {
       "path": "/learn/latent-variable-models/",
       "title": "生成建模、潜变量与 VAE",
-      "bytes": 371544
+      "bytes": 371472
     },
     {
       "path": "/learn/latent-variable-models/code/",
@@ -355,7 +355,7 @@
     {
       "path": "/learn/diffusion/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM",
-      "bytes": 602701
+      "bytes": 602577
     },
     {
       "path": "/learn/diffusion/code/",
@@ -370,7 +370,7 @@
     {
       "path": "/learn/score-sde/",
       "title": "Score、SDE 与概率流 ODE",
-      "bytes": 526132
+      "bytes": 525957
     },
     {
       "path": "/learn/score-sde/code/",
@@ -385,7 +385,7 @@
     {
       "path": "/learn/flow-matching/",
       "title": "Flow Matching",
-      "bytes": 685288
+      "bytes": 684940
     },
     {
       "path": "/learn/flow-matching/code/",
@@ -475,7 +475,7 @@
     {
       "path": "/learn/vla-architecture/",
       "title": "VLA：从视觉语言骨干到动作专家",
-      "bytes": 386562
+      "bytes": 386429
     },
     {
       "path": "/learn/vla-architecture/code/",
@@ -490,7 +490,7 @@
     {
       "path": "/learn/finetuning/",
       "title": "微调与 LoRA",
-      "bytes": 304901
+      "bytes": 304829
     },
     {
       "path": "/learn/finetuning/code/",
@@ -565,7 +565,7 @@
     {
       "path": "/learn/training-loop/",
       "title": "训练循环与指标归约",
-      "bytes": 59242
+      "bytes": 59198
     },
     {
       "path": "/learn/training-loop/code/",

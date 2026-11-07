@@ -255,9 +255,11 @@
       },
       "figures": [
         {
-          "src": "/assets/figures/cnn-small-network.svg",
+          "src": "/assets/figures/cnn-small-network-v2.svg",
           "alt": "SmallCNN 两层卷积保持空间网格，GAP 汇聚所有位置，再产生两类 logits 的结构图",
-          "caption": "原创结构图，对应现有 cnn-training-and-patches。两个 3×3 局部核的理论跨度依次为 3、5；两层 stride 都是 1。GAP 后的分类梯度依赖整幅输入，不能把最终分类器的感受野仍写成 5×5。"
+          "caption": "两层 3×3 卷积的局部覆盖跨度依次为 3 和 5；GAP 再汇聚整幅特征图，形成分类输出。",
+          "width": 1120,
+          "height": 650
         }
       ]
     },
