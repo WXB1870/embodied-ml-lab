@@ -1,7 +1,7 @@
 """Assemble the authored curriculum and a downloadable learning pack."""
 from pathlib import Path
 import json, zipfile, copy, shutil, re, os
-from build_knowledge import build_knowledge, write_topic_files, section_learning_markdown, section_figures_markdown
+from build_knowledge import build_knowledge, write_topic_files, section_learning_markdown, section_figures_markdown, section_example_markdown
 root=Path(__file__).resolve().parents[1]
 site_url=os.environ.get('SITE_URL','https://wxb1870.github.io/embodied-ml-lab/').rstrip('/')
 catalog=json.loads((root/'content'/'curriculum.json').read_text())
@@ -35,6 +35,9 @@ for number,l in enumerate(lessons,1):
         l['pitfalls']=copy.deepcopy(t['pitfalls'])
         l['sources']=list({s['url']:s for s in l['sources']+t['sources']}.values())
         l['extraImplementations']=copy.deepcopy(t['implementations'])
+        if t.get('mainImplementation'):
+            l['mainImplementation']=t['mainImplementation']
+            assert any(d['id']==l['mainImplementation'] for d in l['extraImplementations'])
         l['extraLabs']=copy.deepcopy(t['labs'])
 required=['id','number','module','title','subtitle','minutes','tags','prerequisites','objectives','why','lead','sections','shapes','code','exercise','pytorchTask','pitfalls','sources','knowledgeChecks']
 for l in lessons:
@@ -49,6 +52,8 @@ for l in lessons:
         assert l[key].get('hints') and l[key].get('explanation'),(l['id'],key,'missing answer explanation')
     for section in l['sections']:
         assert isinstance(section.get('lead'),str) and section['lead'].strip(),(l['id'],section.get('id'),'missing section introduction')
+        if 'afterParagraph' in section.get('example',{}):
+            assert 0<=section['example']['afterParagraph']<=len(section['body']),(l['id'],section['id'],'example placement')
         if section.get('code'):compile(section['code'],l['id']+'/section','exec')
         if section.get('codeKind')=='fragment':assert section.get('codeExplanation'),(l['id'],section['id'],'fragment needs context')
         for figure in section.get('figures',[section['figure']] if section.get('figure') else []):
@@ -148,11 +153,12 @@ for l in lessons:readme+=f"- {l['number']:02d} {l['title']} (`{l['id']}`)\n"
 def lesson_markdown(l):
     text=f"# {l['title']}\n\n{l['subtitle']}\n\n"
     if l.get('lead'):text+=l['lead']+'\n\n'
+    text+='## 学习目标\n\n'+'\n'.join('- '+objective for objective in l['objectives'])+'\n\n'
     if l.get('prerequisites'):text+='前置知识：'+' · '.join(f"[{lookup[id]['title']}]({site_url}/learn/{id}/)" for id in l['prerequisites'])+'\n\n'
     for section in l['sections']:
-        text+='## '+section['title']+'\n\n'+section.get('lead','')+'\n\n'+section_figures_markdown(section,'../',0)+'\n\n'
+        text+='## '+section['title']+'\n\n'+section.get('lead','')+'\n\n'+section_figures_markdown(section,'../',0)+'\n\n'+section_example_markdown(section,0)+'\n\n'
         for i,paragraph in enumerate(section['body'],1):
-            text+=paragraph+'\n\n'+section_figures_markdown(section,'../',i)+'\n\n'
+            text+=paragraph+'\n\n'+section_figures_markdown(section,'../',i)+'\n\n'+section_example_markdown(section,i)+'\n\n'
         if section.get('formula'):text+='$$\n'+section['formula']+'\n$$\n\n'
         if section.get('bullets'):text+='\n'.join('- '+x for x in section['bullets'])+'\n\n'
         if section.get('code'):
@@ -162,10 +168,17 @@ def lesson_markdown(l):
     text+='## 张量形状\n\n| 变量 | 形状 | 含义 |\n|---|---|---|\n'
     for shape in l['shapes']:text+='| '+' | '.join(str(shape[k]).replace('|','\\|') for k in ['name','shape','meaning'])+' |\n'
     text+='\n## 完整代码与精读\n\n'
+    primary=next((d for d in l.get('extraImplementations',[]) if d['id']==l.get('mainImplementation')),None)
+    if primary:
+        text+='### 本章贯穿案例：'+primary['title']+'\n\n'+primary['description']+'\n\n'
+        text+='[先运行主案例](../topics/'+l['theoryTopic']+'/demos/'+primary['id']+'.py)\n\n预期观察：'+primary['expected']+'\n\n'
+        text+='\n'.join('- 第 '+e['lines']+' 行：'+e['text'] for e in primary['explanations'])+'\n\n'
+        text+='### 补充演示\n\n'
     if l['code'].get('runtimeNote'):text+=l['code']['runtimeNote']+'\n\n'
     text+='```python\n'+l['code']['source']+'\n```\n\n'
     text+='\n'.join('- 第 '+e['lines']+' 行：'+e['text'] for e in l['code']['explanations'])+'\n\n预期观察：'+l['code']['expected']+'\n\n'
     for demo in l.get('extraImplementations',[]):
+        if demo is primary:continue
         source=f"../topics/{l['theoryTopic']}/demos/{demo['id']}.py" if l.get('theoryTopic') else f"../demos/{l['id']}/{demo['id']}.py"
         text+='### '+demo['title']+'\n\n'+demo['description']+'\n\n[完整可运行代码]('+source+')\n\n'
         text+='\n'.join('- 第 '+e['lines']+' 行：'+e['text'] for e in demo['explanations'])+'\n\n预期观察：'+demo['expected']+'\n\n'

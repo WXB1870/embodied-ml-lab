@@ -13,6 +13,16 @@ def section_figures_markdown(section, asset_prefix='../../', after_paragraph=Non
     return '\n\n'.join(lines)
 
 
+def section_example_markdown(section, after_paragraph=None):
+    ex = section.get('example')
+    if not ex or ex.get('afterParagraph') != after_paragraph:
+        return ''
+    lines = ['### 例：' + ex['title']]
+    lines += [str(i + 1) + '. ' + step for i, step in enumerate(ex['steps'])]
+    lines += [ex['conclusion']]
+    return '\n\n'.join(lines)
+
+
 def section_learning_markdown(section, asset_prefix='../../'):
     lines = [section_figures_markdown(section, asset_prefix)]
     if section.get('comparison'):
@@ -20,11 +30,7 @@ def section_learning_markdown(section, asset_prefix='../../'):
         clean = lambda value: str(value).replace('|', '\\|').replace('\n', ' ')
         lines += ['### ' + table['title'], '| ' + ' | '.join(map(clean, table['columns'])) + ' |', '|' + '---|' * len(table['columns'])]
         lines += ['| ' + ' | '.join(map(clean, row)) + ' |' for row in table['rows']]
-    if section.get('example'):
-        ex = section['example']
-        lines += ['### 例：' + ex['title']]
-        lines += [str(i + 1) + '. ' + step for i, step in enumerate(ex['steps'])]
-        lines += [ex['conclusion']]
+    lines += [section_example_markdown(section)]
     if section.get('focus'):
         focus = section['focus']
         lines += ['### ' + focus['title'], focus['explanation'], focus['check']]
@@ -35,9 +41,9 @@ def topic_markdown(topic):
     lines = ['# ' + topic['title'], topic['lead'], '## 符号约定', '| 符号 | 形状 | 含义 |', '|---|---|---|']
     lines += ['| ' + ' | '.join(str(n[k]).replace('|', '\\|') for k in ['symbol', 'shape', 'meaning']) + ' |' for n in topic['notation']]
     for section in topic['sections']:
-        lines += ['## ' + section['title'], section.get('lead', ''), section_figures_markdown(section, after_paragraph=0)]
+        lines += ['## ' + section['title'], section.get('lead', ''), section_figures_markdown(section, after_paragraph=0), section_example_markdown(section, 0)]
         for i,paragraph in enumerate(section['body'],1):
-            lines += [paragraph,section_figures_markdown(section,after_paragraph=i)]
+            lines += [paragraph,section_figures_markdown(section,after_paragraph=i),section_example_markdown(section,i)]
         if section.get('formula'):
             lines += ['$$\n' + section['formula'] + '\n$$']
         lines += ['- ' + item for item in section.get('bullets', [])]

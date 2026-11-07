@@ -37,6 +37,7 @@ for(const lesson of lessons){
  test(lesson.id+' theory introduction and exercise separation',()=>{
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
   assert.ok(html.includes('class="article-intro"'));
+  assert.ok(html.includes('class="chapter-goals"')&&html.includes('id="chapter-review"'));
   assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length);
   assert.ok(!html.includes('id="discussion"'));
   assert.ok(!html.includes('class="key-points"'));
@@ -97,5 +98,15 @@ for(const lesson of lessons){
   assert.equal(url.searchParams.get('lab'),lab.id);
  });
 }
+test('Core code pages start with the running example and retain unique code frames',()=>{
+ for(const id of ['mlp','cnn-receptive-field','transformer','flow-matching']){
+  const lesson=lessons.find(l=>l.id===id);
+  const html=evaluate(`renderLesson(byId[${JSON.stringify(id)}],'code','python',new URLSearchParams())`);
+  const mainStart=html.indexOf('id="demo-'+lesson.mainImplementation+'"');
+  assert.ok(mainStart>=0&&mainStart<html.indexOf('id="code-implementation"'));
+  assert.equal((html.match(/id="lesson-code"/g)||[]).length,1);
+  for(const demo of lesson.extraImplementations)assert.equal((html.match(new RegExp('id="code-'+demo.id+'"','g'))||[]).length,1);
+ }
+});
 fs.writeFileSync(path.join(root,'reports/route-validation.json'),JSON.stringify({total:records.length,passed:records.length,results:records},null,2)+'\n');
 console.log(JSON.stringify({routeAndRendererChecks:records.length,passed:records.length}));

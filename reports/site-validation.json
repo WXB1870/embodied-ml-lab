@@ -1,7 +1,7 @@
 {
   "html_pages": 158,
   "lessons": 50,
-  "internal_targets_checked": 6393,
+  "internal_targets_checked": 6611,
   "errors": [],
   "archives": [
     {
@@ -22,14 +22,14 @@
     },
     {
       "path": "/guide/",
-      "ids": 7,
-      "links": 10,
+      "ids": 8,
+      "links": 23,
       "assets": 10
     },
     {
       "path": "/",
       "ids": 15,
-      "links": 61,
+      "links": 63,
       "assets": 10
     },
     {
@@ -46,8 +46,8 @@
     },
     {
       "path": "/learn/action-chunk/",
-      "ids": 14,
-      "links": 40,
+      "ids": 15,
+      "links": 44,
       "assets": 10
     },
     {
@@ -64,8 +64,8 @@
     },
     {
       "path": "/learn/action-representation/",
-      "ids": 15,
-      "links": 47,
+      "ids": 16,
+      "links": 51,
       "assets": 10
     },
     {
@@ -82,8 +82,8 @@
     },
     {
       "path": "/learn/activation-init/",
-      "ids": 15,
-      "links": 46,
+      "ids": 16,
+      "links": 50,
       "assets": 10
     },
     {
@@ -100,8 +100,8 @@
     },
     {
       "path": "/learn/attention/",
-      "ids": 18,
-      "links": 47,
+      "ids": 19,
+      "links": 51,
       "assets": 11
     },
     {
@@ -118,8 +118,8 @@
     },
     {
       "path": "/learn/autograd/",
-      "ids": 22,
-      "links": 39,
+      "ids": 23,
+      "links": 43,
       "assets": 10
     },
     {
@@ -136,8 +136,8 @@
     },
     {
       "path": "/learn/behavior-cloning/",
-      "ids": 16,
-      "links": 48,
+      "ids": 17,
+      "links": 52,
       "assets": 10
     },
     {
@@ -154,8 +154,8 @@
     },
     {
       "path": "/learn/checkpoint/",
-      "ids": 16,
-      "links": 46,
+      "ids": 17,
+      "links": 50,
       "assets": 10
     },
     {
@@ -172,8 +172,8 @@
     },
     {
       "path": "/learn/cnn-receptive-field/",
-      "ids": 29,
-      "links": 79,
+      "ids": 30,
+      "links": 83,
       "assets": 12
     },
     {
@@ -190,8 +190,8 @@
     },
     {
       "path": "/learn/conditioning-fusion/",
-      "ids": 22,
-      "links": 46,
+      "ids": 23,
+      "links": 50,
       "assets": 10
     },
     {
@@ -208,8 +208,8 @@
     },
     {
       "path": "/learn/contrastive-pretraining/",
-      "ids": 16,
-      "links": 55,
+      "ids": 17,
+      "links": 59,
       "assets": 10
     },
     {
@@ -226,8 +226,8 @@
     },
     {
       "path": "/learn/data-quality/",
-      "ids": 15,
-      "links": 55,
+      "ids": 16,
+      "links": 59,
       "assets": 10
     },
     {
@@ -244,8 +244,8 @@
     },
     {
       "path": "/learn/dataloader/",
-      "ids": 15,
-      "links": 41,
+      "ids": 16,
+      "links": 45,
       "assets": 10
     },
     {
@@ -262,8 +262,8 @@
     },
     {
       "path": "/learn/diffusion/",
-      "ids": 20,
-      "links": 78,
+      "ids": 21,
+      "links": 82,
       "assets": 11
     },
     {
@@ -280,8 +280,8 @@
     },
     {
       "path": "/learn/distributed-training/",
-      "ids": 15,
-      "links": 42,
+      "ids": 16,
+      "links": 46,
       "assets": 10
     },
     {
@@ -298,8 +298,8 @@
     },
     {
       "path": "/learn/distribution-shift/",
-      "ids": 15,
-      "links": 42,
+      "ids": 16,
+      "links": 46,
       "assets": 10
     },
     {
@@ -316,8 +316,8 @@
     },
     {
       "path": "/learn/embeddings/",
-      "ids": 15,
-      "links": 42,
+      "ids": 16,
+      "links": 46,
       "assets": 10
     },
     {
@@ -334,8 +334,8 @@
     },
     {
       "path": "/learn/evaluation/",
-      "ids": 14,
-      "links": 42,
+      "ids": 15,
+      "links": 46,
       "assets": 10
     },
     {
@@ -352,8 +352,8 @@
     },
     {
       "path": "/learn/execution-latency/",
-      "ids": 23,
-      "links": 40,
+      "ids": 24,
+      "links": 44,
       "assets": 10
     },
     {
@@ -370,8 +370,8 @@
     },
     {
       "path": "/learn/finetuning/",
-      "ids": 18,
-      "links": 65,
+      "ids": 19,
+      "links": 69,
       "assets": 11
     },
     {
@@ -388,8 +388,8 @@
     },
     {
       "path": "/learn/flow-matching/",
-      "ids": 33,
-      "links": 79,
+      "ids": 34,
+      "links": 83,
       "assets": 12
     },
     {
@@ -406,8 +406,8 @@
     },
     {
       "path": "/learn/generalization/",
-      "ids": 15,
-      "links": 46,
+      "ids": 16,
+      "links": 50,
       "assets": 10
     },
     {
@@ -424,8 +424,8 @@
     },
     {
       "path": "/learn/generative-policy/",
-      "ids": 14,
-      "links": 64,
+      "ids": 15,
+      "links": 68,
       "assets": 10
     },
     {
@@ -442,8 +442,8 @@
     },
     {
       "path": "/learn/gradient-accumulation/",
-      "ids": 27,
-      "links": 42,
+      "ids": 28,
+      "links": 46,
       "assets": 10
     },
     {
@@ -460,8 +460,8 @@
     },
     {
       "path": "/learn/kv-cache-inference/",
-      "ids": 15,
-      "links": 48,
+      "ids": 16,
+      "links": 52,
       "assets": 10
     },
     {
@@ -478,8 +478,8 @@
     },
     {
       "path": "/learn/latent-variable-models/",
-      "ids": 15,
-      "links": 47,
+      "ids": 16,
+      "links": 51,
       "assets": 11
     },
     {
@@ -496,8 +496,8 @@
     },
     {
       "path": "/learn/losses/",
-      "ids": 20,
-      "links": 43,
+      "ids": 21,
+      "links": 47,
       "assets": 10
     },
     {
@@ -514,8 +514,8 @@
     },
     {
       "path": "/learn/matrix-grad/",
-      "ids": 17,
-      "links": 48,
+      "ids": 18,
+      "links": 52,
       "assets": 10
     },
     {
@@ -532,8 +532,8 @@
     },
     {
       "path": "/learn/memory-checkpointing/",
-      "ids": 15,
-      "links": 40,
+      "ids": 16,
+      "links": 44,
       "assets": 10
     },
     {
@@ -550,8 +550,8 @@
     },
     {
       "path": "/learn/mixed-precision/",
-      "ids": 15,
-      "links": 42,
+      "ids": 16,
+      "links": 46,
       "assets": 10
     },
     {
@@ -568,8 +568,8 @@
     },
     {
       "path": "/learn/mlp/",
-      "ids": 25,
-      "links": 66,
+      "ids": 26,
+      "links": 70,
       "assets": 11
     },
     {
@@ -586,8 +586,8 @@
     },
     {
       "path": "/learn/modules/",
-      "ids": 15,
-      "links": 43,
+      "ids": 16,
+      "links": 47,
       "assets": 10
     },
     {
@@ -604,8 +604,8 @@
     },
     {
       "path": "/learn/multimodal/",
-      "ids": 16,
-      "links": 73,
+      "ids": 17,
+      "links": 77,
       "assets": 10
     },
     {
@@ -622,8 +622,8 @@
     },
     {
       "path": "/learn/multitask-gradients/",
-      "ids": 15,
-      "links": 44,
+      "ids": 16,
+      "links": 48,
       "assets": 10
     },
     {
@@ -640,8 +640,8 @@
     },
     {
       "path": "/learn/normalization/",
-      "ids": 15,
-      "links": 46,
+      "ids": 16,
+      "links": 50,
       "assets": 11
     },
     {
@@ -658,8 +658,8 @@
     },
     {
       "path": "/learn/numerical/",
-      "ids": 15,
-      "links": 41,
+      "ids": 16,
+      "links": 45,
       "assets": 10
     },
     {
@@ -676,8 +676,8 @@
     },
     {
       "path": "/learn/optimization/",
-      "ids": 15,
-      "links": 46,
+      "ids": 16,
+      "links": 50,
       "assets": 10
     },
     {
@@ -694,8 +694,8 @@
     },
     {
       "path": "/learn/partial-observability/",
-      "ids": 14,
-      "links": 43,
+      "ids": 15,
+      "links": 47,
       "assets": 10
     },
     {
@@ -712,8 +712,8 @@
     },
     {
       "path": "/learn/policy-gradient/",
-      "ids": 17,
-      "links": 52,
+      "ids": 18,
+      "links": 56,
       "assets": 10
     },
     {
@@ -730,8 +730,8 @@
     },
     {
       "path": "/learn/probability/",
-      "ids": 28,
-      "links": 55,
+      "ids": 29,
+      "links": 59,
       "assets": 10
     },
     {
@@ -748,8 +748,8 @@
     },
     {
       "path": "/learn/residual/",
-      "ids": 16,
-      "links": 49,
+      "ids": 17,
+      "links": 53,
       "assets": 11
     },
     {
@@ -766,8 +766,8 @@
     },
     {
       "path": "/learn/returns-bellman/",
-      "ids": 25,
-      "links": 45,
+      "ids": 26,
+      "links": 49,
       "assets": 10
     },
     {
@@ -784,8 +784,8 @@
     },
     {
       "path": "/learn/score-sde/",
-      "ids": 16,
-      "links": 52,
+      "ids": 17,
+      "links": 56,
       "assets": 11
     },
     {
@@ -802,8 +802,8 @@
     },
     {
       "path": "/learn/tensor/",
-      "ids": 15,
-      "links": 35,
+      "ids": 16,
+      "links": 39,
       "assets": 10
     },
     {
@@ -820,8 +820,8 @@
     },
     {
       "path": "/learn/tokenizer-autoregressive/",
-      "ids": 20,
-      "links": 45,
+      "ids": 21,
+      "links": 49,
       "assets": 10
     },
     {
@@ -838,8 +838,8 @@
     },
     {
       "path": "/learn/train-infer-contract/",
-      "ids": 15,
-      "links": 48,
+      "ids": 16,
+      "links": 52,
       "assets": 10
     },
     {
@@ -856,8 +856,8 @@
     },
     {
       "path": "/learn/training-diagnostics/",
-      "ids": 15,
-      "links": 44,
+      "ids": 16,
+      "links": 48,
       "assets": 10
     },
     {
@@ -874,8 +874,8 @@
     },
     {
       "path": "/learn/training-loop/",
-      "ids": 15,
-      "links": 53,
+      "ids": 16,
+      "links": 57,
       "assets": 11
     },
     {
@@ -892,8 +892,8 @@
     },
     {
       "path": "/learn/transformer/",
-      "ids": 26,
-      "links": 106,
+      "ids": 28,
+      "links": 113,
       "assets": 16
     },
     {
@@ -910,8 +910,8 @@
     },
     {
       "path": "/learn/vision-preprocessing/",
-      "ids": 22,
-      "links": 46,
+      "ids": 23,
+      "links": 50,
       "assets": 10
     },
     {
@@ -928,8 +928,8 @@
     },
     {
       "path": "/learn/vla-architecture/",
-      "ids": 18,
-      "links": 80,
+      "ids": 19,
+      "links": 84,
       "assets": 13
     },
     {

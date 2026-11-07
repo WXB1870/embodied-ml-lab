@@ -85,7 +85,17 @@
           "固定版本的 [Attention 与 Module](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/gemma.py) 明确要求两组配置有相同深度、Query 头数、KV 头数和 head_dim，但允许 width 与 mlp_dim 不同。默认 Gemma 配置的前缀/专家宽度为 2048/1024，深度均为 18，Query 头数为 8、KV 头数为 1、head_dim 为 256。这是该源码配置的事实，不能从教学模型的普通多头实现推断真实模型的 KV 内存。",
           "论文称这两组权重为 experts，源码也按 token 所属模态使用不同参数。这里的路由由输入类别确定，没有学习一个 router 为每个 token 挑选 top-k 个稀疏 FFN 专家；因此不宜未经说明就按常见稀疏 MoE 的负载均衡或专家并行机制来解释。它也不只是一个浅层 head，而是在多层 attention、FFN 和归一化中拥有独立参数的完整动作计算流。"
         ],
-        "formula": "\\begin{aligned}Q&=[Q_p;Q_a],\\quad K=[K_p;K_a],\\quad V=[V_p;V_a]\\\\O&=\\operatorname{softmax}_{\\rm key}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_h}}+M\\right)V,\\quad M_{ij}\\in\\{0,-\\infty\\}\\\\P^{(l+1)}&=\\operatorname{Block}_p(P^{(l)},O_p),\\qquad S^{(l+1)}=\\operatorname{Block}_a(S^{(l)},O_a)\\end{aligned}"
+        "formula": "\\begin{aligned}Q&=[Q_p;Q_a],\\quad K=[K_p;K_a],\\quad V=[V_p;V_a]\\\\O&=\\operatorname{softmax}_{\\rm key}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_h}}+M\\right)V,\\quad M_{ij}\\in\\{0,-\\infty\\}\\\\P^{(l+1)}&=\\operatorname{Block}_p(P^{(l)},O_p),\\qquad S^{(l+1)}=\\operatorname{Block}_a(S^{(l)},O_a)\\end{aligned}",
+        "example": {
+          "title": "动作 Query 为什么要在一个共同分母下读取",
+          "afterParagraph": 2,
+          "steps": [
+            "把一个动作 Query 的可见集合暂时缩成两个 Key：一个来自视觉语言前缀，一个来自动作后缀。设两个缩放分数都为 0，Value 分别为 \\((2,0)\\) 与 \\((0,4)\\)。这是局部手算，不是声称训练后的头必然采用这些权重。",
+            "联合 Softmax 使用同一个分母 \\(e^0+e^0=2\\)，权重为 \\((1/2,1/2)\\)，读出为 \\((1,2)\\)。前缀和动作可以使用不同投影参数，但投影后的 Key/Value 必须满足当前头的运算约定。",
+            "若拆成两个各含一个 Key 的 Softmax，每份权重都为 1，相加得到 \\((2,4)\\)。它已经不同于联合读出；实际网络再加入不同的残差和更新顺序，差别还会继续传播。"
+          ],
+          "conclusion": "“两类表示能够交换信息”只说明存在连接。共同归一化的范围、投影参数和更新次序共同定义具体架构。"
+        }
       },
       {
         "id": "visibility",

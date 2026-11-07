@@ -245,7 +245,7 @@ window.addEventListener('popstate',()=>{if(activeJob)terminateRun();render();win
 $('.skip-link').addEventListener('click',e=>{e.preventDefault();$('#main').focus();$('#main').scrollIntoView();});
 async function init(){
  try{
-  const [courseResponse,catalogResponse,topicResponse]=await Promise.all([fetch(sitePath('/data/lessons.json')),fetch(sitePath('/data/curriculum.json')),fetch(sitePath('/data/topics.json'))]);
+  const [courseResponse,catalogResponse,topicResponse]=await Promise.all([fetch(sitePath('/data/lessons.json'),{cache:'no-cache'}),fetch(sitePath('/data/curriculum.json'),{cache:'no-cache'}),fetch(sitePath('/data/topics.json'),{cache:'no-cache'})]);
   if(!courseResponse.ok||!catalogResponse.ok||!topicResponse.ok)throw new Error('课程文件暂时不可用');
   curriculum=await catalogResponse.json();MODULES=curriculum.modules;
   lessons=(await courseResponse.json()).sort((a,b)=>a.number-b.number);byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topics=await topicResponse.json();topicById=Object.fromEntries(topics.map(t=>[t.id,t]));

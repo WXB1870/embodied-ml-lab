@@ -77,7 +77,18 @@
           "实际通常最小化负 ELBO。代码中的符号应是 NLL 加 KL；若把 KL 减掉，会奖励远离先验。下面的解析模型同时计算真实 \\(\\log p(a)\\)、ELBO 和后验 KL，以三方恒等式验证方向和常数，而不只检查一个 loss 是否有限。"
         ],
         "formula": "\\begin{aligned}\\log p_\\theta(a)&=\\log\\mathbb E_{q_\\phi(z\\mid a)}\\!\\left[\\frac{p_\\theta(a,z)}{q_\\phi(z\\mid a)}\\right]\\\\&\\ge\\mathbb E_q[\\log p_\\theta(a,z)-\\log q_\\phi(z\\mid a)]\\\\&=\\underbrace{\\mathbb E_q[\\log p_\\theta(a\\mid z)]-D_{\\mathrm{KL}}(q_\\phi(z\\mid a)\\Vert p(z))}_{\\mathcal L_{\\mathrm{ELBO}}}\\\\\\log p_\\theta(a)-\\mathcal L_{\\mathrm{ELBO}}&=D_{\\mathrm{KL}}(q_\\phi(z\\mid a)\\Vert p_\\theta(z\\mid a))\\ge0.\\end{aligned}",
-        "lead": "证据下界（ELBO）是观测对数似然的一个可计算下界，由近似后验下的重建项与先验 KL 组成。它让难处理的边缘似然可以通过采样优化。下面推导下界和间隙，而非先把两个损失项当作经验配方。"
+        "lead": "证据下界（ELBO）是观测对数似然的一个可计算下界，由近似后验下的重建项与先验 KL 组成。它让难处理的边缘似然可以通过采样优化。下面推导下界和间隙，而非先把两个损失项当作经验配方。",
+        "example": {
+          "title": "同一个观测，两个近似后验为什么得到不同下界",
+          "afterParagraph": 2,
+          "steps": [
+            "取一维模型 \\(z\\sim\\mathcal N(0,1)\\)、\\(a\\mid z\\sim\\mathcal N(z,1)\\)，观察到 \\(a=2\\)。卷积后 \\(a\\sim\\mathcal N(0,2)\\)，所以真实 \\(\\log p(a)=-\\frac12\\log(4\\pi)-1\\approx-2.266\\)。下面所有对数均为自然对数。",
+            "若近似后验仍取先验 \\(q(z\\mid a)=\\mathcal N(0,1)\\)，先验 KL 为零，但 \\(\\mathbb E_q[(2-z)^2]=5\\)。重建项为 \\(-\\frac12\\log(2\\pi)-\\frac52\\approx-3.419\\)，因此 ELBO 也是 −3.419，仍比真实证据低约 1.153。",
+            "这个模型的真实后验是 \\(p(z\\mid a=2)=\\mathcal N(1,1/2)\\)。若令 q 等于它，则重建项约为 −1.669，先验 KL 为 \\(\\frac12(1+\\frac12-1-\\log\\frac12)\\approx0.597\\)，相减得到 ELBO≈−2.266，恰好贴住真实证据。",
+            "第一种 q 到真实后验的 KL 约为 1.153，正是证据与下界的间隙。第二种 q 到先验的 KL 虽然更大，后验近似却更准确。接下来推导的恒等式，就是把这个数值观察推广到一般分布。"
+          ],
+          "conclusion": "先验 KL 是 ELBO 内的一项；后验 KL 才是下界间隙。两者比较的是不同分布，不能用“KL 越小越好”混为一谈。"
+        }
       },
       {
         "id": "gaussian-kl",
@@ -322,7 +333,17 @@
           "本篇采用前向加噪时间 \\(t\\)：\\(t=0\\) 是数据端，\\(t=T\\) 是高噪声端。随后引入反向时钟 \\(\\tau=T-t\\) 说明生成。与[Flow Matching](#/learn/flow-matching?tab=theory)常用的“噪声 0→数据 1”约定比较时，需要同时转换时间输入、速度符号和积分方向。"
         ],
         "formula": "s_t(x,c)=\\nabla_x\\log p_t(x\\mid c),\\qquad p_t=\\mathcal N(m_t,\\Sigma_t)\\Longrightarrow s_t(x)=-\\Sigma_t^{-1}(x-m_t)",
-        "lead": "Score 是对数密度关于状态坐标的梯度，是与样本同维的向量。它描述局部密度变化，不是密度值、分类分数或模型参数梯度。先用高斯直观认识方向与尺度，再进入生成动力学。"
+        "lead": "Score 是对数密度关于状态坐标的梯度，是与样本同维的向量。它描述局部密度变化，不是密度值、分类分数或模型参数梯度。先用高斯直观认识方向与尺度，再进入生成动力学。",
+        "example": {
+          "title": "同一高斯的左右两侧，Score 指向哪里",
+          "afterParagraph": 1,
+          "steps": [
+            "固定某个时间的 \\(p_t=\\mathcal N(2,4)\\)，这里均值为 2、方差为 4，标准差为 2。状态 Score 是 \\(s_t(x)=-(x-2)/4\\)。",
+            "在 x=0，Score 为 +0.5；在 x=2 为 0；在 x=4 为 −0.5。左右两侧的密度一样，Score 的方向却相反，因为它描述局部对数密度向哪里增加。",
+            "把方差改为 1、均值仍为 2，在 x=0 的 Score 就变成 +2。方向没有改变，大小反映分布宽度；不能把它读成概率 2，也不能只凭这个向量就写出生成器的更新。"
+          ],
+          "conclusion": "Score 是局部对数密度的空间梯度。真正的反向 SDE 或概率流 ODE 还需要漂移、时间系数和相应的时间方向。"
+        }
       },
       {
         "id": "score-matching",

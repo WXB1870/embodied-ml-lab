@@ -704,5 +704,6 @@
       "title": "Yarotsky：Error bounds for approximations with deep ReLU networks",
       "url": "https://arxiv.org/abs/1610.01145"
     }
-  ]
+  ],
+  "mainImplementation": "manual-backprop"
 }

@@ -1,6 +1,6 @@
 {
-  "total": 251,
-  "passed": 251,
+  "total": 252,
+  "passed": 252,
   "results": [
     {
       "name": "Mathematical brackets are preserved rather than parsed as a relative link",
@@ -1004,6 +1004,10 @@
     },
     {
       "name": "train-infer-contract native code and exercise routes",
+      "passed": true
+    },
+    {
+      "name": "Core code pages start with the running example and retain unique code frames",
       "passed": true
     }
   ]

@@ -705,7 +705,8 @@
         "title": "Yarotsky：Error bounds for approximations with deep ReLU networks",
         "url": "https://arxiv.org/abs/1610.01145"
       }
-    ]
+    ],
+    "mainImplementation": "manual-backprop"
   },
   {
     "id": "cnn",
@@ -1182,36 +1183,6 @@
     ],
     "implementations": [
       {
-        "id": "unfold-convolution",
-        "title": "用 Unfold 手写分组卷积并比较三组梯度",
-        "description": "一次覆盖普通卷积、分组卷积和 depthwise multiplier=2；非方形输入/核与不相等的空间参数用于暴露实现错误。",
-        "runtime": "torch",
-        "source": "import torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(23)\ntorch.set_num_threads(1)\n\n# 教学实现：支持二维整数 tuple、对称零填充和分组，不处理字符串 padding。\ndef pair(value):\n    return (value, value) if isinstance(value, int) else tuple(value)\n\ndef unfold_conv(x, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):\n    sh, sw = pair(stride)\n    ph, pw = pair(padding)\n    dh, dw = pair(dilation)\n    batch, channels, height, width = x.shape\n    out_channels, per_group, kh, kw = weight.shape\n    if groups <= 0 or channels % groups or out_channels % groups:\n        raise ValueError(\"输入输出通道必须能被 groups 整除\")\n    if per_group != channels // groups:\n        raise ValueError(\"权重第二维必须等于 Cin/groups\")\n    if min(sh, sw, dh, dw, kh, kw) <= 0 or min(ph, pw) < 0:\n        raise ValueError(\"卷积几何参数无效\")\n    oh = (height + 2 * ph - dh * (kh - 1) - 1) // sh + 1\n    ow = (width + 2 * pw - dw * (kw - 1) - 1) // sw + 1\n    if min(oh, ow) <= 0:\n        raise ValueError(\"没有有效输出位置\")\n    # B,Cin*Kh*Kw,L：最后一轴是输出位置，每列是一个局部窗口。\n    columns = F.unfold(x, (kh, kw), dilation=(dh, dw), padding=(ph, pw), stride=(sh, sw))\n    assert columns.shape[-1] == oh * ow\n    grouped_columns = columns.reshape(batch, groups, per_group * kh * kw, oh * ow)\n    grouped_weights = weight.reshape(groups, out_channels // groups, per_group * kh * kw)\n    output = torch.einsum(\"goc,bgcl->bgol\", grouped_weights, grouped_columns)\n    output = output.reshape(batch, out_channels, oh, ow)\n    if bias is not None:\n        if bias.shape != (out_channels,):\n            raise ValueError(\"每个输出通道需要一个偏置\")\n        output = output + bias[None, :, None, None]\n    return output\n\n# 普通卷积、分组卷积、depthwise multiplier=2；均采用非方形核。\ncases = [(1, 3, 5), (2, 4, 6), (4, 4, 8)]\nfor groups, cin, cout in cases:\n    x = torch.randn(2, cin, 7, 9, dtype=torch.float64, requires_grad=True)\n    weight = torch.randn(cout, cin // groups, 3, 2, dtype=torch.float64, requires_grad=True)\n    bias = torch.randn(cout, dtype=torch.float64, requires_grad=True)\n    options = dict(stride=(2, 1), padding=(1, 0), dilation=(2, 1), groups=groups)\n    actual = unfold_conv(x, weight, bias, **options)\n    reference = F.conv2d(x, weight, bias, **options)\n    assert actual.shape == (2, cout, 3, 8)\n    torch.testing.assert_close(actual, reference, rtol=1e-10, atol=1e-10)\n    # 相同上游权重对应一个明确的向量—Jacobian 乘积。\n    upstream = torch.linspace(.1, 1., actual.numel(), dtype=x.dtype).reshape_as(actual)\n    actual_grads = torch.autograd.grad((actual * upstream).sum(), (x, weight, bias))\n    reference_grads = torch.autograd.grad((reference * upstream).sum(), (x, weight, bias))\n    for ours, expected in zip(actual_grads, reference_grads):\n        torch.testing.assert_close(ours, expected, rtol=1e-10, atol=1e-10)\n    print(\"groups =\", groups, \"shape =\", tuple(actual.shape), \"forward and gradients agree\")\n\n# 空间共享参数：固定一个卷积核，图像尺寸不进入参数总数。\nlayer = torch.nn.Conv2d(32, 64, kernel_size=3, bias=True)\nassert sum(p.numel() for p in layer.parameters()) == 18496\n# Unfold 会显式展开重叠窗口；这是理解用实现，不是性能优化建议。\nexample = torch.randn(1, 3, 16, 16)\nexpanded = F.unfold(example, kernel_size=3, padding=1)\nprint(\"unfold/input element ratio =\", expanded.numel() / example.numel())\nassert expanded.numel() == example.numel() * 9\nprint(\"通过：互相关、通道分组、非方形几何、输入/权重/偏置梯度。\")\n",
-        "explanations": [
-          {
-            "lines": "1–9",
-            "text": "设置确定性小样本环境，将整数几何参数转换成二元 tuple。"
-          },
-          {
-            "lines": "11–26",
-            "text": "核对通道分组和空间约定，独立计算 Hout 与 Wout。"
-          },
-          {
-            "lines": "28–38",
-            "text": "按组整理窗口和核，收缩窗口轴，恢复空间布局并广播偏置。"
-          },
-          {
-            "lines": "41–57",
-            "text": "使用相同上游梯度，与官方 conv2d 对照前向以及输入、权重、偏置梯度。"
-          },
-          {
-            "lines": "60–67",
-            "text": "检查共享参数数量，并显示 unfold 可能扩大的中间张量。"
-          }
-        ],
-        "expected": "三种分组的输出均为 [2,Cout,3,8]，前向与三组梯度一致；32→64 的 3×3 卷积有 18496 个参数。"
-      },
-      {
         "id": "cnn-training-and-patches",
         "title": "完整小 CNN 训练与 Patch 投影等价验证",
         "description": "保留原有条纹分类网络与训练设置，先逐层追踪形状、1126 个参数、每样本 155544 MAC 及激活/参数梯度；验证局部感受野和 GAP 梯度，再完成训练、留出评价及 patch 投影等价对照。",
@@ -1244,6 +1215,36 @@
           }
         ],
         "expected": "固定条纹任务的训练交叉熵降低，参数发生更新，1126 个参数；卷积与 Linear patch token 数值相同。留出表现仅描述这个合成分布。 额外检查每层激活/参数梯度有限、GAP 反向均分以及局部卷积输出窗外梯度为零；卷积和 Linear 的单样本 MAC 共 155544，不包含激活、池化、偏置与反向开销。"
+      },
+      {
+        "id": "unfold-convolution",
+        "title": "用 Unfold 手写分组卷积并比较三组梯度",
+        "description": "一次覆盖普通卷积、分组卷积和 depthwise multiplier=2；非方形输入/核与不相等的空间参数用于暴露实现错误。",
+        "runtime": "torch",
+        "source": "import torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(23)\ntorch.set_num_threads(1)\n\n# 教学实现：支持二维整数 tuple、对称零填充和分组，不处理字符串 padding。\ndef pair(value):\n    return (value, value) if isinstance(value, int) else tuple(value)\n\ndef unfold_conv(x, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):\n    sh, sw = pair(stride)\n    ph, pw = pair(padding)\n    dh, dw = pair(dilation)\n    batch, channels, height, width = x.shape\n    out_channels, per_group, kh, kw = weight.shape\n    if groups <= 0 or channels % groups or out_channels % groups:\n        raise ValueError(\"输入输出通道必须能被 groups 整除\")\n    if per_group != channels // groups:\n        raise ValueError(\"权重第二维必须等于 Cin/groups\")\n    if min(sh, sw, dh, dw, kh, kw) <= 0 or min(ph, pw) < 0:\n        raise ValueError(\"卷积几何参数无效\")\n    oh = (height + 2 * ph - dh * (kh - 1) - 1) // sh + 1\n    ow = (width + 2 * pw - dw * (kw - 1) - 1) // sw + 1\n    if min(oh, ow) <= 0:\n        raise ValueError(\"没有有效输出位置\")\n    # B,Cin*Kh*Kw,L：最后一轴是输出位置，每列是一个局部窗口。\n    columns = F.unfold(x, (kh, kw), dilation=(dh, dw), padding=(ph, pw), stride=(sh, sw))\n    assert columns.shape[-1] == oh * ow\n    grouped_columns = columns.reshape(batch, groups, per_group * kh * kw, oh * ow)\n    grouped_weights = weight.reshape(groups, out_channels // groups, per_group * kh * kw)\n    output = torch.einsum(\"goc,bgcl->bgol\", grouped_weights, grouped_columns)\n    output = output.reshape(batch, out_channels, oh, ow)\n    if bias is not None:\n        if bias.shape != (out_channels,):\n            raise ValueError(\"每个输出通道需要一个偏置\")\n        output = output + bias[None, :, None, None]\n    return output\n\n# 普通卷积、分组卷积、depthwise multiplier=2；均采用非方形核。\ncases = [(1, 3, 5), (2, 4, 6), (4, 4, 8)]\nfor groups, cin, cout in cases:\n    x = torch.randn(2, cin, 7, 9, dtype=torch.float64, requires_grad=True)\n    weight = torch.randn(cout, cin // groups, 3, 2, dtype=torch.float64, requires_grad=True)\n    bias = torch.randn(cout, dtype=torch.float64, requires_grad=True)\n    options = dict(stride=(2, 1), padding=(1, 0), dilation=(2, 1), groups=groups)\n    actual = unfold_conv(x, weight, bias, **options)\n    reference = F.conv2d(x, weight, bias, **options)\n    assert actual.shape == (2, cout, 3, 8)\n    torch.testing.assert_close(actual, reference, rtol=1e-10, atol=1e-10)\n    # 相同上游权重对应一个明确的向量—Jacobian 乘积。\n    upstream = torch.linspace(.1, 1., actual.numel(), dtype=x.dtype).reshape_as(actual)\n    actual_grads = torch.autograd.grad((actual * upstream).sum(), (x, weight, bias))\n    reference_grads = torch.autograd.grad((reference * upstream).sum(), (x, weight, bias))\n    for ours, expected in zip(actual_grads, reference_grads):\n        torch.testing.assert_close(ours, expected, rtol=1e-10, atol=1e-10)\n    print(\"groups =\", groups, \"shape =\", tuple(actual.shape), \"forward and gradients agree\")\n\n# 空间共享参数：固定一个卷积核，图像尺寸不进入参数总数。\nlayer = torch.nn.Conv2d(32, 64, kernel_size=3, bias=True)\nassert sum(p.numel() for p in layer.parameters()) == 18496\n# Unfold 会显式展开重叠窗口；这是理解用实现，不是性能优化建议。\nexample = torch.randn(1, 3, 16, 16)\nexpanded = F.unfold(example, kernel_size=3, padding=1)\nprint(\"unfold/input element ratio =\", expanded.numel() / example.numel())\nassert expanded.numel() == example.numel() * 9\nprint(\"通过：互相关、通道分组、非方形几何、输入/权重/偏置梯度。\")\n",
+        "explanations": [
+          {
+            "lines": "1–9",
+            "text": "设置确定性小样本环境，将整数几何参数转换成二元 tuple。"
+          },
+          {
+            "lines": "11–26",
+            "text": "核对通道分组和空间约定，独立计算 Hout 与 Wout。"
+          },
+          {
+            "lines": "28–38",
+            "text": "按组整理窗口和核，收缩窗口轴，恢复空间布局并广播偏置。"
+          },
+          {
+            "lines": "41–57",
+            "text": "使用相同上游梯度，与官方 conv2d 对照前向以及输入、权重、偏置梯度。"
+          },
+          {
+            "lines": "60–67",
+            "text": "检查共享参数数量，并显示 unfold 可能扩大的中间张量。"
+          }
+        ],
+        "expected": "三种分组的输出均为 [2,Cout,3,8]，前向与三组梯度一致；32→64 的 3×3 卷积有 18496 个参数。"
       },
       {
         "id": "activation-pooling-gradients",
@@ -1491,7 +1492,8 @@
         "title": "PyTorch · MaxPool2d：窗口选择与边界约定",
         "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.MaxPool2d.html"
       }
-    ]
+    ],
+    "mainImplementation": "cnn-training-and-patches"
   },
   {
     "id": "transformer",
@@ -1653,20 +1655,15 @@
       },
       {
         "id": "scaled-attention",
-        "title": "从缩放点积到注意力的前向与反向",
+        "title": "一次注意力读取：先匹配，再加权汇总",
         "body": [
           "对某一个 Query 向量 \\(q_i\\)，与所有 Key 向量 \\(k_j\\) 做点积，得到它对各位置的匹配分数。除以 \\(\\sqrt{d_h}\\) 后，沿 Key 轴做 Softmax，得到非负、和为一的权重，再加权求和 \\(V\\)。Query 长度 \\(L\\) 与 Key 长度 \\(S\\) 可以不同；结果的长度仍是 \\(L\\)，因为每个 Query 得到一个读出向量。\\(V\\) 的最后一维也可以与 Q/K 不同。",
-          "先隔离一个可以手算的读取，见本节下方的两个 Key 算例；它只缩小一头的通道与候选位置，不替换开篇的训练任务。核对权重与输出之后，再推导缩放和梯度，最后回到主案例 [2,2,4,4] 的张量，判断这些局部规则怎样被批量执行。",
-          "缩放因子可以从二阶矩推导，但必须写明假设。令 \\(q,k\\in\\mathbb{R}^{d_h}\\) 是相互独立、零均值的随机向量，协方差分别为 \\(\\Sigma_q,\\Sigma_k\\)。此时 \\(\\mathbb{E}[q^\\top k]=0\\)，方差等于二阶矩。展开 \\((q^\\top k)^2\\) 后，独立性使 \\(\\mathbb{E}[q_iq_jk_ik_j]=\\mathbb{E}[q_iq_j]\\mathbb{E}[k_ik_j]\\)，于是 \\(\\operatorname{Var}(q^\\top k)=\\sum_{i,j}(\\Sigma_q)_{ij}(\\Sigma_k)_{ij}=\\operatorname{tr}(\\Sigma_q\\Sigma_k)\\)。当两者协方差均为 \\(I\\) 时，方差为 \\(d_h\\)；除以 \\(\\sqrt{d_h}\\) 后为 1。各维方差分别为 \\(\\sigma_q^2,\\sigma_k^2\\) 且无相关时，缩放后的方差则为 \\(\\sigma_q^2\\sigma_k^2\\)，不必等于 1。",
-          "真实 Self-Attention 的 \\(q,k\\) 可能由同一输入投影而来，因而未必相互独立；训练也会改变其均值、协方差与范数。上述结论解释标准初始化附近的典型 Logit 尺度，不能当作任意 Q/K 的恒等式。缩放使用每头 Q/K 宽度 \\(d_h\\)，而非总模型宽度或序列长度。分数差过大时，Softmax 可能接近 one-hot；分数尺度很小又会接近均匀分布。缩放控制这项变化，不保证模型一定学到合适的选择性。",
-          "将[注意力一章推得的 Softmax 导数](#/learn/attention?section=2)写成矩阵前，先记一行缩放分数为 \\((s_1,\\ldots,s_S)\\)、归一化分母为 \\(Z=\\sum_j e^{s_j}\\)，\\(\\delta_{ij}\\) 表示 i=j 时为 1、否则为 0。其 Jacobian 为：\\(J=\\operatorname{diag}(a)-aa^\\top\\)，其中 \\(a\\) 是一个 Query 对所有 Key 的概率列向量。由 \\(J\\mathbf1=0\\)，可知共同平移分数不会改变概率；由 \\(\\operatorname{tr}(J)=1-\\sum_i a_i^2\\)，可见该局部敏感度在 one-hot 极限趋于零。把它接入完整多头计算图时，需要继续区分分数路径与 Value 路径，不能把此极限当成整层所有梯度消失的证明。",
-          "读出 \\(o=\\sum_j a_jv_j\\) 满足 \\(\\partial o/\\partial s_j=a_j(v_j-o)\\)。当所有 Value 相同，分数怎样变化都不改变 \\(o\\)，因此 Q/K 梯度为零；Value 仍能收到梯度。这一局部关系将在下面变成批量矩阵公式，逐项对应代码中的 Q、K、V 反向传播。",
-          "矩阵形式更适合核对代码。设上游输出梯度为 \\(G=\\partial\\mathcal{L}/\\partial O\\)，并将任意中间量 \\(U\\) 的损失梯度简记为 \\(dU=\\partial\\mathcal{L}/\\partial U\\)。先有 \\(dV=A^\\top G\\) 与 \\(dA=GV^\\top\\)；Softmax 回传为 \\(dS=A\\odot[dA-\\operatorname{rowsum}(A\\odot dA)]\\)，其中按行求和后保留一列并广播。最后 \\(dQ=dSK/\\sqrt{d_h}\\)、\\(dK=dS^\\top Q/\\sqrt{d_h}\\)。这些式子暂不含 Dropout。固定禁止连接的分数在图中是常量，对应 \\(dS\\) 应为零；全遮蔽行则要按实现约定单独处理。",
+          "下面把一个头暂时缩成两个候选位置，先算出权重与读出。这个局部算例不替换开篇的训练任务；它帮助我们在处理 [2,2,4,4] 张量之前，分清哪些轴代表位置、哪些轴代表通道。",
           "无 Dropout 且该行至少有一个可见 Key 时，每头输出是该头 Value 的凸组合，但这个结论只在 \\(AV\\) 处成立。Value 本身经过投影，后面还有输出投影、残差与非线性，不能据此说整个 Transformer 的输出必定位于原始 token 的凸包内。",
-          "回到同一个两层模型：完整前向中，Q/K/V 都是 `[2,2,4,4]`，`scores=q @ keys.transpose(-2,-1) / 2` 的后两轴才是 Query × Key。`allowed:[2,1,4,4]` 沿头轴广播，先遮蔽再 `softmax(-1)`，每个有效 Query 分别在四个候选 Key 中归一化。`weights @ values` 仍是 `[2,2,4,4]`，但最后一轴的含义已由 Key 位置变为 Value 通道；两个张量尺寸恰好相同，必须靠轴的含义区分。完整代码的 `inspect=True` 会保留这些中间量以核对数据流。"
+          "回到同一个两层模型：完整前向中，Q/K/V 都是 `[2,2,4,4]`，`scores=q @ keys.transpose(-2,-1) / 2` 的后两轴才是 Query × Key。`allowed:[2,1,4,4]` 沿头轴广播，先遮蔽再 `softmax(-1)`，每个有效 Query 分别在四个候选 Key 中归一化。`weights @ values` 仍是 `[2,2,4,4]`，但最后一轴的含义已由 Key 位置变为 Value 通道；两个张量尺寸恰好相同，必须靠轴的含义区分。完整代码的 `inspect=True` 会保留这些中间量以核对数据流。",
+          "到这里已经得到每个头的读出，接下来要把各头合回一个 token 表示。关于缩放的协方差假设、Softmax Jacobian 和 Q/K/V 反传，见本章[训练后的回看](#/learn/transformer?section=attention-backward)；这些推导解释训练机制，不妨碍先组装完整前向。"
         ],
-        "formula": "\\begin{aligned}\\operatorname{Var}(q^\\top k)&=\\sum_{i,j}\\mathbb E[q_iq_j]\\mathbb E[k_ik_j]=\\operatorname{tr}(\\Sigma_q\\Sigma_k)\\\\ \\frac{\\partial a_i}{\\partial s_j}&=\\frac{\\delta_{ij}e^{s_i}}{Z}-\\frac{e^{s_i}e^{s_j}}{Z^2}=a_i(\\delta_{ij}-a_j)\\\\ A&=\\operatorname{softmax}_{\\rm row}(QK^\\top/\\sqrt{d_h}),\\quad O=AV\\\\ dV&=A^\\top G,\\quad dA=GV^\\top\\\\ dS&=A\\odot\\bigl(dA-\\operatorname{rowsum}(A\\odot dA)\\bigr)\\\\ dQ&=dSK/\\sqrt{d_h},\\quad dK=dS^\\top Q/\\sqrt{d_h}\\end{aligned}",
-        "code": "import math\nimport torch\n\ntorch.manual_seed(3)\ndtype = torch.float64\nq = torch.randn(2, 3, dtype=dtype, requires_grad=True)\nk = torch.randn(4, 3, dtype=dtype, requires_grad=True)\nv = torch.randn(4, 2, dtype=dtype, requires_grad=True)\ng = torch.randn(2, 2, dtype=dtype)  # 任意上游梯度\nscale = math.sqrt(q.shape[-1])\na = (q @ k.T / scale).softmax(-1)\nout = a @ v\nactual = torch.autograd.grad((out * g).sum(), (q, k, v))\nwith torch.no_grad():\n    da = g @ v.T\n    ds = a * (da - (a * da).sum(-1, keepdim=True))\n    manual = (ds @ k / scale, ds.T @ q / scale, a.T @ g)\nfor got, expected in zip(actual, manual):\n    torch.testing.assert_close(got, expected)\nprint(\"Q/K/V 梯度最大误差:\", [(x-y).abs().max().item() for x, y in zip(actual, manual)])\n",
+        "formula": "A=\\operatorname{softmax}_{\\rm Key}(QK^\\top/\\sqrt{d_h}),\\qquad O=AV",
         "takeaway": "最后一维 Softmax 回答的是“这个 Query 应该从哪些 Key 位置读取”。",
         "example": {
           "title": "两个 Key 的注意力可以直接手算",
@@ -1675,7 +1672,8 @@
             "两个 Value 分别是 \\((2,0)\\) 和 \\((0,4)\\)。加权和为 \\(\\tfrac14(2,0)+\\tfrac34(0,4)=(0.5,3)\\)，输出维度来自 Value。",
             "如果第二个 Key 被屏蔽，Softmax 应在有效位置重新归一化，得到 \\((1,0)\\)，输出变成 \\((2,0)\\)。先算完整 Softmax 再把第二项置零而不重新归一化，只会得到 \\((0.5,0)\\)。"
           ],
-          "conclusion": "Mask 改变的是有效归一化集合，不能把它简单理解为最终输出乘一个零。"
+          "conclusion": "Mask 改变的是有效归一化集合，不能把它简单理解为最终输出乘一个零。",
+          "afterParagraph": 2
         },
         "focus": {
           "kind": "常用",
@@ -1683,9 +1681,7 @@
           "explanation": "某个位置得到高权重，只说明在这一层、这一头、当前值投影与归一化下参与了加权汇总。后续残差、输出投影和其他头都会影响最终结果。不能仅凭热力图声称模型依赖了某个真实物体或因果线索。",
           "check": "除看权重外，再固定其他输入，对相关信息做有控制的替换或遮挡，比较输出变化，并检查扰动是否产生了分布外输入。"
         },
-        "codeExplanation": "Query 长度 2、Key 长度 4、Q/K 宽度 3、Value 宽度 2 刻意不同，避免方形张量掩盖转置错误。随机 g 对应一个明确标量目标；逐项比较三条反向路径，不能只检查总梯度范数。",
-        "lead": "缩放点积注意力用 Query 与各 Key 的点积打分，调整尺度并经过 Softmax 后，对 Value 作加权汇总。这定义了一次完整的内容读取。先完成手算，再解释缩放与三条反向路径，最后回到主案例张量。",
-        "codeKind": "runnable"
+        "lead": "缩放点积注意力用 Query 与各 Key 的点积打分，调整尺度并经过 Softmax 后，对 Value 作加权汇总。这定义了一次完整的内容读取。先手算一个最小例子，再把同一操作放回主案例；缩放假设与反向传播留到模型和损失组装完后推导。"
       },
       {
         "id": "heads-and-output",
@@ -1982,7 +1978,7 @@
           "回到开篇第一条序列 [0,1,2,3,4]：输入 [0,1,2,3]，标签 [1,2,3,4]。位置 2 的 Logit 用输入前缀 [0,1,2] 预测 3，位置 3 再预测 4。因果 Mask 允许四个位置并行计算，又使每项预测遵守自己的前缀边界。Teacher Forcing 指训练输入使用真实前缀；生成时则要把模型此前输出的符号接回输入。",
           "标签需要恰好移位一次。有的模型 forward 接受原始 labels 并内部移位；手写训练循环则可能在外部切片。先用带编号的短序列写出每个 logits 位置应该对应哪个 label，再确认是谁执行切片。直接给 logits 同位置的输入 token 当目标，模型可能学到复制；在模型内外各移一次，则会学到跨两步预测，训练仍可能下降。",
           "指令微调常只对回答或动作 token 计 Loss，但 Prompt token 仍是条件上下文。把 Prompt 的 label 设为忽略，不等于把它从注意力中移除。先得到逐 token CE，再用有效位选择并按明确分母归约；若没有任何有效监督，应拒绝该 Batch 或显式跳过，而不是除以零。动作去噪模型的目标可能是噪声、速度或动作回归，不应机械套用词表 CE 和语言式移位。",
-          "两条主案例序列共有八个监督位置。readout 的 [2,4,7] Logit 展平为 [8,7]，标签展平为 [8]，CE 对八个位置平均；其 Logit 梯度为 \\((p_{b,i,k}-\\mathbf1[k=y_{b,i}])/8\\)，再通过读出头、最终 Norm、两层 Block 回到 Embedding。完整代码调用 loss.backward()，检查全部参数梯度有限，再裁剪并更新 AdamW。两条循环序列的 Loss 下降只检验训练闭环；接下来的缓存测试回答另一个问题：能否在保持同一输出的前提下省去历史重算？"
+          "两条主案例序列共有八个监督位置。readout 的 [2,4,7] Logit 展平为 [8,7]，标签展平为 [8]，CE 对八个位置平均；其 Logit 梯度为 \\((p_{b,i,k}-\\mathbf1[k=y_{b,i}])/8\\)，再通过读出头、最终 Norm、两层 Block 回到 Embedding。完整代码调用 loss.backward()，检查全部参数梯度有限，再裁剪并更新 AdamW。两条循环序列的 Loss 下降只检验训练闭环；下面先回看这条反向路径，再用缓存测试回答另一个问题：能否在保持同一输出的前提下省去历史重算？"
         ],
         "formula": "\\mathcal L=-\\frac{1}{\\sum_{b,i}m_{bi}}\\sum_{b,i}m_{bi}\\log p_\\theta(y_{bi}\\mid x_{b,\\le i}),\\qquad y_i=x_{i+1}",
         "code": "inputs, labels = sequence[:, :-1], sequence[:, 1:]\nlogits, _, _ = model(inputs)\nloss = F.cross_entropy(logits.reshape(-1, vocab), labels.reshape(-1))\nloss.backward()",
@@ -1999,6 +1995,22 @@
         "lead": "Teacher Forcing 是训练时以真实历史作为下一项预测条件的方法。标签移位把每个输出对应到尚未读取的目标，Loss Mask 再决定哪些预测受监督。下面回到同一条五符号序列，完整连接输出头与反向传播。",
         "codeKind": "fragment",
         "codeExplanation": "依赖完整案例中的 `sequence`、TinyLM 实例 `model`、词表大小 `vocab=7` 与 F。可运行的循环见[两层模型实现](#/learn/transformer?tab=code&anchor=demo-tiny-causal-lm)；模型返回 logits、逐层 cache 与可选 trace，因此这里先解包再计算 CE。"
+      },
+      {
+        "id": "attention-backward",
+        "title": "训练后的回看：缩放假设与 Q/K/V 反向传播",
+        "lead": "前面已经把输入、Block、读出头和损失连成完整模型，现在再问训练信号怎样穿过一次注意力。这里分别推导缩放所依赖的假设，以及分数与 Value 的梯度路径。初次阅读可以先完成下一节的缓存对照，再回来逐项核对这些导数。",
+        "body": [
+          "缩放因子可以从二阶矩推导，但必须写明假设。令 \\(q,k\\in\\mathbb{R}^{d_h}\\) 是相互独立、零均值的随机向量，协方差分别为 \\(\\Sigma_q,\\Sigma_k\\)。此时 \\(\\mathbb{E}[q^\\top k]=0\\)，方差等于二阶矩。展开 \\((q^\\top k)^2\\) 后，独立性使 \\(\\mathbb{E}[q_iq_jk_ik_j]=\\mathbb{E}[q_iq_j]\\mathbb{E}[k_ik_j]\\)，于是 \\(\\operatorname{Var}(q^\\top k)=\\sum_{i,j}(\\Sigma_q)_{ij}(\\Sigma_k)_{ij}=\\operatorname{tr}(\\Sigma_q\\Sigma_k)\\)。当两者协方差均为 \\(I\\) 时，方差为 \\(d_h\\)；除以 \\(\\sqrt{d_h}\\) 后为 1。各维方差分别为 \\(\\sigma_q^2,\\sigma_k^2\\) 且无相关时，缩放后的方差则为 \\(\\sigma_q^2\\sigma_k^2\\)，不必等于 1。",
+          "真实 Self-Attention 的 \\(q,k\\) 可能由同一输入投影而来，因而未必相互独立；训练也会改变其均值、协方差与范数。上述结论解释标准初始化附近的典型 Logit 尺度，不能当作任意 Q/K 的恒等式。缩放使用每头 Q/K 宽度 \\(d_h\\)，而非总模型宽度或序列长度。分数差过大时，Softmax 可能接近 one-hot；分数尺度很小又会接近均匀分布。缩放控制这项变化，不保证模型一定学到合适的选择性。",
+          "将[注意力一章推得的 Softmax 导数](#/learn/attention?section=2)写成矩阵前，先记一行缩放分数为 \\((s_1,\\ldots,s_S)\\)、归一化分母为 \\(Z=\\sum_j e^{s_j}\\)，\\(\\delta_{ij}\\) 表示 i=j 时为 1、否则为 0。其 Jacobian 为：\\(J=\\operatorname{diag}(a)-aa^\\top\\)，其中 \\(a\\) 是一个 Query 对所有 Key 的概率列向量。由 \\(J\\mathbf1=0\\)，可知共同平移分数不会改变概率；由 \\(\\operatorname{tr}(J)=1-\\sum_i a_i^2\\)，可见该局部敏感度在 one-hot 极限趋于零。把它接入完整多头计算图时，需要继续区分分数路径与 Value 路径，不能把此极限当成整层所有梯度消失的证明。",
+          "读出 \\(o=\\sum_j a_jv_j\\) 满足 \\(\\partial o/\\partial s_j=a_j(v_j-o)\\)。当所有 Value 相同，分数怎样变化都不改变 \\(o\\)，因此 Q/K 梯度为零；Value 仍能收到梯度。这一局部关系将在下面变成批量矩阵公式，逐项对应代码中的 Q、K、V 反向传播。",
+          "矩阵形式更适合核对代码。设上游输出梯度为 \\(G=\\partial\\mathcal{L}/\\partial O\\)，并将任意中间量 \\(U\\) 的损失梯度简记为 \\(dU=\\partial\\mathcal{L}/\\partial U\\)。先有 \\(dV=A^\\top G\\) 与 \\(dA=GV^\\top\\)；Softmax 回传为 \\(dS=A\\odot[dA-\\operatorname{rowsum}(A\\odot dA)]\\)，其中按行求和后保留一列并广播。最后 \\(dQ=dSK/\\sqrt{d_h}\\)、\\(dK=dS^\\top Q/\\sqrt{d_h}\\)。这些式子暂不含 Dropout。固定禁止连接的分数在图中是常量，对应 \\(dS\\) 应为零；全遮蔽行则要按实现约定单独处理。"
+        ],
+        "formula": "\\begin{aligned}\\operatorname{Var}(q^\\top k)&=\\sum_{i,j}\\mathbb E[q_iq_j]\\mathbb E[k_ik_j]=\\operatorname{tr}(\\Sigma_q\\Sigma_k)\\\\ \\frac{\\partial a_i}{\\partial s_j}&=\\frac{\\delta_{ij}e^{s_i}}{Z}-\\frac{e^{s_i}e^{s_j}}{Z^2}=a_i(\\delta_{ij}-a_j)\\\\ A&=\\operatorname{softmax}_{\\rm row}(QK^\\top/\\sqrt{d_h}),\\quad O=AV\\\\ dV&=A^\\top G,\\quad dA=GV^\\top\\\\ dS&=A\\odot\\bigl(dA-\\operatorname{rowsum}(A\\odot dA)\\bigr)\\\\ dQ&=dSK/\\sqrt{d_h},\\quad dK=dS^\\top Q/\\sqrt{d_h}\\end{aligned}",
+        "code": "import math\nimport torch\n\ntorch.manual_seed(3)\ndtype = torch.float64\nq = torch.randn(2, 3, dtype=dtype, requires_grad=True)\nk = torch.randn(4, 3, dtype=dtype, requires_grad=True)\nv = torch.randn(4, 2, dtype=dtype, requires_grad=True)\ng = torch.randn(2, 2, dtype=dtype)  # 任意上游梯度\nscale = math.sqrt(q.shape[-1])\na = (q @ k.T / scale).softmax(-1)\nout = a @ v\nactual = torch.autograd.grad((out * g).sum(), (q, k, v))\nwith torch.no_grad():\n    da = g @ v.T\n    ds = a * (da - (a * da).sum(-1, keepdim=True))\n    manual = (ds @ k / scale, ds.T @ q / scale, a.T @ g)\nfor got, expected in zip(actual, manual):\n    torch.testing.assert_close(got, expected)\nprint(\"Q/K/V 梯度最大误差:\", [(x-y).abs().max().item() for x, y in zip(actual, manual)])\n",
+        "codeKind": "runnable",
+        "codeExplanation": "Query 长度 2、Key 长度 4、Q/K 宽度 3、Value 宽度 2 刻意不同，避免方形张量掩盖转置错误。随机 g 对应一个明确标量目标；逐项比较三条反向路径，不能只检查总梯度范数。"
       },
       {
         "id": "kv-cache",
@@ -2062,42 +2074,8 @@
     ],
     "implementations": [
       {
-        "id": "manual-mha",
-        "title": "实现一：手写多头交叉注意力，并逐项核对梯度",
-        "description": "用 float64、小张量和非对称 Mask 比较手写核心与官方 SDPA。空行显式定义为零输出；测试涵盖六组输入／参数梯度、禁止 Key 的扰动和 Batch 隔离。",
-        "source": "import math\nimport torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\nDTYPE = torch.float64\n\ndef split_heads(x, heads):\n    b, length, width = x.shape\n    if width % heads:\n        raise ValueError(\"width must be divisible by heads\")\n    return x.reshape(b, length, heads, width // heads).transpose(1, 2)\n\ndef attention_core(q, k, v, allowed, backend):\n    # allowed: [B, 1, L, S], True means visible.\n    has_key = allowed.any(-1, keepdim=True)\n    if backend == \"manual\":\n        score = (q @ k.transpose(-2, -1)) / math.sqrt(q.shape[-1])\n        score = score.masked_fill(~allowed, float(\"-inf\"))\n        safe_score = torch.where(has_key, score, torch.zeros_like(score))\n        weight = safe_score.softmax(-1).masked_fill(~allowed, 0.0)\n        return weight @ v, weight\n    if backend != \"sdpa\":\n        raise ValueError(\"unknown backend\")\n    # Give empty rows one temporary key, then explicitly zero their output.\n    first_key = torch.arange(k.shape[-2], device=k.device) == 0\n    safe_allowed = allowed | (~has_key & first_key)\n    z = F.scaled_dot_product_attention(\n        q, k, v, attn_mask=safe_allowed, dropout_p=0.0)\n    return torch.where(has_key, z, torch.zeros_like(z)), None\n\ndef multihead(x, context, wq, wk, wv, wo, allowed, heads, backend):\n    q = split_heads(F.linear(x, wq), heads)\n    k = split_heads(F.linear(context, wk), heads)\n    v = split_heads(F.linear(context, wv), heads)\n    per_head, weights = attention_core(q, k, v, allowed, backend)\n    b, _, length, _ = per_head.shape\n    merged = per_head.transpose(1, 2).reshape(b, length, -1)\n    # No output bias: our zero-attention row stays exactly zero here.\n    return F.linear(merged, wo), weights\n\nb, l, s, d, heads = 2, 3, 4, 8, 2\nraw = [torch.randn(b, l, d, dtype=DTYPE),\n       torch.randn(b, s, d, dtype=DTYPE)]\nraw += [torch.randn(d, d, dtype=DTYPE) / math.sqrt(d) for _ in range(4)]\nleft = [x.clone().requires_grad_() for x in raw]\nright = [x.clone().requires_grad_() for x in raw]\nallowed = torch.ones(b, 1, l, s, dtype=torch.bool)\nallowed[0, :, 0, 1:] = False  # One query can read only the first key.\nallowed[1, :, :, -1] = False  # Last context token is padding.\nallowed[1, :, -1, :] = False # One query has no valid keys.\n\nmanual, weight = multihead(*left, allowed, heads, \"manual\")\nreference, _ = multihead(*right, allowed, heads, \"sdpa\")\ntorch.testing.assert_close(manual, reference, atol=1e-10, rtol=1e-8)\nexpected_row_sum = allowed.any(-1).expand(b, heads, l).to(DTYPE)\ntorch.testing.assert_close(weight.sum(-1), expected_row_sum)\nassert torch.equal(manual[1, -1], torch.zeros(d, dtype=DTYPE))\n\nprobe = torch.randn_like(manual)\ngrad_manual = torch.autograd.grad((manual * probe).sum(), left)\ngrad_reference = torch.autograd.grad((reference * probe).sum(), right)\nfor a, z in zip(grad_manual, grad_reference):\n    assert torch.isfinite(a).all()\n    torch.testing.assert_close(a, z, atol=1e-10, rtol=1e-8)\n\n# A masked context key must not influence any output.\nchanged_context = raw[1].clone()\nchanged_context[1, -1] += 1000\nchanged, _ = multihead(raw[0], changed_context, *raw[2:],\n                       allowed, heads, \"manual\")\ntorch.testing.assert_close(changed, manual.detach(), atol=1e-10, rtol=1e-8)\n# A different sample must not influence sample zero.\nchanged_x = raw[0].clone()\nchanged_x[1] += 50\nchanged, _ = multihead(changed_x, raw[1], *raw[2:],\n                       allowed, heads, \"manual\")\ntorch.testing.assert_close(changed[0], manual.detach()[0])\nprint(\"passed: forward, all six gradients, mask perturbation, batch isolation\")\nprint(\"Q/K lengths:\", l, s, \"; output shape:\", tuple(manual.shape))\n",
-        "explanations": [
-          {
-            "lines": "1–13",
-            "text": "固定随机种子与 float64；`split_heads` 先拆通道再交换头和位置轴，避免形状看似正确的元素重排错误。"
-          },
-          {
-            "lines": "15–31",
-            "text": "手写核心沿 Key 归一化；空行在归一化前临时替换为有限分数，最后权重全零。SDPA 对照路径显式使用相同空行约定，不依赖内核默认行为。"
-          },
-          {
-            "lines": "33–41",
-            "text": "Query 和上下文分别投影成 Q 与 K/V；每头结果先转回位置轴，再拼接并输出投影。此处无输出偏置，零注意力行因此保持零。"
-          },
-          {
-            "lines": "43–59",
-            "text": "使用 \\(L=3,\\ S=4\\) 的非方形输入和非对称可见性，检查前向一致、权重行和及空行输出；仅 shape 检查不能代替这些断言。"
-          },
-          {
-            "lines": "61–66",
-            "text": "同一个随机线性读出生成标量目标，分别对 Query 输入、上下文和四组投影权重求导，核对全部六组梯度。"
-          },
-          {
-            "lines": "68–81",
-            "text": "改变禁止读取的上下文位置应不影响输出；只改变另一条样本也不应影响当前样本。这两项验证信息隔离。"
-          }
-        ],
-        "expected": "打印 passed: forward, all six gradients, mask perturbation, batch isolation；输出形状为 (2,3,8)，全遮蔽 Query 的无偏置读出为零。",
-        "runtime": "torch"
-      },
-      {
         "id": "tiny-causal-lm",
-        "title": "实现二：贯穿全章的两层 Transformer——训练、RoPE 与 KV Cache",
+        "title": "贯穿全章的两层 Transformer——训练、RoPE 与 KV Cache",
         "description": "固定 B=2、T=4、D=8、H=2、两层与 D_ff=32，从 Token ID、Embedding、手写 Attention、RoPE、Pre-LN 残差和 FFN 接到词表头、CE、反传、AdamW 与增量解码。相同参数下核对完整／缓存输出和全部 28 组参数梯度；原有非方形 MHA 与间接泄漏实现仍负责各自的独立验证。",
         "source": "import json\nimport math\nimport torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(19)\ntorch.set_num_threads(1)\n\n\ndef apply_rope(x, positions, base=10000.0):\n    # x: [B,H,T,dh]. Adjacent channel pairs, column-vector rotation convention.\n    if x.shape[-1] % 2 or positions.shape != (x.shape[-2],):\n        raise ValueError(\"RoPE needs an even head width and one position per token\")\n    inv_freq = base ** (-torch.arange(0, x.shape[-1], 2,\n                                    device=x.device, dtype=x.dtype) / x.shape[-1])\n    angles = positions.to(dtype=x.dtype)[:, None] * inv_freq[None, :]\n    cos, sin = angles.cos()[None, None], angles.sin()[None, None]\n    even, odd = x[..., 0::2], x[..., 1::2]\n    return torch.stack((even * cos - odd * sin,\n                        even * sin + odd * cos), dim=-1).flatten(-2)\n\n\nclass CausalAttention(nn.Module):\n    def __init__(self, width=8, heads=2, dropout=0.1):\n        super().__init__()\n        if width % heads or (width // heads) % 2:\n            raise ValueError(\"width / heads must be an even integer\")\n        self.heads, self.head_dim = heads, width // heads\n        self.dropout_p = dropout\n        self.qkv = nn.Linear(width, 3 * width)\n        self.out = nn.Linear(width, width)\n\n    def forward(self, x, valid, past=None, inspect=False):\n        b, t, d = x.shape\n        past_len = 0 if past is None else past[0].shape[-2]\n        positions = past_len + torch.arange(t, device=x.device)\n        packed = self.qkv(x)  # [B,T,3D] = [2,4,24] in a full pass\n        q, k, v = [z.reshape(b, t, self.heads, self.head_dim).transpose(1, 2)\n                   for z in packed.chunk(3, dim=-1)]\n        q, k = apply_rope(q, positions), apply_rope(k, positions)\n        # Cache rotated K, unrotated V. Never rotate old keys a second time.\n        keys = k if past is None else torch.cat((past[0], k), dim=-2)\n        values = v if past is None else torch.cat((past[1], v), dim=-2)\n        key_valid = torch.cat((torch.ones(b, past_len, device=x.device,\n                                         dtype=torch.bool), valid), dim=-1)\n        key_positions = torch.arange(keys.shape[-2], device=x.device)\n        causal = key_positions[None, :] <= positions[:, None]\n        allowed = (causal[None, None] & key_valid[:, None, None, :]\n                   & valid[:, None, :, None])\n        scores = (q @ keys.transpose(-2, -1)) / math.sqrt(self.head_dim)\n        has_key = allowed.any(-1, keepdim=True)\n        masked = scores.masked_fill(~allowed, -torch.inf)\n        safe = torch.where(has_key, masked, torch.zeros_like(masked))\n        weights = safe.softmax(-1).masked_fill(~allowed, 0.0)\n        per_head = F.dropout(weights, self.dropout_p, self.training) @ values\n        merged = per_head.transpose(1, 2).reshape(b, t, d)\n        out = self.out(merged).masked_fill(~valid[..., None], 0.0)\n        detail = dict(packed=packed, q=q, k=keys, v=values, scores=scores,\n                      allowed=allowed, weights=weights, per_head=per_head,\n                      merged=merged, attention_output=out) if inspect else None\n        return out, (keys, values), detail\n\n\nclass Block(nn.Module):\n    def __init__(self, width=8, heads=2, hidden=32):\n        super().__init__()\n        self.norm1, self.norm2 = nn.LayerNorm(width), nn.LayerNorm(width)\n        self.attn = CausalAttention(width, heads)\n        self.up, self.down = nn.Linear(width, hidden), nn.Linear(hidden, width)\n        self.drop = nn.Dropout(0.1)\n\n    def forward(self, x, valid, past=None, inspect=False):\n        n1 = self.norm1(x)\n        update, present, detail = self.attn(n1, valid, past, inspect)\n        h = x + self.drop(update)\n        n2 = self.norm2(h)  # The FFN reads the UPDATED residual state.\n        hidden = F.gelu(self.up(n2))\n        y = (h + self.drop(self.down(hidden))).masked_fill(~valid[..., None], 0.0)\n        if inspect:\n            detail.update(norm1=n1, residual1=h, norm2=n2, ffn_hidden=hidden,\n                          output=y)\n        return y, present, detail\n\n\nclass TinyLM(nn.Module):\n    def __init__(self, vocab=7):\n        super().__init__()\n        self.token = nn.Embedding(vocab, 8)\n        self.blocks = nn.ModuleList([Block() for _ in range(2)])\n        self.norm = nn.LayerNorm(8)\n        self.readout = nn.Linear(8, vocab, bias=False)\n\n    def forward(self, ids, valid=None, past=None, inspect=False):\n        if ids.ndim != 2 or ids.shape[1] == 0 or ids.dtype != torch.long:\n            raise ValueError(\"ids must be nonempty int64 [B,T]\")\n        b, t = ids.shape\n        valid = torch.ones_like(ids, dtype=torch.bool) if valid is None else valid\n        if valid.dtype != torch.bool or valid.shape != ids.shape:\n            raise ValueError(\"valid must be boolean [B,T]\")\n        if not bool(valid[:, 0].all()) or bool((valid[:, 1:] & ~valid[:, :-1]).any()):\n            raise ValueError(\"full passes support nonempty, right-padded sequences\")\n        if past is not None:\n            if len(past) != 2 or not bool(valid.all()):\n                raise ValueError(\"cached passes need two layers and no padding\")\n            lengths = {k.shape[-2] for k, _ in past}\n            if len(lengths) != 1:\n                raise ValueError(\"all layers must cache the same history length\")\n            for k, v in past:\n                if k.shape != v.shape or k.shape[:2] != (b, 2) or k.shape[-1] != 4:\n                    raise ValueError(\"each K/V cache must have shape [B,2,P,4]\")\n        x = self.token(ids).masked_fill(~valid[..., None], 0.0)\n        record = dict(embedding=x, blocks=[]) if inspect else None\n        presents = []\n        for i, block in enumerate(self.blocks):\n            x, cache, detail = block(x, valid, None if past is None else past[i], inspect)\n            presents.append(cache)\n            if inspect:\n                record[\"blocks\"].append(detail)\n        normalized = self.norm(x)\n        logits = self.readout(normalized).masked_fill(~valid[..., None], 0.0)\n        if inspect:\n            record.update(final_norm=normalized, logits=logits)\n        # Padded caches need stored validity/individual position metadata.\n        # This small interface returns no reusable cache for a padded pass.\n        return logits, (presents if bool(valid.all()) else None), record\n\n\ndef streamed(model, inputs, chunks):\n    pieces, cache, start = [], None, 0\n    if sum(chunks) != inputs.shape[1] or min(chunks) < 1:\n        raise ValueError(\"chunks must partition the nonempty sequence\")\n    for size in chunks:\n        logits, cache, _ = model(inputs[:, start:start + size], past=cache)\n        pieces.append(logits)\n        start += size\n    return torch.cat(pieces, dim=1), cache\n\n\nvocab, B, T, D, H, N_LAYERS = 7, 2, 4, 8, 2, 2\nsequence = torch.tensor([[0, 1, 2, 3, 4], [3, 4, 5, 6, 0]])\ninputs, labels = sequence[:, :-1], sequence[:, 1:]  # Exactly one shift.\nmodel = TinyLM(vocab).double().eval()\nfull, _, trace = model(inputs, inspect=True)\nassert full.shape == (B, T, vocab)\nassert trace[\"blocks\"][0][\"q\"].shape == (B, H, T, D // H)\nassert trace[\"blocks\"][0][\"ffn_hidden\"].shape == (B, T, 32)\n\n# Same network and weights: full, one-token and multi-token cached passes.\ncache_errors = {}\nfor chunks in ((1, 1, 1, 1), (2, 2), (1, 3)):\n    cached, cache = streamed(model, inputs, chunks)\n    torch.testing.assert_close(cached, full, atol=2e-10, rtol=2e-8)\n    assert all(k.shape == v.shape == (B, H, T, D // H) for k, v in cache)\n    cache_errors[str(chunks)] = (cached - full).abs().max().item()\n\n# A single scalar probe compares ALL parameter gradients, not only outputs.\nprobe = torch.randn_like(full)\nfull_grads = torch.autograd.grad((full * probe).sum(), tuple(model.parameters()),\n                                retain_graph=True)\ncached, _ = streamed(model, inputs, (1, 3))\ncache_grads = torch.autograd.grad((cached * probe).sum(), tuple(model.parameters()))\nfor a, b in zip(full_grads, cache_grads):\n    torch.testing.assert_close(a, b, atol=3e-10, rtol=3e-8)\ngradient_error = max((a - b).abs().max().item() for a, b in zip(full_grads, cache_grads))\n\n# Future changes and other batch rows cannot affect earlier predictions.\nchanged = inputs.clone()\nchanged[:, 2:] = (changed[:, 2:] + 2) % vocab\ntorch.testing.assert_close(model(changed)[0][:, :2], full[:, :2])\nchanged = inputs.clone()\nchanged[1] = (changed[1] + 1) % vocab\ntorch.testing.assert_close(model(changed)[0][0], full[0])\ng_input = torch.autograd.grad(full[0, :2].square().sum(), trace[\"embedding\"])[0]\nassert torch.count_nonzero(g_input[0, 2:]) == 0\nassert torch.count_nonzero(g_input[1]) == 0\nvalid = torch.tensor([[1, 1, 1, 1], [1, 1, 0, 0]], dtype=torch.bool)\npadded, padded_cache, _ = model(inputs, valid)\nassert padded_cache is None and torch.count_nonzero(padded[1, 2:]) == 0\n\n# Tiny optimization task; a falling CE verifies this training path only.\noptimizer = torch.optim.AdamW(model.parameters(), lr=0.01)\ndef evaluate_loss():\n    model.eval()\n    with torch.no_grad():\n        return F.cross_entropy(model(inputs)[0].reshape(-1, vocab), labels.reshape(-1)).item()\n\nbefore = evaluate_loss()\nfor _ in range(120):\n    model.train()\n    optimizer.zero_grad(set_to_none=True)\n    logits, _, _ = model(inputs)\n    loss = F.cross_entropy(logits.reshape(-1, vocab), labels.reshape(-1))\n    loss.backward()\n    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())\n    nn.utils.clip_grad_norm_(model.parameters(), 1.0)\n    optimizer.step()\nafter = evaluate_loss()\nassert after < before * 0.25\n\n# Autoregressive decoding feeds the model's own output back as the next input.\nwith torch.no_grad():\n    generated = inputs[:, :2].clone()\n    logits, cache, _ = model(generated)\n    for _ in range(3):\n        next_id = logits[:, -1].argmax(-1, keepdim=True)\n        generated = torch.cat((generated, next_id), dim=1)\n        logits, cache, _ = model(next_id, past=cache)\n        recomputed = model(generated)[0][:, -1:]\n        torch.testing.assert_close(logits, recomputed, atol=2e-10, rtol=2e-8)\n\nsummary = dict(seed=19, dimensions=dict(B=B, T=T, D=D, H=H, layers=N_LAYERS),\n               block0_shapes={k: list(v.shape) for k, v in trace[\"blocks\"][0].items()},\n               parameter_gradient_groups=len(full_grads), cache_errors=cache_errors,\n               max_parameter_gradient_error=gradient_error,\n               future_input_gradient_max=g_input[0, 2:].abs().max().item(),\n               synthetic_ce_before=before, synthetic_ce_after=after,\n               greedy_sequences=generated.tolist())\nprint(\"TINY_LM_VALIDATION \" + json.dumps(summary, sort_keys=True))\n",
         "explanations": [
@@ -2142,8 +2120,42 @@
         "runtime": "torch"
       },
       {
+        "id": "manual-mha",
+        "title": "手写多头交叉注意力，并逐项核对梯度",
+        "description": "用 float64、小张量和非对称 Mask 比较手写核心与官方 SDPA。空行显式定义为零输出；测试涵盖六组输入／参数梯度、禁止 Key 的扰动和 Batch 隔离。",
+        "source": "import math\nimport torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\nDTYPE = torch.float64\n\ndef split_heads(x, heads):\n    b, length, width = x.shape\n    if width % heads:\n        raise ValueError(\"width must be divisible by heads\")\n    return x.reshape(b, length, heads, width // heads).transpose(1, 2)\n\ndef attention_core(q, k, v, allowed, backend):\n    # allowed: [B, 1, L, S], True means visible.\n    has_key = allowed.any(-1, keepdim=True)\n    if backend == \"manual\":\n        score = (q @ k.transpose(-2, -1)) / math.sqrt(q.shape[-1])\n        score = score.masked_fill(~allowed, float(\"-inf\"))\n        safe_score = torch.where(has_key, score, torch.zeros_like(score))\n        weight = safe_score.softmax(-1).masked_fill(~allowed, 0.0)\n        return weight @ v, weight\n    if backend != \"sdpa\":\n        raise ValueError(\"unknown backend\")\n    # Give empty rows one temporary key, then explicitly zero their output.\n    first_key = torch.arange(k.shape[-2], device=k.device) == 0\n    safe_allowed = allowed | (~has_key & first_key)\n    z = F.scaled_dot_product_attention(\n        q, k, v, attn_mask=safe_allowed, dropout_p=0.0)\n    return torch.where(has_key, z, torch.zeros_like(z)), None\n\ndef multihead(x, context, wq, wk, wv, wo, allowed, heads, backend):\n    q = split_heads(F.linear(x, wq), heads)\n    k = split_heads(F.linear(context, wk), heads)\n    v = split_heads(F.linear(context, wv), heads)\n    per_head, weights = attention_core(q, k, v, allowed, backend)\n    b, _, length, _ = per_head.shape\n    merged = per_head.transpose(1, 2).reshape(b, length, -1)\n    # No output bias: our zero-attention row stays exactly zero here.\n    return F.linear(merged, wo), weights\n\nb, l, s, d, heads = 2, 3, 4, 8, 2\nraw = [torch.randn(b, l, d, dtype=DTYPE),\n       torch.randn(b, s, d, dtype=DTYPE)]\nraw += [torch.randn(d, d, dtype=DTYPE) / math.sqrt(d) for _ in range(4)]\nleft = [x.clone().requires_grad_() for x in raw]\nright = [x.clone().requires_grad_() for x in raw]\nallowed = torch.ones(b, 1, l, s, dtype=torch.bool)\nallowed[0, :, 0, 1:] = False  # One query can read only the first key.\nallowed[1, :, :, -1] = False  # Last context token is padding.\nallowed[1, :, -1, :] = False # One query has no valid keys.\n\nmanual, weight = multihead(*left, allowed, heads, \"manual\")\nreference, _ = multihead(*right, allowed, heads, \"sdpa\")\ntorch.testing.assert_close(manual, reference, atol=1e-10, rtol=1e-8)\nexpected_row_sum = allowed.any(-1).expand(b, heads, l).to(DTYPE)\ntorch.testing.assert_close(weight.sum(-1), expected_row_sum)\nassert torch.equal(manual[1, -1], torch.zeros(d, dtype=DTYPE))\n\nprobe = torch.randn_like(manual)\ngrad_manual = torch.autograd.grad((manual * probe).sum(), left)\ngrad_reference = torch.autograd.grad((reference * probe).sum(), right)\nfor a, z in zip(grad_manual, grad_reference):\n    assert torch.isfinite(a).all()\n    torch.testing.assert_close(a, z, atol=1e-10, rtol=1e-8)\n\n# A masked context key must not influence any output.\nchanged_context = raw[1].clone()\nchanged_context[1, -1] += 1000\nchanged, _ = multihead(raw[0], changed_context, *raw[2:],\n                       allowed, heads, \"manual\")\ntorch.testing.assert_close(changed, manual.detach(), atol=1e-10, rtol=1e-8)\n# A different sample must not influence sample zero.\nchanged_x = raw[0].clone()\nchanged_x[1] += 50\nchanged, _ = multihead(changed_x, raw[1], *raw[2:],\n                       allowed, heads, \"manual\")\ntorch.testing.assert_close(changed[0], manual.detach()[0])\nprint(\"passed: forward, all six gradients, mask perturbation, batch isolation\")\nprint(\"Q/K lengths:\", l, s, \"; output shape:\", tuple(manual.shape))\n",
+        "explanations": [
+          {
+            "lines": "1–13",
+            "text": "固定随机种子与 float64；`split_heads` 先拆通道再交换头和位置轴，避免形状看似正确的元素重排错误。"
+          },
+          {
+            "lines": "15–31",
+            "text": "手写核心沿 Key 归一化；空行在归一化前临时替换为有限分数，最后权重全零。SDPA 对照路径显式使用相同空行约定，不依赖内核默认行为。"
+          },
+          {
+            "lines": "33–41",
+            "text": "Query 和上下文分别投影成 Q 与 K/V；每头结果先转回位置轴，再拼接并输出投影。此处无输出偏置，零注意力行因此保持零。"
+          },
+          {
+            "lines": "43–59",
+            "text": "使用 \\(L=3,\\ S=4\\) 的非方形输入和非对称可见性，检查前向一致、权重行和及空行输出；仅 shape 检查不能代替这些断言。"
+          },
+          {
+            "lines": "61–66",
+            "text": "同一个随机线性读出生成标量目标，分别对 Query 输入、上下文和四组投影权重求导，核对全部六组梯度。"
+          },
+          {
+            "lines": "68–81",
+            "text": "改变禁止读取的上下文位置应不影响输出；只改变另一条样本也不应影响当前样本。这两项验证信息隔离。"
+          }
+        ],
+        "expected": "打印 passed: forward, all six gradients, mask perturbation, batch isolation；输出形状为 (2,3,8)，全遮蔽 Query 的无偏置读出为零。",
+        "runtime": "torch"
+      },
+      {
         "id": "layerwise-information-flow",
-        "title": "实现三：证明两层信息边界，并构造间接泄漏反例",
+        "title": "证明两层信息边界，并构造间接泄漏反例",
         "description": "以逐 token LayerNorm、手写注意力和残差组成两层小网络。布尔路径给出依赖上界；Jacobian、有限差分与扰动检查实际依赖。最后验证第二层前缀 K/V 的可缓存条件。",
         "source": "import math\nimport torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(43)\ntorch.set_num_threads(1)\ndtype = torch.float64\nT, D, P = 4, 4, 2  # one sample; token, channel, prefix lengths\nx = torch.randn(T, D, dtype=dtype)\nweights = []\nfor _ in range(2):\n    weights.append({name: torch.randn(*shape, dtype=dtype) / math.sqrt(shape[-1])\n                    for name, shape in [('q',(D,D)), ('k',(D,D)), ('v',(D,D)),\n                                        ('o',(D,D)), ('up',(8,D)), ('down',(D,8))]})\n\ndef block(z, allowed, w):\n    normalized = F.layer_norm(z, (D,))  # each token separately\n    q, k, v = [F.linear(normalized, w[name]) for name in ('q','k','v')]\n    logits = q @ k.T / math.sqrt(D)\n    assert bool(allowed.any(-1).all())\n    attention = logits.masked_fill(~allowed, float('-inf')).softmax(-1)\n    h = z + 0.25 * F.linear(attention @ v, w['o'])\n    return h + 0.1 * F.linear(F.gelu(F.linear(F.layer_norm(h, (D,)), w['up'])), w['down'])\n\ndef forward(z, masks):\n    states = [z]\n    for allowed, w in zip(masks, weights):\n        states.append(block(states[-1], allowed, w))\n    return states\n\ndef possible_dependencies(masks):\n    # Boolean-semiring composition; rows are output tokens, columns input tokens.\n    reach = torch.eye(T, dtype=torch.bool)\n    identity = torch.eye(T, dtype=torch.bool)\n    for mask in masks:\n        local = mask | identity  # residual preserves the same position\n        reach = (local.to(torch.int64) @ reach.to(torch.int64)) > 0\n    return reach\n\ndef token_jacobian_norms(masks):\n    jac = torch.autograd.functional.jacobian(lambda z: forward(z, masks)[-1], x)\n    # jac: [out_token,out_channel,in_token,in_channel]\n    norm = jac.permute(0, 2, 1, 3).abs().amax(dim=(-1, -2))\n    return jac, norm\n\ncausal = torch.ones(T, T, dtype=torch.bool).tril()\nleaky_first = causal.clone()\nleaky_first[0, 3] = True  # layer one writes future token 3 into token 0\nsafe_masks, leaky_masks = [causal, causal], [leaky_first, causal]\njsafe, nsafe = token_jacobian_norms(safe_masks)\njleak, nleak = token_jacobian_norms(leaky_masks)\nfor masks, norms in [(safe_masks, nsafe), (leaky_masks, nleak)]:\n    reachable = possible_dependencies(masks)\n    assert bool((norms[~reachable] < 1e-12).all())\nassert not bool(causal[1, 3]) and bool(possible_dependencies(leaky_masks)[1, 3])\nassert nsafe[1, 3] == 0 and nleak[1, 3] > 1e-8\n\nchanged = x.clone()\nchanged[3, 0] += 0.7\nbefore, after = forward(x, safe_masks)[-1], forward(changed, safe_masks)[-1]\ntorch.testing.assert_close(before[:3], after[:3], atol=1e-12, rtol=1e-10)\nassert (forward(x, leaky_masks)[-1][1] - forward(changed, leaky_masks)[-1][1]).norm() > 1e-8\n# A finite-difference probe independently checks one indirect derivative.\nepsilon = 1e-5\nplus, minus = x.clone(), x.clone()\nplus[3, 0] += epsilon\nminus[3, 0] -= epsilon\nfd = (forward(plus, leaky_masks)[-1][1, 0] - forward(minus, leaky_masks)[-1][1, 0]) / (2 * epsilon)\ntorch.testing.assert_close(fd, jleak[1, 0, 3, 0], atol=1e-8, rtol=1e-5)\n\n# Fixed-prefix cache: both prefix states and projected K/V must stay invariant.\nprefix_mask = torch.ones(T, T, dtype=torch.bool)\nprefix_mask[:P, P:] = False\nbad_prefix_mask = prefix_mask.clone()\nbad_prefix_mask[0, -1] = True\n\ndef prefix_kv_after_first(z, first_mask):\n    first = block(z, first_mask, weights[0])\n    normalized_prefix = F.layer_norm(first[:P], (D,))\n    return [F.linear(normalized_prefix, weights[1][name]) for name in ('k','v')]\n\nfor a, b in zip(prefix_kv_after_first(x, prefix_mask),\n                prefix_kv_after_first(changed, prefix_mask)):\n    torch.testing.assert_close(a, b, atol=1e-12, rtol=1e-10)\nbad_a = prefix_kv_after_first(x, bad_prefix_mask)\nbad_b = prefix_kv_after_first(changed, bad_prefix_mask)\nassert all((a-b).abs().max() > 1e-8 for a,b in zip(bad_a,bad_b))\nprint('causal future derivative:', nsafe[1, 3].item())\nprint('indirect future derivative:', nleak[1, 3].item())\nprint('finite-difference error:', abs(fd-jleak[1, 0, 3, 0]).item())\nprint('passed: reachability, Jacobian support, perturbation, prefix KV invariance')\n",
         "explanations": [
@@ -2486,7 +2498,8 @@
         "title": "GPT-2 官方实现：学习式位置、Pre-LN 与历史 K/V",
         "url": "https://github.com/openai/gpt-2/blob/master/src/model.py"
       }
-    ]
+    ],
+    "mainImplementation": "tiny-causal-lm"
   },
   {
     "id": "flow-matching",
@@ -2680,7 +2693,7 @@
           "“相同梯度”说的是总体损失的期望梯度。数据、噪声、端点耦合与时间采样分布在这个论证中都固定，不依赖正在优化的 \\(\\theta\\)；条件方差项才是常数。网络内部可以训练条件编码器，但 \\(Z\\) 中的 \\(c\\) 应理解为固定原始条件，而不是把随 \\(\\theta\\) 改变的中间特征当成固定随机变量。若联合采样机制也学习或重加权，需要重新检查求导项。",
           "单个 \\(U\\) 的梯度依然有噪声，并不逐样本等于回归 \\(m\\) 的梯度。因此随机重采训练中存在非零最优 MSE，减少该值也不直接等同于减少采样误差。对给定位置的速度进行平均时，权重来自经过这里的配对后验，不能把所有端点配对的速度等权平均。",
           "加权时也有边界。若非负权重 \\(\\lambda\\) 只依赖 \\(Z\\) 且不依赖 \\(\\theta\\)，同一个条件均值仍是每个正权重位置的最优解。若 \\(\\lambda\\) 还依赖模型没看到的端点或目标，最优解改为 \\(\\frac{\\mathbb E[\\lambda U\\mid Z]}{\\mathbb E[\\lambda\\mid Z]}\\)，分母须为正；这一般不是原来的边际速度。按困难样本或端点收益加权，会重新定义回归问题，不能不经推导就继承原来的运输结论。",
-          "条件直线可以相交，实际 ODE 流则在给定状态、时间与条件后只沿一个速度前进。条件平均场通常产生弯曲轨迹；在解唯一的条件下，不同初值的轨迹不能在同一时间相遇后任意分叉。训练配对里的指定终点不是推理输入，也不是每个噪声必须恢复的标签。 因而主案例下一步不是让网络拿到被隐藏的分量编号，而是保留 x、t、c 三类可用输入，用端点速度样本估计这个条件平均。下方离散两速度算例仅用于手算平方分解，不改变全章的二维数据分布。"
+          "条件直线可以相交，实际 ODE 流则在给定状态、时间与条件后只沿一个速度前进。条件平均场通常产生弯曲轨迹；在解唯一的条件下，不同初值的轨迹不能在同一时间相遇后任意分叉。训练配对里的指定终点不是推理输入，也不是每个噪声必须恢复的标签。 因而主案例下一步不是让网络拿到被隐藏的分量编号，而是保留 x、t、c 三类可用输入，用端点速度样本估计这个条件平均。前面的离散两速度算例仅用于手算平方分解，不改变全章的二维数据分布。"
         ],
         "formula": "\\begin{aligned}L_{\\rm CFM}(\\theta)&=\\mathbb E\\|v_\\theta(Z)-m(Z)\\|^2+\\underbrace{\\mathbb E\\|U-m(Z)\\|^2}_{\\text{independent of }\\theta}\\\\m(Z)&=\\mathbb E[U\\mid Z],\\qquad m_\\lambda(Z)=\\frac{\\mathbb E[\\lambda U\\mid Z]}{\\mathbb E[\\lambda\\mid Z]}\\end{aligned}",
         "takeaway": "先明确哪些随机变量与权重固定，再使用“两个损失只差常数”的结论。",
@@ -2691,7 +2704,8 @@
             "在\\(v=-0.5\\)处，平均平方误差为\\(0.75(1.5)^2+0.25(-4.5)^2=6.75\\)；在\\(v=0\\)处误差为\\(0.75(2)^2+0.25(-4)^2=7\\)。",
             "两者相差0.25，恰好等于\\((0-(-0.5))^2\\)。即使模型达到最优，6.75的条件方差也没有消失，因为输入没有揭示隐藏的端点配对。"
           ],
-          "conclusion": "持续重采样的训练损失不必趋近零；只凭它不为零，不能断言优化失败。"
+          "conclusion": "持续重采样的训练损失不必趋近零；只凭它不为零，不能断言优化失败。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -2790,7 +2804,8 @@
             "对初始噪声\\(z=1\\)，解析流中点为\\(1+\\sqrt{0.5}\\approx1.707\\)，终点为\\(2+1=3\\)。训练时随机配给\\(z\\)的那个\\(X_1\\)并不必须等于3。",
             "在中点，方差变化系数\\(t\\sigma^2-(1-t)=0\\)，所有位置的瞬时速度都等于均值速度2；前半段收缩与后半段展开仍由其他时刻的系数体现。"
           ],
-          "conclusion": "同一端点分布可以对应不同的耦合和中间路径。独立插值不能用“标准差线性插值”替代。"
+          "conclusion": "同一端点分布可以对应不同的耦合和中间路径。独立插值不能用“标准差线性插值”替代。",
+          "afterParagraph": 1
         },
         "lead": "解析边际场是依据已知分布直接推得、无需神经网络估计的平均速度函数。单高斯端点使这个函数和对应轨迹都可求出，所以适合检查理论与求解器。这里暂时只看一个分量，再回到原双峰案例。"
       },
@@ -3004,6 +3019,43 @@
     ],
     "implementations": [
       {
+        "id": "conditional-mixture",
+        "title": "二维条件多峰 Flow Matching：训练、速度场与误差分解",
+        "description": "在每个条件下学习两个高斯模式。代码使用解析混合边际场作为 oracle，并分别度量学习场误差、数值积分误差与有限样本分布差异；默认在 CPU 训练并输出 `fm_mixture_results.json`。",
+        "source": "\"\"\"Train conditional 2D flow matching and export reproducible numerical evidence.\"\"\"\nimport argparse\nimport json\nimport math\nimport time\nfrom pathlib import Path\n\nimport torch\nfrom torch import nn\n\nSEED = 20261106\nMEANS = torch.tensor([[[-1.6, -0.6], [1.6, 0.6]],\n                      [[-0.6, 1.6], [0.6, -1.6]]])\nWEIGHTS = torch.tensor([[0.35, 0.65], [0.65, 0.35]])\nDATA_STD = 0.28\n\n\n# 1. The same condition still has two modes; endpoints are independently paired.\ndef sample_data(condition, generator=None):\n    first = torch.rand(len(condition), generator=generator) < WEIGHTS[condition, 0]\n    component = (~first).long()\n    return MEANS[condition, component] + DATA_STD * torch.randn(\n        len(condition), 2, generator=generator)\n\n\ndef sample_pairs(batch, generator=None):\n    condition = torch.randint(2, (batch,), generator=generator)\n    noise = torch.randn(batch, 2, generator=generator)\n    data = sample_data(condition, generator)\n    t = torch.rand(batch, 1, generator=generator)\n    return (1 - t) * noise + t * data, t, condition, data - noise\n\n\n# 2. A learned field and an analytic marginal field, not the sampled pair target.\nclass Velocity(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.net = nn.Sequential(nn.Linear(7, 64), nn.SiLU(),\n                                 nn.Linear(64, 64), nn.SiLU(), nn.Linear(64, 2))\n\n    def forward(self, x, t, condition):\n        clock = torch.cat([t, torch.sin(math.pi * t), torch.cos(math.pi * t)], -1)\n        context = torch.nn.functional.one_hot(condition, 2).to(x.dtype)\n        return self.net(torch.cat([x, clock, context], -1))\n\n\ndef oracle_velocity(x, t, condition):\n    means = MEANS.to(x)[condition]                         # [B, K=2, D=2]\n    q = (1 - t).square() + (t * DATA_STD).square()          # [B, 1]\n    displacement = x[:, None, :] - t[:, :, None] * means\n    log_weights = WEIGHTS.to(x)[condition].log()\n    logits = log_weights - displacement.square().sum(-1) / (2 * q)\n    posterior = logits.softmax(-1)                        # p(component | x,t,c)\n    coefficient = (t * DATA_STD**2 - (1 - t)) / q\n    component_field = means + coefficient[:, :, None] * displacement\n    return (posterior[:, :, None] * component_field).sum(1)\n\n\n# 3. Both solvers integrate the same field and use the same initial noise.\n@torch.no_grad()\ndef integrate(field, noise, condition, steps, method, record=False):\n    if steps < 1 or method not in (\"euler\", \"heun\"):\n        raise ValueError(\"positive steps and euler/heun are required\")\n    x = noise.clone()\n    path = [{\"t\": 0.0, \"points\": x[:24].tolist()}] if record else []\n    h = 1.0 / steps\n    for k in range(steps):\n        t = x.new_full((len(x), 1), k * h)\n        first = field(x, t, condition)\n        if method == \"heun\":\n            second = field(x + h * first, t + h, condition)\n            x = x + h * (first + second) / 2\n        else:\n            x = x + h * first\n        if record and (k + 1) % max(1, steps // 16) == 0:\n            path.append({\"t\": (k + 1) * h, \"points\": x[:24].tolist()})\n    return x, path\n\n\ndef rms(x, y):\n    return (x - y).square().mean().sqrt().item()\n\n\n# 4. Fixed projections give a finite-sample distribution comparison, not a proof.\ndef sliced_w2(x, y, directions):\n    xp = (x @ directions.T).sort(dim=0).values\n    yp = (y @ directions.T).sort(dim=0).values\n    return rms(xp, yp)\n\n\ndef run(output, train_steps=1800):\n    started = time.perf_counter()\n    torch.manual_seed(SEED)\n    torch.set_num_threads(1)\n    model = Velocity()\n    optimizer = torch.optim.Adam(model.parameters(), lr=0.002)\n    probe = sample_pairs(4096, torch.Generator().manual_seed(SEED + 1))\n    with torch.no_grad():\n        initial_mse = (model(*probe[:3]) - probe[3]).square().mean().item()\n    curve = []\n    model.train()\n    for step in range(train_steps):\n        xt, t, condition, target = sample_pairs(256)\n        optimizer.zero_grad(set_to_none=True)\n        loss = (model(xt, t, condition) - target).square().mean()\n        assert torch.isfinite(loss)\n        loss.backward()\n        nn.utils.clip_grad_norm_(model.parameters(), 5.0)\n        optimizer.step()\n        if (step + 1) % 100 == 0:\n            curve.append({\"step\": step + 1, \"batch_mse\": loss.item()})\n    model.eval()\n    with torch.no_grad():\n        predicted = model(*probe[:3])\n        analytic = oracle_velocity(*probe[:3])\n        final_mse = (predicted - probe[3]).square().mean().item()\n        oracle_mse = (analytic - probe[3]).square().mean().item()\n        field_mse = (predicted - analytic).square().mean().item()\n    assert final_mse < initial_mse\n\n    evaluation_rng = torch.Generator().manual_seed(SEED + 2)\n    condition = torch.arange(1024) % 2\n    noise = torch.randn(1024, 2, generator=evaluation_rng)\n    target = sample_data(condition, evaluation_rng)\n    directions = torch.randn(32, 2, generator=evaluation_rng)\n    directions = directions / directions.norm(dim=-1, keepdim=True)\n    # A finite reference also has integration error: check a finer grid.\n    learned_reference, _ = integrate(model, noise, condition, 512, \"heun\")\n    learned_finer, _ = integrate(model, noise, condition, 1024, \"heun\")\n    oracle_reference, _ = integrate(oracle_velocity, noise, condition, 1024, \"heun\")\n    oracle_finer, _ = integrate(oracle_velocity, noise, condition, 2048, \"heun\")\n    reference_check = {\"learned_512_to_1024_rms\": rms(learned_reference, learned_finer),\n                       \"oracle_1024_to_2048_rms\": rms(oracle_reference, oracle_finer)}\n    metrics = []\n    for method in (\"euler\", \"heun\"):\n        for steps in (4, 8, 16, 32, 64):\n            sampled, _ = integrate(model, noise, condition, steps, method)\n            sw = [sliced_w2(sampled[condition == c], target[condition == c], directions)\n                  for c in (0, 1)]\n            metrics.append({\"method\": method, \"steps\": steps,\n                            \"nfe\": steps * (1 if method == \"euler\" else 2),\n                            \"solver_rms\": rms(sampled, learned_reference),\n                            \"oracle_rms\": rms(sampled, oracle_reference),\n                            \"conditional_sliced_w2\": sw})\n    sampled, trajectories = integrate(model, noise, condition, 64, \"heun\", record=True)\n    assert torch.isfinite(sampled).all()\n    again, _ = integrate(model, noise, condition, 64, \"heun\")\n    torch.testing.assert_close(sampled, again)\n    # An independent scalar ODE checks the solver formulas without any learning.\n    scalar = torch.ones(3, 1)\n    field = lambda x, t, c: x\n    euler, _ = integrate(field, scalar, torch.zeros(3).long(), 8, \"euler\")\n    heun, _ = integrate(field, scalar, torch.zeros(3).long(), 8, \"heun\")\n    exact = torch.full_like(scalar, math.e)\n    assert rms(heun, exact) < rms(euler, exact)\n\n    conditions = []\n    for c in (0, 1):\n        selected = condition == c\n        generated = sampled[selected]\n        nearest = (generated[:, None, :] - MEANS[c]).square().sum(-1).argmin(-1)\n        conditions.append({\"id\": c, \"means\": MEANS[c].tolist(),\n                           \"target_weights\": WEIGHTS[c].tolist(),\n                           \"nearest_mode_fractions\": torch.bincount(\n                               nearest, minlength=2).div(len(generated)).tolist(),\n                           \"noise\": noise[selected][:200].tolist(),\n                           \"data\": target[selected][:200].tolist(),\n                           \"generated\": generated[:200].tolist()})\n    grid = torch.cartesian_prod(torch.linspace(-2.7, 2.7, 11),\n                                torch.linspace(-2.7, 2.7, 11))\n    fields = []\n    with torch.no_grad():\n        for c in (0, 1):\n            labels = torch.full((len(grid),), c)\n            for t_value in (0.2, 0.5, 0.8):\n                t = torch.full((len(grid), 1), t_value)\n                fields.append({\"condition\": c, \"t\": t_value, \"points\": grid.tolist(),\n                               \"learned\": model(grid, t, labels).tolist(),\n                               \"oracle\": oracle_velocity(grid, t, labels).tolist()})\n    # These straight paths are training pairs, distinct from the learned ODE paths.\n    pair_rng = torch.Generator().manual_seed(SEED + 3)\n    pair_condition = torch.arange(12) % 2\n    pair_noise = torch.randn(12, 2, generator=pair_rng)\n    pair_data = sample_data(pair_condition, pair_rng)\n    result = {\n        \"seed\": SEED, \"torch\": torch.__version__, \"device\": \"cpu\", \"dtype\": \"float32\",\n        \"train_steps\": train_steps, \"batch_size\": 256, \"hidden_width\": 64,\n        \"data_std\": DATA_STD, \"training_curve\": curve,\n        \"probe\": {\"before_mse\": initial_mse, \"after_mse\": final_mse,\n                  \"oracle_target_mse\": oracle_mse, \"learned_to_oracle_field_mse\": field_mse},\n        \"reference_check\": reference_check, \"metrics\": metrics,\n        \"model_flow_rms\": rms(learned_reference, oracle_reference),\n        \"conditions\": conditions, \"fields\": fields,\n        \"trajectories\": {\"condition\": condition[:24].tolist(), \"states\": trajectories},\n        \"training_pairs\": {\"condition\": pair_condition.tolist(),\n                           \"noise\": pair_noise.tolist(), \"data\": pair_data.tolist()},\n        \"seconds\": time.perf_counter() - started,\n        \"limits\": [\n            \"Single seeded CPU experiment; these values are observations, not guarantees.\",\n            \"solver_rms compares to a finite fine-grid solution of the same learned field.\",\n            \"model_flow_rms compares learned and analytic marginal fields with common noise.\",\n            \"Sliced W2 uses 32 fixed directions and 512 samples per condition.\",\n            \"Nearest-mode fractions are a diagnostic, not exact mixture component labels.\",\n        ],\n    }\n    Path(output).parent.mkdir(parents=True, exist_ok=True)\n    Path(output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + \"\\n\")\n    print(json.dumps({\"probe\": result[\"probe\"], \"reference_check\": reference_check,\n                      \"model_flow_rms\": result[\"model_flow_rms\"],\n                      \"metrics\": metrics, \"seconds\": result[\"seconds\"]}, indent=2))\n    return result\n\n\nif __name__ == \"__main__\":\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--output\", default=\"fm_mixture_results.json\")\n    parser.add_argument(\"--train-steps\", type=int, default=1800)\n    args = parser.parse_args()\n    run(args.output, args.train_steps)\n",
+        "explanations": [
+          {
+            "lines": "1–33",
+            "text": "定义两个观测条件下的双峰 Gaussian 数据；训练端点独立配对，条件没有泄漏混合分量或真实终点。"
+          },
+          {
+            "lines": "34–58",
+            "text": "小 MLP 预测速度；解析场先计算分量后验责任，再对各分量速度加权，用于隔离学习误差。"
+          },
+          {
+            "lines": "59–83",
+            "text": "Euler 与 Heun 使用相同接口、时间网格和初始噪声；可记录随时间变化的轨迹。"
+          },
+          {
+            "lines": "84–90",
+            "text": "固定投影方向的 sliced-Wasserstein 只作为有限样本分布诊断，不能替代精确似然或任务指标。"
+          },
+          {
+            "lines": "91–120",
+            "text": "固定种子训练，独立探针不参与梯度；同时报告随机目标误差和对解析边际场的误差。"
+          },
+          {
+            "lines": "121–156",
+            "text": "分别细化学习场与解析场的参考解，比较相同步数与 NFE；用解析标量 ODE 和重复采样检查求解器。"
+          },
+          {
+            "lines": "157–219",
+            "text": "导出同一次实验的样本、网格速度、轨迹、训练配对、指标和配置。默认写 JSON，绘图数据不由手工拟造。"
+          }
+        ],
+        "expected": "输出独立探针误差、细网格复核和 Euler/Heun 不同 NFE 的指标，并写出可绘图的 JSON。固定种子在本次 CPU 运行中目标 MSE 为 2.4931→1.2641；不同环境浮点结果可略有差异。检查只要求明确的公式、有限性、确定性及本合成训练改进，不把这些数值作为真实策略性能。"
+      },
+      {
         "id": "conditional-gaussian",
         "title": "完整实现 A：条件高斯上的速度回归与 Euler 采样",
         "description": "从随机端点训练一个小 MLP，再从新噪声生成二维样本。给出同一合成分布的解析边际速度，展示为什么正确 MSE 也未必为零。全程 CPU，不依赖额外 Flow Matching 库。",
@@ -3062,43 +3114,6 @@
             "text": "解析场的第二阶段速度依赖候选状态，能暴露伪 Heun。结果同时显示 NFE，避免把相同步数错误当成相同计算预算。"
           }
         ]
-      },
-      {
-        "id": "conditional-mixture",
-        "title": "二维条件多峰 Flow Matching：训练、速度场与误差分解",
-        "description": "在每个条件下学习两个高斯模式。代码使用解析混合边际场作为 oracle，并分别度量学习场误差、数值积分误差与有限样本分布差异；默认在 CPU 训练并输出 `fm_mixture_results.json`。",
-        "source": "\"\"\"Train conditional 2D flow matching and export reproducible numerical evidence.\"\"\"\nimport argparse\nimport json\nimport math\nimport time\nfrom pathlib import Path\n\nimport torch\nfrom torch import nn\n\nSEED = 20261106\nMEANS = torch.tensor([[[-1.6, -0.6], [1.6, 0.6]],\n                      [[-0.6, 1.6], [0.6, -1.6]]])\nWEIGHTS = torch.tensor([[0.35, 0.65], [0.65, 0.35]])\nDATA_STD = 0.28\n\n\n# 1. The same condition still has two modes; endpoints are independently paired.\ndef sample_data(condition, generator=None):\n    first = torch.rand(len(condition), generator=generator) < WEIGHTS[condition, 0]\n    component = (~first).long()\n    return MEANS[condition, component] + DATA_STD * torch.randn(\n        len(condition), 2, generator=generator)\n\n\ndef sample_pairs(batch, generator=None):\n    condition = torch.randint(2, (batch,), generator=generator)\n    noise = torch.randn(batch, 2, generator=generator)\n    data = sample_data(condition, generator)\n    t = torch.rand(batch, 1, generator=generator)\n    return (1 - t) * noise + t * data, t, condition, data - noise\n\n\n# 2. A learned field and an analytic marginal field, not the sampled pair target.\nclass Velocity(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.net = nn.Sequential(nn.Linear(7, 64), nn.SiLU(),\n                                 nn.Linear(64, 64), nn.SiLU(), nn.Linear(64, 2))\n\n    def forward(self, x, t, condition):\n        clock = torch.cat([t, torch.sin(math.pi * t), torch.cos(math.pi * t)], -1)\n        context = torch.nn.functional.one_hot(condition, 2).to(x.dtype)\n        return self.net(torch.cat([x, clock, context], -1))\n\n\ndef oracle_velocity(x, t, condition):\n    means = MEANS.to(x)[condition]                         # [B, K=2, D=2]\n    q = (1 - t).square() + (t * DATA_STD).square()          # [B, 1]\n    displacement = x[:, None, :] - t[:, :, None] * means\n    log_weights = WEIGHTS.to(x)[condition].log()\n    logits = log_weights - displacement.square().sum(-1) / (2 * q)\n    posterior = logits.softmax(-1)                        # p(component | x,t,c)\n    coefficient = (t * DATA_STD**2 - (1 - t)) / q\n    component_field = means + coefficient[:, :, None] * displacement\n    return (posterior[:, :, None] * component_field).sum(1)\n\n\n# 3. Both solvers integrate the same field and use the same initial noise.\n@torch.no_grad()\ndef integrate(field, noise, condition, steps, method, record=False):\n    if steps < 1 or method not in (\"euler\", \"heun\"):\n        raise ValueError(\"positive steps and euler/heun are required\")\n    x = noise.clone()\n    path = [{\"t\": 0.0, \"points\": x[:24].tolist()}] if record else []\n    h = 1.0 / steps\n    for k in range(steps):\n        t = x.new_full((len(x), 1), k * h)\n        first = field(x, t, condition)\n        if method == \"heun\":\n            second = field(x + h * first, t + h, condition)\n            x = x + h * (first + second) / 2\n        else:\n            x = x + h * first\n        if record and (k + 1) % max(1, steps // 16) == 0:\n            path.append({\"t\": (k + 1) * h, \"points\": x[:24].tolist()})\n    return x, path\n\n\ndef rms(x, y):\n    return (x - y).square().mean().sqrt().item()\n\n\n# 4. Fixed projections give a finite-sample distribution comparison, not a proof.\ndef sliced_w2(x, y, directions):\n    xp = (x @ directions.T).sort(dim=0).values\n    yp = (y @ directions.T).sort(dim=0).values\n    return rms(xp, yp)\n\n\ndef run(output, train_steps=1800):\n    started = time.perf_counter()\n    torch.manual_seed(SEED)\n    torch.set_num_threads(1)\n    model = Velocity()\n    optimizer = torch.optim.Adam(model.parameters(), lr=0.002)\n    probe = sample_pairs(4096, torch.Generator().manual_seed(SEED + 1))\n    with torch.no_grad():\n        initial_mse = (model(*probe[:3]) - probe[3]).square().mean().item()\n    curve = []\n    model.train()\n    for step in range(train_steps):\n        xt, t, condition, target = sample_pairs(256)\n        optimizer.zero_grad(set_to_none=True)\n        loss = (model(xt, t, condition) - target).square().mean()\n        assert torch.isfinite(loss)\n        loss.backward()\n        nn.utils.clip_grad_norm_(model.parameters(), 5.0)\n        optimizer.step()\n        if (step + 1) % 100 == 0:\n            curve.append({\"step\": step + 1, \"batch_mse\": loss.item()})\n    model.eval()\n    with torch.no_grad():\n        predicted = model(*probe[:3])\n        analytic = oracle_velocity(*probe[:3])\n        final_mse = (predicted - probe[3]).square().mean().item()\n        oracle_mse = (analytic - probe[3]).square().mean().item()\n        field_mse = (predicted - analytic).square().mean().item()\n    assert final_mse < initial_mse\n\n    evaluation_rng = torch.Generator().manual_seed(SEED + 2)\n    condition = torch.arange(1024) % 2\n    noise = torch.randn(1024, 2, generator=evaluation_rng)\n    target = sample_data(condition, evaluation_rng)\n    directions = torch.randn(32, 2, generator=evaluation_rng)\n    directions = directions / directions.norm(dim=-1, keepdim=True)\n    # A finite reference also has integration error: check a finer grid.\n    learned_reference, _ = integrate(model, noise, condition, 512, \"heun\")\n    learned_finer, _ = integrate(model, noise, condition, 1024, \"heun\")\n    oracle_reference, _ = integrate(oracle_velocity, noise, condition, 1024, \"heun\")\n    oracle_finer, _ = integrate(oracle_velocity, noise, condition, 2048, \"heun\")\n    reference_check = {\"learned_512_to_1024_rms\": rms(learned_reference, learned_finer),\n                       \"oracle_1024_to_2048_rms\": rms(oracle_reference, oracle_finer)}\n    metrics = []\n    for method in (\"euler\", \"heun\"):\n        for steps in (4, 8, 16, 32, 64):\n            sampled, _ = integrate(model, noise, condition, steps, method)\n            sw = [sliced_w2(sampled[condition == c], target[condition == c], directions)\n                  for c in (0, 1)]\n            metrics.append({\"method\": method, \"steps\": steps,\n                            \"nfe\": steps * (1 if method == \"euler\" else 2),\n                            \"solver_rms\": rms(sampled, learned_reference),\n                            \"oracle_rms\": rms(sampled, oracle_reference),\n                            \"conditional_sliced_w2\": sw})\n    sampled, trajectories = integrate(model, noise, condition, 64, \"heun\", record=True)\n    assert torch.isfinite(sampled).all()\n    again, _ = integrate(model, noise, condition, 64, \"heun\")\n    torch.testing.assert_close(sampled, again)\n    # An independent scalar ODE checks the solver formulas without any learning.\n    scalar = torch.ones(3, 1)\n    field = lambda x, t, c: x\n    euler, _ = integrate(field, scalar, torch.zeros(3).long(), 8, \"euler\")\n    heun, _ = integrate(field, scalar, torch.zeros(3).long(), 8, \"heun\")\n    exact = torch.full_like(scalar, math.e)\n    assert rms(heun, exact) < rms(euler, exact)\n\n    conditions = []\n    for c in (0, 1):\n        selected = condition == c\n        generated = sampled[selected]\n        nearest = (generated[:, None, :] - MEANS[c]).square().sum(-1).argmin(-1)\n        conditions.append({\"id\": c, \"means\": MEANS[c].tolist(),\n                           \"target_weights\": WEIGHTS[c].tolist(),\n                           \"nearest_mode_fractions\": torch.bincount(\n                               nearest, minlength=2).div(len(generated)).tolist(),\n                           \"noise\": noise[selected][:200].tolist(),\n                           \"data\": target[selected][:200].tolist(),\n                           \"generated\": generated[:200].tolist()})\n    grid = torch.cartesian_prod(torch.linspace(-2.7, 2.7, 11),\n                                torch.linspace(-2.7, 2.7, 11))\n    fields = []\n    with torch.no_grad():\n        for c in (0, 1):\n            labels = torch.full((len(grid),), c)\n            for t_value in (0.2, 0.5, 0.8):\n                t = torch.full((len(grid), 1), t_value)\n                fields.append({\"condition\": c, \"t\": t_value, \"points\": grid.tolist(),\n                               \"learned\": model(grid, t, labels).tolist(),\n                               \"oracle\": oracle_velocity(grid, t, labels).tolist()})\n    # These straight paths are training pairs, distinct from the learned ODE paths.\n    pair_rng = torch.Generator().manual_seed(SEED + 3)\n    pair_condition = torch.arange(12) % 2\n    pair_noise = torch.randn(12, 2, generator=pair_rng)\n    pair_data = sample_data(pair_condition, pair_rng)\n    result = {\n        \"seed\": SEED, \"torch\": torch.__version__, \"device\": \"cpu\", \"dtype\": \"float32\",\n        \"train_steps\": train_steps, \"batch_size\": 256, \"hidden_width\": 64,\n        \"data_std\": DATA_STD, \"training_curve\": curve,\n        \"probe\": {\"before_mse\": initial_mse, \"after_mse\": final_mse,\n                  \"oracle_target_mse\": oracle_mse, \"learned_to_oracle_field_mse\": field_mse},\n        \"reference_check\": reference_check, \"metrics\": metrics,\n        \"model_flow_rms\": rms(learned_reference, oracle_reference),\n        \"conditions\": conditions, \"fields\": fields,\n        \"trajectories\": {\"condition\": condition[:24].tolist(), \"states\": trajectories},\n        \"training_pairs\": {\"condition\": pair_condition.tolist(),\n                           \"noise\": pair_noise.tolist(), \"data\": pair_data.tolist()},\n        \"seconds\": time.perf_counter() - started,\n        \"limits\": [\n            \"Single seeded CPU experiment; these values are observations, not guarantees.\",\n            \"solver_rms compares to a finite fine-grid solution of the same learned field.\",\n            \"model_flow_rms compares learned and analytic marginal fields with common noise.\",\n            \"Sliced W2 uses 32 fixed directions and 512 samples per condition.\",\n            \"Nearest-mode fractions are a diagnostic, not exact mixture component labels.\",\n        ],\n    }\n    Path(output).parent.mkdir(parents=True, exist_ok=True)\n    Path(output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + \"\\n\")\n    print(json.dumps({\"probe\": result[\"probe\"], \"reference_check\": reference_check,\n                      \"model_flow_rms\": result[\"model_flow_rms\"],\n                      \"metrics\": metrics, \"seconds\": result[\"seconds\"]}, indent=2))\n    return result\n\n\nif __name__ == \"__main__\":\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--output\", default=\"fm_mixture_results.json\")\n    parser.add_argument(\"--train-steps\", type=int, default=1800)\n    args = parser.parse_args()\n    run(args.output, args.train_steps)\n",
-        "explanations": [
-          {
-            "lines": "1–33",
-            "text": "定义两个观测条件下的双峰 Gaussian 数据；训练端点独立配对，条件没有泄漏混合分量或真实终点。"
-          },
-          {
-            "lines": "34–58",
-            "text": "小 MLP 预测速度；解析场先计算分量后验责任，再对各分量速度加权，用于隔离学习误差。"
-          },
-          {
-            "lines": "59–83",
-            "text": "Euler 与 Heun 使用相同接口、时间网格和初始噪声；可记录随时间变化的轨迹。"
-          },
-          {
-            "lines": "84–90",
-            "text": "固定投影方向的 sliced-Wasserstein 只作为有限样本分布诊断，不能替代精确似然或任务指标。"
-          },
-          {
-            "lines": "91–120",
-            "text": "固定种子训练，独立探针不参与梯度；同时报告随机目标误差和对解析边际场的误差。"
-          },
-          {
-            "lines": "121–156",
-            "text": "分别细化学习场与解析场的参考解，比较相同步数与 NFE；用解析标量 ODE 和重复采样检查求解器。"
-          },
-          {
-            "lines": "157–219",
-            "text": "导出同一次实验的样本、网格速度、轨迹、训练配对、指标和配置。默认写 JSON，绘图数据不由手工拟造。"
-          }
-        ],
-        "expected": "输出独立探针误差、细网格复核和 Euler/Heun 不同 NFE 的指标，并写出可绘图的 JSON。固定种子在本次 CPU 运行中目标 MSE 为 2.4931→1.2641；不同环境浮点结果可略有差异。检查只要求明确的公式、有限性、确定性及本合成训练改进，不把这些数值作为真实策略性能。"
       }
     ],
     "labs": [
@@ -3366,6 +3381,7 @@
         "title": "Chen et al. · Neural ODE：可逆流与瞬时密度变换",
         "url": "https://arxiv.org/abs/1806.07366"
       }
-    ]
+    ],
+    "mainImplementation": "conditional-mixture"
   }
 ]
