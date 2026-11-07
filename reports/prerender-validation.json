@@ -5,767 +5,767 @@
     {
       "path": "/",
       "title": "机器学习、生成模型与具身策略",
-      "bytes": 24242
+      "bytes": 24245
     },
     {
       "path": "/learn/tensor/",
       "title": "张量与广播",
-      "bytes": 42494
+      "bytes": 42497
     },
     {
       "path": "/learn/tensor/code/",
       "title": "张量与广播 · 代码",
-      "bytes": 11828
+      "bytes": 11831
     },
     {
       "path": "/learn/tensor/exercise/",
       "title": "张量与广播 · 练习",
-      "bytes": 17093
+      "bytes": 20174
     },
     {
       "path": "/learn/matrix-grad/",
       "title": "线性代数与矩阵求导",
-      "bytes": 270385
+      "bytes": 270388
     },
     {
       "path": "/learn/matrix-grad/code/",
       "title": "线性代数与矩阵求导 · 代码",
-      "bytes": 12356
+      "bytes": 12359
     },
     {
       "path": "/learn/matrix-grad/exercise/",
       "title": "线性代数与矩阵求导 · 练习",
-      "bytes": 29473
+      "bytes": 30874
     },
     {
       "path": "/learn/probability/",
       "title": "概率、统计与训练目标",
-      "bytes": 334118
+      "bytes": 334121
     },
     {
       "path": "/learn/probability/code/",
       "title": "概率、统计与训练目标 · 代码",
-      "bytes": 13872
+      "bytes": 13875
     },
     {
       "path": "/learn/probability/exercise/",
       "title": "概率、统计与训练目标 · 练习",
-      "bytes": 22019
+      "bytes": 24066
     },
     {
       "path": "/learn/losses/",
       "title": "损失、掩码与归约",
-      "bytes": 135252
+      "bytes": 135255
     },
     {
       "path": "/learn/losses/code/",
       "title": "损失、掩码与归约 · 代码",
-      "bytes": 19242
+      "bytes": 19245
     },
     {
       "path": "/learn/losses/exercise/",
       "title": "损失、掩码与归约 · 练习",
-      "bytes": 17864
+      "bytes": 19265
     },
     {
       "path": "/learn/autograd/",
       "title": "PyTorch 自动微分与计算图",
-      "bytes": 48540
+      "bytes": 48543
     },
     {
       "path": "/learn/autograd/code/",
       "title": "PyTorch 自动微分与计算图 · 代码",
-      "bytes": 12640
+      "bytes": 12643
     },
     {
       "path": "/learn/autograd/exercise/",
       "title": "PyTorch 自动微分与计算图 · 练习",
-      "bytes": 15001
+      "bytes": 16402
     },
     {
       "path": "/learn/optimization/",
       "title": "梯度下降、动量与 AdamW",
-      "bytes": 225835
+      "bytes": 225838
     },
     {
       "path": "/learn/optimization/code/",
       "title": "梯度下降、动量与 AdamW · 代码",
-      "bytes": 12745
+      "bytes": 12748
     },
     {
       "path": "/learn/optimization/exercise/",
       "title": "梯度下降、动量与 AdamW · 练习",
-      "bytes": 20437
+      "bytes": 23567
     },
     {
       "path": "/learn/numerical/",
       "title": "数值精度与标准化",
-      "bytes": 85673
+      "bytes": 85676
     },
     {
       "path": "/learn/numerical/code/",
       "title": "数值精度与标准化 · 代码",
-      "bytes": 15834
+      "bytes": 15837
     },
     {
       "path": "/learn/numerical/exercise/",
       "title": "数值精度与标准化 · 练习",
-      "bytes": 22065
+      "bytes": 23466
     },
     {
       "path": "/learn/generalization/",
       "title": "泛化与验证",
-      "bytes": 46659
+      "bytes": 46662
     },
     {
       "path": "/learn/generalization/code/",
       "title": "泛化与验证 · 代码",
-      "bytes": 12939
+      "bytes": 12942
     },
     {
       "path": "/learn/generalization/exercise/",
       "title": "泛化与验证 · 练习",
-      "bytes": 19076
+      "bytes": 20477
     },
     {
       "path": "/learn/mlp/",
       "title": "MLP：表达、梯度与优化",
-      "bytes": 432858
+      "bytes": 432861
     },
     {
       "path": "/learn/mlp/code/",
       "title": "MLP：表达、梯度与优化 · 代码",
-      "bytes": 61011
+      "bytes": 61014
     },
     {
       "path": "/learn/mlp/exercise/",
       "title": "MLP：表达、梯度与优化 · 练习",
-      "bytes": 35358
+      "bytes": 36759
     },
     {
       "path": "/learn/activation-init/",
       "title": "激活与初始化",
-      "bytes": 189948
+      "bytes": 189951
     },
     {
       "path": "/learn/activation-init/code/",
       "title": "激活与初始化 · 代码",
-      "bytes": 14412
+      "bytes": 14415
     },
     {
       "path": "/learn/activation-init/exercise/",
       "title": "激活与初始化 · 练习",
-      "bytes": 25529
+      "bytes": 26930
     },
     {
       "path": "/learn/normalization/",
       "title": "归一化：统计轴、梯度与不变性",
-      "bytes": 258068
+      "bytes": 258071
     },
     {
       "path": "/learn/normalization/code/",
       "title": "归一化：统计轴、梯度与不变性 · 代码",
-      "bytes": 24637
+      "bytes": 24640
     },
     {
       "path": "/learn/normalization/exercise/",
       "title": "归一化：统计轴、梯度与不变性 · 练习",
-      "bytes": 44948
+      "bytes": 46349
     },
     {
       "path": "/learn/residual/",
       "title": "残差连接与深层优化",
-      "bytes": 257035
+      "bytes": 257038
     },
     {
       "path": "/learn/residual/code/",
       "title": "残差连接与深层优化 · 代码",
-      "bytes": 25419
+      "bytes": 25422
     },
     {
       "path": "/learn/residual/exercise/",
       "title": "残差连接与深层优化 · 练习",
-      "bytes": 35901
+      "bytes": 37302
     },
     {
       "path": "/learn/cnn-receptive-field/",
       "title": "CNN：卷积、采样与空间表示",
-      "bytes": 495078
+      "bytes": 495081
     },
     {
       "path": "/learn/cnn-receptive-field/code/",
       "title": "CNN：卷积、采样与空间表示 · 代码",
-      "bytes": 78429
+      "bytes": 78432
     },
     {
       "path": "/learn/cnn-receptive-field/exercise/",
       "title": "CNN：卷积、采样与空间表示 · 练习",
-      "bytes": 37740
+      "bytes": 39141
     },
     {
       "path": "/learn/attention/",
       "title": "注意力：匹配、聚合与梯度",
-      "bytes": 185785
+      "bytes": 185788
     },
     {
       "path": "/learn/attention/code/",
       "title": "注意力：匹配、聚合与梯度 · 代码",
-      "bytes": 12869
+      "bytes": 12872
     },
     {
       "path": "/learn/attention/exercise/",
       "title": "注意力：匹配、聚合与梯度 · 练习",
-      "bytes": 24142
+      "bytes": 25543
     },
     {
       "path": "/learn/embeddings/",
       "title": "Embedding 与位置编码",
-      "bytes": 110841
+      "bytes": 110844
     },
     {
       "path": "/learn/embeddings/code/",
       "title": "Embedding 与位置编码 · 代码",
-      "bytes": 13825
+      "bytes": 13828
     },
     {
       "path": "/learn/embeddings/exercise/",
       "title": "Embedding 与位置编码 · 练习",
-      "bytes": 22964
+      "bytes": 24365
     },
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 638731
+      "bytes": 638734
     },
     {
       "path": "/learn/transformer/code/",
       "title": "Transformer：注意力、残差与序列建模 · 代码",
-      "bytes": 93415
+      "bytes": 93418
     },
     {
       "path": "/learn/transformer/exercise/",
       "title": "Transformer：注意力、残差与序列建模 · 练习",
-      "bytes": 56430
+      "bytes": 57831
     },
     {
       "path": "/learn/vision-preprocessing/",
       "title": "视觉预处理与坐标变换",
-      "bytes": 69953
+      "bytes": 69956
     },
     {
       "path": "/learn/vision-preprocessing/code/",
       "title": "视觉预处理与坐标变换 · 代码",
-      "bytes": 16757
+      "bytes": 16760
     },
     {
       "path": "/learn/vision-preprocessing/exercise/",
       "title": "视觉预处理与坐标变换 · 练习",
-      "bytes": 24996
+      "bytes": 26397
     },
     {
       "path": "/learn/multimodal/",
       "title": "视觉编码器与多模态融合",
-      "bytes": 94790
+      "bytes": 94793
     },
     {
       "path": "/learn/multimodal/code/",
       "title": "视觉编码器与多模态融合 · 代码",
-      "bytes": 29400
+      "bytes": 29403
     },
     {
       "path": "/learn/multimodal/exercise/",
       "title": "视觉编码器与多模态融合 · 练习",
-      "bytes": 21009
+      "bytes": 22410
     },
     {
       "path": "/learn/contrastive-pretraining/",
       "title": "视觉与图文预训练：DINO、CLIP 与 SigLIP",
-      "bytes": 128282
+      "bytes": 128285
     },
     {
       "path": "/learn/contrastive-pretraining/code/",
       "title": "视觉与图文预训练：DINO、CLIP 与 SigLIP · 代码",
-      "bytes": 15612
+      "bytes": 15615
     },
     {
       "path": "/learn/contrastive-pretraining/exercise/",
       "title": "视觉与图文预训练：DINO、CLIP 与 SigLIP · 练习",
-      "bytes": 28688
+      "bytes": 30089
     },
     {
       "path": "/learn/tokenizer-autoregressive/",
       "title": "分词、自回归与标签对齐",
-      "bytes": 39182
+      "bytes": 39185
     },
     {
       "path": "/learn/tokenizer-autoregressive/code/",
       "title": "分词、自回归与标签对齐 · 代码",
-      "bytes": 15708
+      "bytes": 15711
     },
     {
       "path": "/learn/tokenizer-autoregressive/exercise/",
       "title": "分词、自回归与标签对齐 · 练习",
-      "bytes": 20561
+      "bytes": 21962
     },
     {
       "path": "/learn/conditioning-fusion/",
       "title": "条件注入：拼接、FiLM 与 AdaLN",
-      "bytes": 99912
+      "bytes": 99915
     },
     {
       "path": "/learn/conditioning-fusion/code/",
       "title": "条件注入：拼接、FiLM 与 AdaLN · 代码",
-      "bytes": 15232
+      "bytes": 15235
     },
     {
       "path": "/learn/conditioning-fusion/exercise/",
       "title": "条件注入：拼接、FiLM 与 AdaLN · 练习",
-      "bytes": 28106
+      "bytes": 29507
     },
     {
       "path": "/learn/kv-cache-inference/",
       "title": "KV Cache 与增量计算",
-      "bytes": 55072
+      "bytes": 55075
     },
     {
       "path": "/learn/kv-cache-inference/code/",
       "title": "KV Cache 与增量计算 · 代码",
-      "bytes": 16925
+      "bytes": 16928
     },
     {
       "path": "/learn/kv-cache-inference/exercise/",
       "title": "KV Cache 与增量计算 · 练习",
-      "bytes": 17842
+      "bytes": 19243
     },
     {
       "path": "/learn/latent-variable-models/",
       "title": "生成建模、潜变量与 VAE",
-      "bytes": 371865
+      "bytes": 371868
     },
     {
       "path": "/learn/latent-variable-models/code/",
       "title": "生成建模、潜变量与 VAE · 代码",
-      "bytes": 19351
+      "bytes": 19354
     },
     {
       "path": "/learn/latent-variable-models/exercise/",
       "title": "生成建模、潜变量与 VAE · 练习",
-      "bytes": 36004
+      "bytes": 37449
     },
     {
       "path": "/learn/diffusion/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM",
-      "bytes": 603075
+      "bytes": 603078
     },
     {
       "path": "/learn/diffusion/code/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM · 代码",
-      "bytes": 30817
+      "bytes": 30820
     },
     {
       "path": "/learn/diffusion/exercise/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM · 练习",
-      "bytes": 29104
+      "bytes": 30505
     },
     {
       "path": "/learn/score-sde/",
       "title": "Score、SDE 与概率流 ODE",
-      "bytes": 525954
+      "bytes": 525957
     },
     {
       "path": "/learn/score-sde/code/",
       "title": "Score、SDE 与概率流 ODE · 代码",
-      "bytes": 30584
+      "bytes": 30587
     },
     {
       "path": "/learn/score-sde/exercise/",
       "title": "Score、SDE 与概率流 ODE · 练习",
-      "bytes": 31383
+      "bytes": 32828
     },
     {
       "path": "/learn/flow-matching/",
       "title": "Flow Matching",
-      "bytes": 689725
+      "bytes": 689728
     },
     {
       "path": "/learn/flow-matching/code/",
       "title": "Flow Matching · 代码",
-      "bytes": 91756
+      "bytes": 91759
     },
     {
       "path": "/learn/flow-matching/exercise/",
       "title": "Flow Matching · 练习",
-      "bytes": 72490
+      "bytes": 73891
     },
     {
       "path": "/learn/behavior-cloning/",
       "title": "行为克隆",
-      "bytes": 129530
+      "bytes": 129533
     },
     {
       "path": "/learn/behavior-cloning/code/",
       "title": "行为克隆 · 代码",
-      "bytes": 14643
+      "bytes": 14646
     },
     {
       "path": "/learn/behavior-cloning/exercise/",
       "title": "行为克隆 · 练习",
-      "bytes": 17827
+      "bytes": 19228
     },
     {
       "path": "/learn/action-representation/",
       "title": "状态与动作表示",
-      "bytes": 177052
+      "bytes": 177055
     },
     {
       "path": "/learn/action-representation/code/",
       "title": "状态与动作表示 · 代码",
-      "bytes": 13790
+      "bytes": 13793
     },
     {
       "path": "/learn/action-representation/exercise/",
       "title": "状态与动作表示 · 练习",
-      "bytes": 22105
+      "bytes": 23506
     },
     {
       "path": "/learn/action-chunk/",
       "title": "时间对齐与动作块",
-      "bytes": 48497
+      "bytes": 48500
     },
     {
       "path": "/learn/action-chunk/code/",
       "title": "时间对齐与动作块 · 代码",
-      "bytes": 14261
+      "bytes": 14264
     },
     {
       "path": "/learn/action-chunk/exercise/",
       "title": "时间对齐与动作块 · 练习",
-      "bytes": 18663
+      "bytes": 20064
     },
     {
       "path": "/learn/partial-observability/",
       "title": "部分观测与记忆",
-      "bytes": 101250
+      "bytes": 101253
     },
     {
       "path": "/learn/partial-observability/code/",
       "title": "部分观测与记忆 · 代码",
-      "bytes": 14828
+      "bytes": 14831
     },
     {
       "path": "/learn/partial-observability/exercise/",
       "title": "部分观测与记忆 · 练习",
-      "bytes": 19195
+      "bytes": 20596
     },
     {
       "path": "/learn/generative-policy/",
       "title": "生成式动作策略：ACT、Diffusion 与 Flow",
-      "bytes": 348741
+      "bytes": 348744
     },
     {
       "path": "/learn/generative-policy/code/",
       "title": "生成式动作策略：ACT、Diffusion 与 Flow · 代码",
-      "bytes": 36547
+      "bytes": 36550
     },
     {
       "path": "/learn/generative-policy/exercise/",
       "title": "生成式动作策略：ACT、Diffusion 与 Flow · 练习",
-      "bytes": 46889
+      "bytes": 48290
     },
     {
       "path": "/learn/vla-architecture/",
       "title": "VLA：从视觉语言骨干到动作专家",
-      "bytes": 387825
+      "bytes": 387828
     },
     {
       "path": "/learn/vla-architecture/code/",
       "title": "VLA：从视觉语言骨干到动作专家 · 代码",
-      "bytes": 65903
+      "bytes": 65906
     },
     {
       "path": "/learn/vla-architecture/exercise/",
       "title": "VLA：从视觉语言骨干到动作专家 · 练习",
-      "bytes": 29809
+      "bytes": 31254
     },
     {
       "path": "/learn/finetuning/",
       "title": "微调与 LoRA",
-      "bytes": 306705
+      "bytes": 306708
     },
     {
       "path": "/learn/finetuning/code/",
       "title": "微调与 LoRA · 代码",
-      "bytes": 15450
+      "bytes": 15453
     },
     {
       "path": "/learn/finetuning/exercise/",
       "title": "微调与 LoRA · 练习",
-      "bytes": 21533
+      "bytes": 22934
     },
     {
       "path": "/learn/returns-bellman/",
       "title": "回报与 Bellman 方程",
-      "bytes": 213712
+      "bytes": 213715
     },
     {
       "path": "/learn/returns-bellman/code/",
       "title": "回报与 Bellman 方程 · 代码",
-      "bytes": 14309
+      "bytes": 14312
     },
     {
       "path": "/learn/returns-bellman/exercise/",
       "title": "回报与 Bellman 方程 · 练习",
-      "bytes": 21739
+      "bytes": 23140
     },
     {
       "path": "/learn/policy-gradient/",
       "title": "策略梯度",
-      "bytes": 227128
+      "bytes": 227131
     },
     {
       "path": "/learn/policy-gradient/code/",
       "title": "策略梯度 · 代码",
-      "bytes": 14852
+      "bytes": 14855
     },
     {
       "path": "/learn/policy-gradient/exercise/",
       "title": "策略梯度 · 练习",
-      "bytes": 26662
+      "bytes": 28063
     },
     {
       "path": "/learn/modules/",
       "title": "PyTorch 模块、参数与状态",
-      "bytes": 24042
+      "bytes": 24045
     },
     {
       "path": "/learn/modules/code/",
       "title": "PyTorch 模块、参数与状态 · 代码",
-      "bytes": 13978
+      "bytes": 13981
     },
     {
       "path": "/learn/modules/exercise/",
       "title": "PyTorch 模块、参数与状态 · 练习",
-      "bytes": 17491
+      "bytes": 18892
     },
     {
       "path": "/learn/dataloader/",
       "title": "数据采样与批处理",
-      "bytes": 62645
+      "bytes": 62648
     },
     {
       "path": "/learn/dataloader/code/",
       "title": "数据采样与批处理 · 代码",
-      "bytes": 14646
+      "bytes": 14649
     },
     {
       "path": "/learn/dataloader/exercise/",
       "title": "数据采样与批处理 · 练习",
-      "bytes": 27860
+      "bytes": 29261
     },
     {
       "path": "/learn/training-loop/",
       "title": "训练循环与指标归约",
-      "bytes": 59195
+      "bytes": 59198
     },
     {
       "path": "/learn/training-loop/code/",
       "title": "训练循环与指标归约 · 代码",
-      "bytes": 81089
+      "bytes": 81092
     },
     {
       "path": "/learn/training-loop/exercise/",
       "title": "训练循环与指标归约 · 练习",
-      "bytes": 16734
+      "bytes": 18135
     },
     {
       "path": "/learn/checkpoint/",
       "title": "保存与恢复训练状态",
-      "bytes": 64958
+      "bytes": 64961
     },
     {
       "path": "/learn/checkpoint/code/",
       "title": "保存与恢复训练状态 · 代码",
-      "bytes": 16479
+      "bytes": 16482
     },
     {
       "path": "/learn/checkpoint/exercise/",
       "title": "保存与恢复训练状态 · 练习",
-      "bytes": 17922
+      "bytes": 19323
     },
     {
       "path": "/learn/data-quality/",
       "title": "示教数据与采样",
-      "bytes": 93720
+      "bytes": 93723
     },
     {
       "path": "/learn/data-quality/code/",
       "title": "示教数据与采样 · 代码",
-      "bytes": 15638
+      "bytes": 15641
     },
     {
       "path": "/learn/data-quality/exercise/",
       "title": "示教数据与采样 · 练习",
-      "bytes": 29231
+      "bytes": 33304
     },
     {
       "path": "/learn/gradient-accumulation/",
       "title": "梯度累积",
-      "bytes": 70022
+      "bytes": 70025
     },
     {
       "path": "/learn/gradient-accumulation/code/",
       "title": "梯度累积 · 代码",
-      "bytes": 14659
+      "bytes": 14662
     },
     {
       "path": "/learn/gradient-accumulation/exercise/",
       "title": "梯度累积 · 练习",
-      "bytes": 30688
+      "bytes": 32089
     },
     {
       "path": "/learn/mixed-precision/",
       "title": "混合精度训练",
-      "bytes": 39905
+      "bytes": 39908
     },
     {
       "path": "/learn/mixed-precision/code/",
       "title": "混合精度训练 · 代码",
-      "bytes": 14548
+      "bytes": 14551
     },
     {
       "path": "/learn/mixed-precision/exercise/",
       "title": "混合精度训练 · 练习",
-      "bytes": 21860
+      "bytes": 23261
     },
     {
       "path": "/learn/memory-checkpointing/",
       "title": "训练显存与重计算",
-      "bytes": 30558
+      "bytes": 30561
     },
     {
       "path": "/learn/memory-checkpointing/code/",
       "title": "训练显存与重计算 · 代码",
-      "bytes": 13880
+      "bytes": 13883
     },
     {
       "path": "/learn/memory-checkpointing/exercise/",
       "title": "训练显存与重计算 · 练习",
-      "bytes": 19205
+      "bytes": 20606
     },
     {
       "path": "/learn/distributed-training/",
       "title": "DDP 与全局统计",
-      "bytes": 59115
+      "bytes": 59118
     },
     {
       "path": "/learn/distributed-training/code/",
       "title": "DDP 与全局统计 · 代码",
-      "bytes": 16376
+      "bytes": 16379
     },
     {
       "path": "/learn/distributed-training/exercise/",
       "title": "DDP 与全局统计 · 练习",
-      "bytes": 20487
+      "bytes": 21888
     },
     {
       "path": "/learn/training-diagnostics/",
       "title": "训练诊断",
-      "bytes": 45853
+      "bytes": 45856
     },
     {
       "path": "/learn/training-diagnostics/code/",
       "title": "训练诊断 · 代码",
-      "bytes": 16708
+      "bytes": 16711
     },
     {
       "path": "/learn/training-diagnostics/exercise/",
       "title": "训练诊断 · 练习",
-      "bytes": 20044
+      "bytes": 21445
     },
     {
       "path": "/learn/multitask-gradients/",
       "title": "多任务梯度",
-      "bytes": 71644
+      "bytes": 71647
     },
     {
       "path": "/learn/multitask-gradients/code/",
       "title": "多任务梯度 · 代码",
-      "bytes": 15699
+      "bytes": 15702
     },
     {
       "path": "/learn/multitask-gradients/exercise/",
       "title": "多任务梯度 · 练习",
-      "bytes": 22775
+      "bytes": 24176
     },
     {
       "path": "/learn/distribution-shift/",
       "title": "分布偏移与 DAgger",
-      "bytes": 85451
+      "bytes": 85454
     },
     {
       "path": "/learn/distribution-shift/code/",
       "title": "分布偏移与 DAgger · 代码",
-      "bytes": 14819
+      "bytes": 14822
     },
     {
       "path": "/learn/distribution-shift/exercise/",
       "title": "分布偏移与 DAgger · 练习",
-      "bytes": 19023
+      "bytes": 20424
     },
     {
       "path": "/learn/execution-latency/",
       "title": "动作执行与延迟",
-      "bytes": 69553
+      "bytes": 69556
     },
     {
       "path": "/learn/execution-latency/code/",
       "title": "动作执行与延迟 · 代码",
-      "bytes": 17690
+      "bytes": 17693
     },
     {
       "path": "/learn/execution-latency/exercise/",
       "title": "动作执行与延迟 · 练习",
-      "bytes": 19810
+      "bytes": 25970
     },
     {
       "path": "/learn/evaluation/",
       "title": "闭环评估与统计",
-      "bytes": 78763
+      "bytes": 78766
     },
     {
       "path": "/learn/evaluation/code/",
       "title": "闭环评估与统计 · 代码",
-      "bytes": 14765
+      "bytes": 14768
     },
     {
       "path": "/learn/evaluation/exercise/",
       "title": "闭环评估与统计 · 练习",
-      "bytes": 18952
+      "bytes": 20353
     },
     {
       "path": "/learn/train-infer-contract/",
       "title": "训练与推理一致性",
-      "bytes": 70108
+      "bytes": 70111
     },
     {
       "path": "/learn/train-infer-contract/code/",
       "title": "训练与推理一致性 · 代码",
-      "bytes": 39366
+      "bytes": 39369
     },
     {
       "path": "/learn/train-infer-contract/exercise/",
       "title": "训练与推理一致性 · 练习",
-      "bytes": 20191
+      "bytes": 22844
     },
     {
       "path": "/practice/",
       "title": "课程练习",
-      "bytes": 24639
+      "bytes": 25011
     },
     {
       "path": "/guide/",
       "title": "下载与运行",
-      "bytes": 8035
+      "bytes": 8038
     }
   ]
 }

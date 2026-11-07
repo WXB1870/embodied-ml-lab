@@ -2302,11 +2302,11 @@
     },
     "exercise": {
       "title": "从任务目标比例算逐样本权重",
-      "prompt": "实现 sample_weights(tasks, desired)。tasks 是记录的任务标签列表，desired 是总和为 1 的非负目标概率。返回每条记录的权重；缺失但有正目标概率的任务、未知标签或空数据要报错。",
+      "prompt": "实现 sample_weights(tasks, desired)。tasks 是记录的任务标签列表，desired 是总和为 1 的非负目标概率。返回每条记录的权重；缺失但有正目标概率的任务、未知标签或空数据要报错。 每条记录的权重为 desired[任务]/该任务记录数，所以同一任务的权重总和等于目标概率，全部权重总和为 1。目标概率为零的任务可以没有记录。",
       "runtime": "python",
       "starter": "import math\nfrom collections import Counter\n\ndef sample_weights(tasks, desired):\n    # TODO: 每条记录应获得其任务概率除以该任务样本数\n    raise NotImplementedError\n",
       "solution": "import math\nfrom collections import Counter\n\ndef sample_weights(tasks, desired):\n    if not tasks or not desired:\n        raise ValueError('empty data or distribution')\n    if any(not math.isfinite(p) or p < 0 for p in desired.values()) or not math.isclose(sum(desired.values()),1.0):\n        raise ValueError('invalid distribution')\n    counts = Counter(tasks)\n    if any(t not in desired for t in counts):\n        raise ValueError('unknown task')\n    if any(p > 0 and counts[t] == 0 for t,p in desired.items()):\n        raise ValueError('positive probability without data')\n    return [desired[t]/counts[t] for t in tasks]\n",
-      "tests": "tasks = ['reach','reach','reach','grasp']\nw = sample_weights(tasks,{'reach':0.5,'grasp':0.5})\nassert abs(sum(w[:3])-0.5) < 1e-12\nassert abs(w[3]-0.5) < 1e-12\nassert abs(sum(w)-1.0) < 1e-12\nassert sample_weights(['a','a'],{'a':1.0}) == [0.5,0.5]\ntry:\n    sample_weights(['reach'],{'reach':0.5,'grasp':0.5})\n    raise AssertionError('缺失目标任务应报错')\nexcept ValueError:\n    pass\nprint('逐样本权重与任务总概率检查通过。')\n",
+      "tests": "tasks = ['reach','reach','reach','grasp']\nw = sample_weights(tasks,{'reach':0.5,'grasp':0.5})\nassert abs(sum(w[:3])-0.5) < 1e-12\nassert abs(w[3]-0.5) < 1e-12\nassert abs(sum(w)-1.0) < 1e-12\nassert sample_weights(['a','a'],{'a':1.0}) == [0.5,0.5]\ntry:\n    sample_weights(['reach'],{'reach':0.5,'grasp':0.5})\n    raise AssertionError('缺失目标任务应报错')\nexcept ValueError:\n    pass\n\nassert sample_weights(['a'], {'a': 1., 'b': 0.}) == [1.]\nassert sample_weights(['a','b'], {'a': 1., 'b': 0.}) == [1., 0.]\nfor tasks, desired in [([], {'a': 1.}), (['x'], {'a': 1.}), (['a'], {'a': 0.5}), (['a'], {'a': -1., 'b': 2.}), (['a'], {'a': float('nan')})]:\n    try:\n        sample_weights(tasks, desired)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('必须拒绝空数据、未知任务或非法概率分布')\nprint('逐样本权重与任务总概率检查通过。')\n",
       "hints": [
         "先用 Counter 统计每种任务有多少条记录。",
         "验证一个任务内所有记录的权重和，是否等于 desired 中的概率。"

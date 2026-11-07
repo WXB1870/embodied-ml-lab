@@ -171,11 +171,11 @@
     },
     "exercise": {
       "title": "手写带有效位掩码的序列平均",
-      "prompt": "rows 是 [T, D] 的列表，valid 标记哪些时刻有效。只平均有效行；若没有有效行，抛出 ValueError。不要把 Padding 的数值平均进去。",
+      "prompt": "rows 是 [T, D] 的列表，valid 标记哪些时刻有效。只平均有效行；若没有有效行，抛出 ValueError。不要把 Padding 的数值平均进去。 输入保证为等宽、非空行，valid 是长度 T 的布尔列表；无效行可含 NaN。返回长度 D 的平均值列表。例如 [[1,2],[3,4],[999,999]] 配合 [True,True,False]，应得到 [2,3]。",
       "runtime": "python",
       "starter": "def masked_mean(rows, valid):\n    # TODO: 找到有效行，对每个特征维度求平均\n    raise NotImplementedError(\"请实现 masked_mean\")\n",
       "solution": "def masked_mean(rows, valid):\n    chosen = [row for row, keep in zip(rows, valid) if keep]\n    if not chosen:\n        raise ValueError(\"没有有效时刻\")\n    width = len(chosen[0])\n    return [sum(row[d] for row in chosen) / len(chosen) for d in range(width)]\n",
-      "tests": "assert masked_mean([[1, 2], [3, 4], [999, 999]], [True, True, False]) == [2, 3]\nassert masked_mean([[2, 4, 6]], [True]) == [2, 4, 6]\ntry:\n    masked_mean([[1, 2]], [False])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"全无效输入必须显式处理\")\nprint(\"通过：有效时刻平均、Padding 排除、空有效集处理。\")\n",
+      "tests": "assert masked_mean([[1, 2], [3, 4], [999, 999]], [True, True, False]) == [2, 3]\nassert masked_mean([[2, 4, 6]], [True]) == [2, 4, 6]\nassert masked_mean([[float('nan'), float('nan')], [4, 8]], [False, True]) == [4, 8], \"必须先排除无效行，不能用 NaN 乘零\"\nrows = [[1, 2], [5, 8]]\nassert masked_mean(rows, [True, True]) == [3, 5], \"按特征维平均\"\nassert rows == [[1, 2], [5, 8]], \"不能修改输入\"\ntry:\n    masked_mean([[1, 2]], [False])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"全无效输入必须显式处理\")\nprint(\"通过：有效时刻平均、Padding 排除、空有效集处理。\")\n",
       "hints": [
         "先筛选有效行，分母是有效行的数量。",
         "输出应保留 D 轴，而不是对所有数只求一个平均值。"
@@ -861,11 +861,11 @@
     },
     "exercise": {
       "title": "实现数值稳定的 softmax",
-      "prompt": "输入非空 logits 列表，输出概率列表。必须能处理 [1000,1001,999]，并且整体平移 logits 后结果不变。",
+      "prompt": "输入非空 logits 列表，输出概率列表。必须能处理 [1000,1001,999]，并且整体平移 logits 后结果不变。 输入元素保证为有限实数；返回列表与输入等长。空列表应抛出 ValueError。",
       "runtime": "python",
       "starter": "import math\n\ndef stable_softmax(logits):\n    # TODO: 在取 exp 之前使用平移不变性\n    raise NotImplementedError(\"请实现 stable_softmax\")\n",
       "solution": "import math\n\ndef stable_softmax(logits):\n    if not logits:\n        raise ValueError(\"logits 不能为空\")\n    maximum = max(logits)\n    exps = [math.exp(z - maximum) for z in logits]\n    total = sum(exps)\n    return [value / total for value in exps]\n",
-      "tests": "p = stable_softmax([1000., 1001., 999.])\nq = stable_softmax([0., 1., -1.])\nassert abs(sum(p) - 1.) < 1e-12\nassert all(abs(a-b) < 1e-12 for a, b in zip(p, q))\nassert abs(p[1] / p[0] - math.e) < 1e-12\nassert stable_softmax([0., 0.]) == [0.5, 0.5]\ntry:\n    stable_softmax([])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"空输入应显式拒绝\")\nprint(\"通过：稳定性、归一化与平移不变性。\")\n",
+      "tests": "p = stable_softmax([1000., 1001., 999.])\nq = stable_softmax([0., 1., -1.])\nassert len(p) == len(q) == 3, \"不能漏掉类别\"\nassert abs(sum(p) - 1.) < 1e-12\nassert all(abs(a-b) < 1e-12 for a, b in zip(p, q))\nassert abs(p[1] / p[0] - math.e) < 1e-12\nassert stable_softmax([0., 0.]) == [0.5, 0.5]\nassert stable_softmax([1234.]) == [1.0], \"单类别概率为 1\"\ntry:\n    stable_softmax([])\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"空输入应显式拒绝\")\nprint(\"通过：稳定性、归一化与平移不变性。\")\n",
       "hints": [
         "让最大的指数输入变为 0，其他输入非正。",
         "每个指数值除以同一组指数值之和。"
@@ -1826,7 +1826,7 @@
       "runtime": "python",
       "starter": "import math\n\ndef adamw_step(theta, grad, m, v, step, lr=0.1,\n               beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=0.01):\n    # TODO: 更新矩、偏差修正、解耦衰减、自适应更新\n    raise NotImplementedError(\"请实现 adamw_step\")\n",
       "solution": "import math\n\ndef adamw_step(theta, grad, m, v, step, lr=0.1,\n               beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=0.01):\n    m = beta1 * m + (1 - beta1) * grad\n    v = beta2 * v + (1 - beta2) * grad * grad\n    m_hat = m / (1 - beta1 ** step)\n    v_hat = v / (1 - beta2 ** step)\n    theta = theta * (1 - lr * weight_decay)\n    theta -= lr * m_hat / (math.sqrt(v_hat) + eps)\n    return theta, m, v\n",
-      "tests": "theta, m, v = adamw_step(2., 4., 0., 0., 1)\nassert abs(theta - (1.998 - 0.1 * 4 / (4 + 1e-8))) < 1e-12\nassert abs(m - 0.4) < 1e-12 and abs(v - 0.016) < 1e-12\nzero, mz, vz = adamw_step(2., 0., 0., 0., 1)\nassert zero == 1.998 and mz == 0. and vz == 0.\nsecond, m2, v2 = adamw_step(theta, 1., m, v, 2)\nassert abs(m2 - 0.46) < 1e-12\nassert abs(v2 - (0.999 * v + 0.001)) < 1e-12\nassert second < theta\nprint(\"通过：矩估计、偏差修正及解耦衰减。\")\n",
+      "tests": "theta, m, v = adamw_step(2., 4., 0., 0., 1)\nassert abs(theta - (1.998 - 0.1 * 4 / (4 + 1e-8))) < 1e-12\nassert abs(m - 0.4) < 1e-12 and abs(v - 0.016) < 1e-12\nzero, mz, vz = adamw_step(2., 0., 0., 0., 1)\nassert zero == 1.998 and mz == 0. and vz == 0.\nsecond, m2, v2 = adamw_step(theta, 1., m, v, 2)\nassert abs(m2 - 0.46) < 1e-12\nassert abs(v2 - (0.999 * v + 0.001)) < 1e-12\nexpected_second = theta * (1 - 0.1 * 0.01) - 0.1 * (0.46 / (1 - 0.9**2)) / (math.sqrt(v2 / (1 - 0.999**2)) + 1e-8)\nassert abs(second - expected_second) < 1e-12, \"第二步也必须用当前 step 对两个矩做偏差修正\"\n# Turn off momentum and decay to isolate epsilon outside the square root.\nvalue, _, _ = adamw_step(3., -2., 0., 0., 1, lr=0.2, beta1=0., beta2=0., eps=0.5, weight_decay=0.)\nassert abs(value - 3.16) < 1e-12, \"epsilon 位于 sqrt(v_hat) 外，负梯度应使参数增加\"\nprint(\"通过：矩估计、偏差修正及解耦衰减。\")\n",
       "hints": [
         "偏差修正的指数使用当前 step；第一步是 1。",
         "把 theta 乘 (1-lr*weight_decay)，不要把衰减项混入 grad。"
@@ -16262,11 +16262,11 @@
     },
     "exercise": {
       "title": "从任务目标比例算逐样本权重",
-      "prompt": "实现 sample_weights(tasks, desired)。tasks 是记录的任务标签列表，desired 是总和为 1 的非负目标概率。返回每条记录的权重；缺失但有正目标概率的任务、未知标签或空数据要报错。",
+      "prompt": "实现 sample_weights(tasks, desired)。tasks 是记录的任务标签列表，desired 是总和为 1 的非负目标概率。返回每条记录的权重；缺失但有正目标概率的任务、未知标签或空数据要报错。 每条记录的权重为 desired[任务]/该任务记录数，所以同一任务的权重总和等于目标概率，全部权重总和为 1。目标概率为零的任务可以没有记录。",
       "runtime": "python",
       "starter": "import math\nfrom collections import Counter\n\ndef sample_weights(tasks, desired):\n    # TODO: 每条记录应获得其任务概率除以该任务样本数\n    raise NotImplementedError\n",
       "solution": "import math\nfrom collections import Counter\n\ndef sample_weights(tasks, desired):\n    if not tasks or not desired:\n        raise ValueError('empty data or distribution')\n    if any(not math.isfinite(p) or p < 0 for p in desired.values()) or not math.isclose(sum(desired.values()),1.0):\n        raise ValueError('invalid distribution')\n    counts = Counter(tasks)\n    if any(t not in desired for t in counts):\n        raise ValueError('unknown task')\n    if any(p > 0 and counts[t] == 0 for t,p in desired.items()):\n        raise ValueError('positive probability without data')\n    return [desired[t]/counts[t] for t in tasks]\n",
-      "tests": "tasks = ['reach','reach','reach','grasp']\nw = sample_weights(tasks,{'reach':0.5,'grasp':0.5})\nassert abs(sum(w[:3])-0.5) < 1e-12\nassert abs(w[3]-0.5) < 1e-12\nassert abs(sum(w)-1.0) < 1e-12\nassert sample_weights(['a','a'],{'a':1.0}) == [0.5,0.5]\ntry:\n    sample_weights(['reach'],{'reach':0.5,'grasp':0.5})\n    raise AssertionError('缺失目标任务应报错')\nexcept ValueError:\n    pass\nprint('逐样本权重与任务总概率检查通过。')\n",
+      "tests": "tasks = ['reach','reach','reach','grasp']\nw = sample_weights(tasks,{'reach':0.5,'grasp':0.5})\nassert abs(sum(w[:3])-0.5) < 1e-12\nassert abs(w[3]-0.5) < 1e-12\nassert abs(sum(w)-1.0) < 1e-12\nassert sample_weights(['a','a'],{'a':1.0}) == [0.5,0.5]\ntry:\n    sample_weights(['reach'],{'reach':0.5,'grasp':0.5})\n    raise AssertionError('缺失目标任务应报错')\nexcept ValueError:\n    pass\n\nassert sample_weights(['a'], {'a': 1., 'b': 0.}) == [1.]\nassert sample_weights(['a','b'], {'a': 1., 'b': 0.}) == [1., 0.]\nfor tasks, desired in [([], {'a': 1.}), (['x'], {'a': 1.}), (['a'], {'a': 0.5}), (['a'], {'a': -1., 'b': 2.}), (['a'], {'a': float('nan')})]:\n    try:\n        sample_weights(tasks, desired)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('必须拒绝空数据、未知任务或非法概率分布')\nprint('逐样本权重与任务总概率检查通过。')\n",
       "hints": [
         "先用 Counter 统计每种任务有多少条记录。",
         "验证一个任务内所有记录的权重和，是否等于 desired 中的概率。"
@@ -18577,11 +18577,11 @@
     },
     "exercise": {
       "title": "从带时间戳的预测中选当前动作",
-      "prompt": "实现 `choose_action(plans,now,dt,max_age,epoch)`。每块含 obs、ready、start、epoch、values；仅选择已完成、未过期、版本一致且覆盖当前槽位的块，优先来源 obs 最新者。返回 (value,index,obs)，无候选返回 None。",
+      "prompt": "实现 `choose_action(plans,now,dt,max_age,epoch)`。每块含 obs、ready、start、epoch、values；仅选择已完成、未过期、版本一致且覆盖当前槽位的块，优先来源 obs 最新者。返回 (value,index,obs)，无候选返回 None。 所有时间戳使用同一时钟，dt>0，max_age>=0；非法 dt/max_age 抛 ValueError。obs 是观测时刻，ready 是计算完成时刻，start 是 values[0] 的执行起点，相邻动作间隔 dt。用 floor((now-start)/dt) 计算槽位；未来观测和未来起点不可用，年龄恰好为 max_age 仍有效。相同 obs 的候选取输入中最先出现者。",
       "runtime": "python",
       "starter": "import math\n\ndef choose_action(plans,now,dt,max_age,epoch):\n    # TODO: 检查时间与版本，按当前槽位选择\n    raise NotImplementedError\n",
       "solution": "import math\n\ndef choose_action(plans,now,dt,max_age,epoch):\n    if dt<=0 or max_age<0:\n        raise ValueError('invalid timing configuration')\n    candidates=[]\n    for p in plans:\n        if p['ready']>now or p['obs']>now or p['epoch']!=epoch or now-p['obs']>max_age:\n            continue\n        index=math.floor((now-p['start'])/dt+1e-9)\n        if 0<=index<len(p['values']):\n            candidates.append((p['values'][index],index,p['obs']))\n    return max(candidates,key=lambda x:x[2]) if candidates else None\n",
-      "tests": "p=[{'obs':0.,'ready':0.15,'start':0.,'epoch':0,'values':[0.,1.,2.,3.]}]\nassert choose_action(p,0.21,0.1,0.3,0)==(2.,2,0.)\nassert choose_action(p,0.11,0.1,0.3,0) is None\nassert choose_action(p,0.41,0.1,0.3,0) is None\nassert choose_action(p,0.21,0.1,0.3,1) is None\np.append({'obs':0.2,'ready':0.25,'start':0.2,'epoch':0,'values':[10.,11.,12.]})\nassert choose_action(p,0.31,0.1,0.4,0)==(11.,1,0.2)\nprint('准备状态、过期、指令版本和动作槽位检查通过。')\n",
+      "tests": "p=[{'obs':0.,'ready':0.15,'start':0.,'epoch':0,'values':[0.,1.,2.,3.]}]\nassert choose_action(p,0.21,0.1,0.3,0)==(2.,2,0.)\nassert choose_action(p,0.11,0.1,0.3,0) is None\nassert choose_action(p,0.41,0.1,0.3,0) is None\nassert choose_action(p,0.21,0.1,0.3,1) is None\np.append({'obs':0.2,'ready':0.25,'start':0.2,'epoch':0,'values':[10.,11.,12.]})\nassert choose_action(p,0.31,0.1,0.4,0)==(11.,1,0.2)\n\nbase = {'obs': 0., 'ready': 1., 'start': 0., 'epoch': 0, 'values': [10.,20.,30.]}\nassert choose_action([base], 1., 1., 1., 0) == (20.,1,0.), 'ready 和年龄的等号边界应有效'\nassert choose_action([base], 3., 1., 4., 0) is None, '不能越过动作块末尾'\nassert choose_action([dict(base, obs=2.)], 1., 1., 3., 0) is None, '不能使用未来观测'\nassert choose_action([dict(base, start=2.)], 1., 1., 3., 0) is None, '不能提前执行尚未开始的块'\nnewer = dict(base, obs=0.5, ready=0.8, values=[40.,50.,60.])\nassert choose_action([base, newer], 1., 1., 2., 0) == (50.,1,0.5), '按观测来源排序，而非 ready'\nfor dt, age in [(0.,1.),(-1.,1.),(1.,-1.)]:\n    try:\n        choose_action([], 1., dt, age, 0)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('非法时间配置必须拒绝')\nprint('准备状态、过期、指令版本和动作槽位检查通过。')\n",
       "hints": [
         "`ready<=now` 只表示结果已返回，还要检查来源年龄与任务版本。",
         "从 (now−start)/dt 计算槽位，不能对每个新结果总是取 values[0]。"
@@ -19203,11 +19203,11 @@
     },
     "exercise": {
       "title": "找出没有 Shape 报错的配置冲突",
-      "prompt": "实现 `contract_errors(saved,runtime,train_groups,eval_groups)`。检查题目列出的必需字段；缺失报 `missing:key`，不同报 `mismatch:key`。两边 `causal_history` 都应为 True，否则报 `noncausal_history`；组交叉时报 `group_overlap`。返回错误字符串列表。",
+      "prompt": "实现 `contract_errors(saved,runtime,train_groups,eval_groups)`。按起始代码 REQUIRED 的顺序检查 action_order、unit、action_mode、normalizer_id、prediction_type、control_dt、causal_history；缺失报 `missing:key`，不同报 `mismatch:key`。两边 `causal_history` 都应为 True，否则报 `noncausal_history`；组交叉时报 `group_overlap`。返回错误字符串列表。 缺失检查优先于同字段的值比较；两边都缺失仍报告一次 missing。先返回字段错误，再依次追加 noncausal_history 和 group_overlap；无错误返回 []。",
       "runtime": "python",
       "starter": "REQUIRED=('action_order','unit','action_mode','normalizer_id','prediction_type','control_dt','causal_history')\n\ndef contract_errors(saved,runtime,train_groups,eval_groups):\n    # TODO: 不用隐式默认值掩盖缺失字段\n    raise NotImplementedError\n",
       "solution": "REQUIRED=('action_order','unit','action_mode','normalizer_id','prediction_type','control_dt','causal_history')\n\ndef contract_errors(saved,runtime,train_groups,eval_groups):\n    errors=[]\n    for key in REQUIRED:\n        if key not in saved or key not in runtime:\n            errors.append('missing:'+key)\n        elif saved[key]!=runtime[key]:\n            errors.append('mismatch:'+key)\n    if saved.get('causal_history') is not True or runtime.get('causal_history') is not True:\n        errors.append('noncausal_history')\n    if set(train_groups)&set(eval_groups):\n        errors.append('group_overlap')\n    return errors\n",
-      "tests": "s={'action_order':['x','y'],'unit':'m','action_mode':'delta','normalizer_id':'abc','prediction_type':'epsilon','control_dt':0.1,'causal_history':True}\nassert contract_errors(s,dict(s),['a'],['b'])==[]\nr=dict(s,unit='cm',prediction_type='sample')\ne=contract_errors(s,r,['a'],['a'])\nassert set(e)=={'mismatch:unit','mismatch:prediction_type','group_overlap'}\nr=dict(s); del r['normalizer_id']\nassert 'missing:normalizer_id' in contract_errors(s,r,[],[])\nr=dict(s,causal_history=False)\nassert 'noncausal_history' in contract_errors(s,r,[],[])\nprint('单位、参数化、缺失配置、因果声明与组泄漏检查通过。')\n",
+      "tests": "s={'action_order':['x','y'],'unit':'m','action_mode':'delta','normalizer_id':'abc','prediction_type':'epsilon','control_dt':0.1,'causal_history':True}\nassert contract_errors(s,dict(s),['a'],['b'])==[]\nr=dict(s,unit='cm',prediction_type='sample')\ne=contract_errors(s,r,['a'],['a'])\nassert set(e)=={'mismatch:unit','mismatch:prediction_type','group_overlap'}\nr=dict(s); del r['normalizer_id']\nassert 'missing:normalizer_id' in contract_errors(s,r,[],[])\nr=dict(s,causal_history=False)\nassert 'noncausal_history' in contract_errors(s,r,[],[])\n\nassert contract_errors({}, {}, [], []) == ['missing:'+key for key in REQUIRED] + ['noncausal_history']\nr = dict(s, causal_history=False)\nassert contract_errors(s,r,['a'],['a']) == ['mismatch:causal_history','noncausal_history','group_overlap']\nprint('单位、参数化、缺失配置、因果声明与组泄漏检查通过。')\n",
       "hints": [
         "检查字段是否存在，要先于值是否相等；两边都缺失不表示一致。",
         "因果历史必须真的为 True，不能让两边都为 False 通过相等检查。"

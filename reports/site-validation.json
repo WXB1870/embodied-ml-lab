@@ -40,7 +40,7 @@
     },
     {
       "path": "/learn/action-chunk/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 30,
       "assets": 10
     },
@@ -58,7 +58,7 @@
     },
     {
       "path": "/learn/action-representation/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 30,
       "assets": 10
     },
@@ -76,7 +76,7 @@
     },
     {
       "path": "/learn/activation-init/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 29,
       "assets": 10
     },
@@ -94,7 +94,7 @@
     },
     {
       "path": "/learn/attention/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 30,
       "assets": 10
     },
@@ -112,7 +112,7 @@
     },
     {
       "path": "/learn/autograd/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 28,
       "assets": 10
     },
@@ -130,7 +130,7 @@
     },
     {
       "path": "/learn/behavior-cloning/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 30,
       "assets": 10
     },
@@ -148,7 +148,7 @@
     },
     {
       "path": "/learn/checkpoint/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 30,
       "assets": 10
     },
@@ -166,7 +166,7 @@
     },
     {
       "path": "/learn/cnn-receptive-field/exercise/",
-      "ids": 32,
+      "ids": 34,
       "links": 33,
       "assets": 10
     },
@@ -184,7 +184,7 @@
     },
     {
       "path": "/learn/conditioning-fusion/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 30,
       "assets": 10
     },
@@ -202,7 +202,7 @@
     },
     {
       "path": "/learn/contrastive-pretraining/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 30,
       "assets": 10
     },
@@ -220,7 +220,7 @@
     },
     {
       "path": "/learn/data-quality/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 31,
       "assets": 10
     },
@@ -238,7 +238,7 @@
     },
     {
       "path": "/learn/dataloader/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 29,
       "assets": 10
     },
@@ -256,7 +256,7 @@
     },
     {
       "path": "/learn/diffusion/exercise/",
-      "ids": 26,
+      "ids": 28,
       "links": 30,
       "assets": 10
     },
@@ -274,7 +274,7 @@
     },
     {
       "path": "/learn/distributed-training/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 30,
       "assets": 10
     },
@@ -292,7 +292,7 @@
     },
     {
       "path": "/learn/distribution-shift/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 30,
       "assets": 10
     },
@@ -310,7 +310,7 @@
     },
     {
       "path": "/learn/embeddings/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 29,
       "assets": 10
     },
@@ -328,7 +328,7 @@
     },
     {
       "path": "/learn/evaluation/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 31,
       "assets": 10
     },
@@ -346,7 +346,7 @@
     },
     {
       "path": "/learn/execution-latency/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 30,
       "assets": 10
     },
@@ -364,7 +364,7 @@
     },
     {
       "path": "/learn/finetuning/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 30,
       "assets": 10
     },
@@ -382,7 +382,7 @@
     },
     {
       "path": "/learn/flow-matching/exercise/",
-      "ids": 39,
+      "ids": 41,
       "links": 36,
       "assets": 10
     },
@@ -400,7 +400,7 @@
     },
     {
       "path": "/learn/generalization/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 30,
       "assets": 10
     },
@@ -418,7 +418,7 @@
     },
     {
       "path": "/learn/generative-policy/exercise/",
-      "ids": 26,
+      "ids": 28,
       "links": 32,
       "assets": 10
     },
@@ -436,7 +436,7 @@
     },
     {
       "path": "/learn/gradient-accumulation/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 30,
       "assets": 10
     },
@@ -454,7 +454,7 @@
     },
     {
       "path": "/learn/kv-cache-inference/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 31,
       "assets": 10
     },
@@ -472,7 +472,7 @@
     },
     {
       "path": "/learn/latent-variable-models/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 29,
       "assets": 10
     },
@@ -490,7 +490,7 @@
     },
     {
       "path": "/learn/losses/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 30,
       "assets": 10
     },
@@ -508,7 +508,7 @@
     },
     {
       "path": "/learn/matrix-grad/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 28,
       "assets": 10
     },
@@ -526,7 +526,7 @@
     },
     {
       "path": "/learn/memory-checkpointing/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 29,
       "assets": 10
     },
@@ -544,7 +544,7 @@
     },
     {
       "path": "/learn/mixed-precision/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 29,
       "assets": 10
     },
@@ -562,7 +562,7 @@
     },
     {
       "path": "/learn/mlp/exercise/",
-      "ids": 30,
+      "ids": 32,
       "links": 34,
       "assets": 10
     },
@@ -580,7 +580,7 @@
     },
     {
       "path": "/learn/modules/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 29,
       "assets": 10
     },
@@ -598,7 +598,7 @@
     },
     {
       "path": "/learn/multimodal/exercise/",
-      "ids": 27,
+      "ids": 29,
       "links": 31,
       "assets": 10
     },
@@ -616,7 +616,7 @@
     },
     {
       "path": "/learn/multitask-gradients/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 31,
       "assets": 10
     },
@@ -634,7 +634,7 @@
     },
     {
       "path": "/learn/normalization/exercise/",
-      "ids": 26,
+      "ids": 28,
       "links": 30,
       "assets": 10
     },
@@ -652,7 +652,7 @@
     },
     {
       "path": "/learn/numerical/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 29,
       "assets": 10
     },
@@ -670,7 +670,7 @@
     },
     {
       "path": "/learn/optimization/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 30,
       "assets": 10
     },
@@ -688,7 +688,7 @@
     },
     {
       "path": "/learn/partial-observability/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 30,
       "assets": 10
     },
@@ -706,7 +706,7 @@
     },
     {
       "path": "/learn/policy-gradient/exercise/",
-      "ids": 26,
+      "ids": 28,
       "links": 30,
       "assets": 10
     },
@@ -724,7 +724,7 @@
     },
     {
       "path": "/learn/probability/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 29,
       "assets": 10
     },
@@ -742,7 +742,7 @@
     },
     {
       "path": "/learn/residual/exercise/",
-      "ids": 26,
+      "ids": 28,
       "links": 30,
       "assets": 10
     },
@@ -760,7 +760,7 @@
     },
     {
       "path": "/learn/returns-bellman/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 30,
       "assets": 10
     },
@@ -778,7 +778,7 @@
     },
     {
       "path": "/learn/score-sde/exercise/",
-      "ids": 25,
+      "ids": 27,
       "links": 29,
       "assets": 10
     },
@@ -796,7 +796,7 @@
     },
     {
       "path": "/learn/tensor/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 26,
       "assets": 10
     },
@@ -814,7 +814,7 @@
     },
     {
       "path": "/learn/tokenizer-autoregressive/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 30,
       "assets": 10
     },
@@ -832,7 +832,7 @@
     },
     {
       "path": "/learn/train-infer-contract/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 32,
       "assets": 10
     },
@@ -850,7 +850,7 @@
     },
     {
       "path": "/learn/training-diagnostics/exercise/",
-      "ids": 23,
+      "ids": 25,
       "links": 30,
       "assets": 10
     },
@@ -868,7 +868,7 @@
     },
     {
       "path": "/learn/training-loop/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 31,
       "assets": 10
     },
@@ -886,7 +886,7 @@
     },
     {
       "path": "/learn/transformer/exercise/",
-      "ids": 40,
+      "ids": 42,
       "links": 38,
       "assets": 10
     },
@@ -904,7 +904,7 @@
     },
     {
       "path": "/learn/vision-preprocessing/exercise/",
-      "ids": 24,
+      "ids": 26,
       "links": 29,
       "assets": 10
     },
@@ -922,7 +922,7 @@
     },
     {
       "path": "/learn/vla-architecture/exercise/",
-      "ids": 29,
+      "ids": 31,
       "links": 31,
       "assets": 10
     },

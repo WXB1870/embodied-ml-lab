@@ -170,9 +170,39 @@ function bindPracticeFilters(){
 }
 function bindEditor(){
  const editor=$('#code-editor');if(!editor||!currentLesson)return;const id=currentLesson.id,mode=$('.editor-shell').dataset.mode;
+ let tabMovesFocus=false;
+ const scratch=$('#try-code');if(scratch)scratch.addEventListener('input',()=>{state.drafts[id+':scratch']=scratch.value;save();});
  editor.addEventListener('input',()=>{state.drafts[id+':'+mode]=editor.value;save();$('.editor-lines').textContent=editor.value.split('\n').map((_,i)=>i+1).join('\n');});
  editor.addEventListener('scroll',()=>{$('.editor-lines').scrollTop=editor.scrollTop;});
- editor.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();editor.setRangeText('    ',editor.selectionStart,editor.selectionEnd,'end');editor.dispatchEvent(new Event('input'));}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();if(mode==='python')runCode(true);else downloadExercise();}});
+ editor.addEventListener('keydown',e=>{
+  if(e.isComposing)return;
+  if(e.key==='Escape'){tabMovesFocus=true;return;}
+  if(e.key==='Tab'&&tabMovesFocus){tabMovesFocus=false;return;}
+  tabMovesFocus=false;
+  const start=editor.selectionStart,end=editor.selectionEnd;
+  const replace=(text,from,to,selectionStart,selectionEnd)=>{
+   editor.setRangeText(text,from,to,'end');
+   editor.setSelectionRange(selectionStart,selectionEnd);
+   editor.dispatchEvent(new Event('input'));
+  };
+  if(e.key==='Tab'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){
+   e.preventDefault();
+   if(start===end&&!e.shiftKey){replace('    ',start,end,start+4,start+4);return;}
+   const from=editor.value.lastIndexOf('\n',start-1)+1;
+   const to=start!==end&&editor.value[end-1]==='\n'?end-1:end;
+   const lines=editor.value.slice(from,to).split('\n');
+   const shifts=lines.map(line=>e.shiftKey?-(line.match(/^( {1,4}|\t)/)?.[0].length||0):4);
+   const text=lines.map((line,i)=>e.shiftKey?line.slice(-shifts[i]):'    '+line).join('\n');
+   replace(text,from,to,Math.max(from,start+shifts[0]),end+shifts.reduce((a,b)=>a+b,0));
+  }else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){
+   e.preventDefault();if(mode==='python')runCode(!e.shiftKey);else downloadExercise();
+  }else if(e.key==='Enter'&&!e.shiftKey&&!e.altKey){
+   e.preventDefault();
+   const line=editor.value.slice(editor.value.lastIndexOf('\n',start-1)+1,start);
+   const indent=(line.match(/^[ \t]*/)?.[0]||'')+(/:\s*(?:#.*)?$/.test(line)?'    ':'');
+   const text='\n'+indent;replace(text,start,end,start+text.length,start+text.length);
+  }
+ });
 }
 
 let pythonWorker=null,activeJob=null,jobCounter=0,runTimer=null;
@@ -180,10 +210,10 @@ function setRunUI(busy){$$('[data-action="run-tests"],[data-action="run-code"]')
 function showOutput(text,cls,append=false){const out=$('#code-output');if(!out)return;if(append){out.textContent=(out.textContent==='正在准备 Python 环境…'?'':out.textContent)+text+'\n';out.scrollTop=out.scrollHeight;}else{out.textContent=text;}if(cls!==undefined)out.className='output-console '+cls;}
 function runStatus(text,cls=''){const el=$('#run-status');if(el){el.textContent=text;el.className=cls;}}
 function terminateRun(message='运行已停止。可以修改代码后重新运行。'){if(pythonWorker)pythonWorker.terminate();pythonWorker=null;activeJob=null;clearTimeout(runTimer);setRunUI(false);showOutput(message,'');runStatus('已停止');}
-function runCode(withTests){if(!currentLesson||!$('#code-editor')||$('.editor-shell').dataset.mode!=='python')return;if(activeJob){toast('代码正在运行，可先点击停止。');return;}const l=currentLesson,code=$('#code-editor').value;activeJob={id:++jobCounter,lesson:l.id,withTests};setRunUI(true);showOutput('正在准备 Python 环境…','');runStatus('加载 Python');if(!pythonWorker){pythonWorker=new Worker(new URL(sitePath('/python-worker.js'),window.location.origin));pythonWorker.onmessage=e=>{const msg=e.data;if(!activeJob||msg.id!==activeJob.id)return;const visible=currentLesson?.id===activeJob.lesson&&currentTab==='exercise'&&$('.editor-shell')?.dataset.mode==='python';if(msg.type==='loading'){if(visible)runStatus('首次加载约 14 MB');}else if(msg.type==='ready'){clearTimeout(runTimer);runTimer=setTimeout(()=>terminateRun('执行超过 8 秒，已停止。请检查循环终止条件，或下载到本地运行。'),8000);if(visible){showOutput('','');runStatus('运行中');}}else if(msg.type==='stdout'||msg.type==='stderr'){if(visible)showOutput(msg.text,undefined,true);}else if(msg.type==='done'){clearTimeout(runTimer);const finished=activeJob;if(msg.passed){state.passed[finished.lesson]=true;save();}if(visible){showOutput(msg.passed?'✓ 所有提供的断言测试通过。':'✓ 代码执行结束。此次未运行断言测试。',msg.passed?'pass':'',true);runStatus(msg.passed?'测试通过':'运行结束',msg.passed?'good':'');}activeJob=null;setRunUI(false);}else if(msg.type==='error'){clearTimeout(runTimer);if(visible){showOutput(msg.text,'error',true);runStatus('未通过 / 运行错误','bad');}activeJob=null;setRunUI(false);}};pythonWorker.onerror=e=>{showOutput('Python 环境加载或执行失败：'+e.message+'\n请重新运行，或下载练习到本地 Python 环境执行。','error');runStatus('运行环境错误','bad');if(pythonWorker)pythonWorker.terminate();pythonWorker=null;activeJob=null;clearTimeout(runTimer);setRunUI(false);};}runTimer=setTimeout(()=>terminateRun('Python 环境加载超过 60 秒。请检查网络后再试，或下载练习在本地运行。'),60000);pythonWorker.postMessage({id:activeJob.id,code,tests:withTests?l.exercise.tests:''});}
+function runCode(withTests){if(!currentLesson||!$('#code-editor')||$('.editor-shell').dataset.mode!=='python')return;if(activeJob){toast('代码正在运行，可先点击停止。');return;}const l=currentLesson,code=$('#code-editor').value;activeJob={id:++jobCounter,lesson:l.id,withTests};setRunUI(true);showOutput('正在准备 Python 环境…','');runStatus('加载 Python');if(!pythonWorker){pythonWorker=new Worker(new URL(sitePath('/python-worker.js'),window.location.origin));pythonWorker.onmessage=e=>{const msg=e.data;if(!activeJob||msg.id!==activeJob.id)return;const visible=currentLesson?.id===activeJob.lesson&&currentTab==='exercise'&&$('.editor-shell')?.dataset.mode==='python';if(msg.type==='loading'){if(visible)runStatus('首次加载约 14 MB');}else if(msg.type==='ready'){clearTimeout(runTimer);runTimer=setTimeout(()=>terminateRun('执行超过 8 秒，已停止。请检查循环终止条件，或下载到本地运行。'),8000);if(visible){showOutput('','');runStatus('运行中');}}else if(msg.type==='stdout'||msg.type==='stderr'){if(visible)showOutput(msg.text,undefined,true);}else if(msg.type==='done'){clearTimeout(runTimer);const finished=activeJob;if(msg.passed){state.passed[finished.lesson]=true;save();}if(visible){showOutput(msg.passed?'✓ 所有提供的断言测试通过。':'✓ 代码与自定义试运行执行结束。此次未运行题目测试。',msg.passed?'pass':'',true);runStatus(msg.passed?'测试通过':'运行结束',msg.passed?'good':'');}activeJob=null;setRunUI(false);}else if(msg.type==='error'){clearTimeout(runTimer);if(visible){showOutput(msg.text,'error',true);runStatus('未通过 / 运行错误','bad');}activeJob=null;setRunUI(false);}};pythonWorker.onerror=e=>{showOutput('Python 环境加载或执行失败：'+e.message+'\n请重新运行，或下载练习到本地 Python 环境执行。','error');runStatus('运行环境错误','bad');if(pythonWorker)pythonWorker.terminate();pythonWorker=null;activeJob=null;clearTimeout(runTimer);setRunUI(false);};}runTimer=setTimeout(()=>terminateRun('Python 环境加载超过 60 秒。请检查网络后再试，或下载练习在本地运行。'),60000);pythonWorker.postMessage({id:activeJob.id,code,tests:withTests?l.exercise.tests:'',scratch:withTests?'':($('#try-code')?.value||'')});}
 function download(content,name,type='text/plain;charset=utf-8'){const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);}
 async function copy(text){try{await navigator.clipboard.writeText(text);toast('代码已复制');}catch{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();toast('代码已复制');}}
-function downloadExercise(){if(!currentLesson)return;const l=currentLesson,mode=$('.editor-shell')?.dataset.mode||'python',task=mode==='torch'?l.pytorchTask:l.exercise;const code=$('#code-editor')?.value??task.starter;download('# '+l.title+'\n# '+(mode==='torch'?'运行环境：Python + PyTorch（CPU 即可）':'运行环境：Python 3 标准库')+'\n# 完成 TODO，然后运行此文件。\n\n'+code+'\n\n# ===== 断言测试 =====\n'+task.tests+'\nprint("所有提供的测试通过。")\n',`${pad(l.number)}_${l.id}_${mode==='torch'?'torch':'practice'}.py`);}
+function downloadExercise(){if(!currentLesson)return;const l=currentLesson,mode=$('.editor-shell')?.dataset.mode||'python',task=mode==='torch'?l.pytorchTask:l.exercise;const code=$('#code-editor')?.value??task.starter;download('# '+l.title+'\n# '+(mode==='torch'?'运行环境：Python + PyTorch（CPU 即可）':'运行环境：Python 3 标准库')+'\n# '+task.prompt.replace(/\n/g,'\n# ')+'\n# 完成 TODO，然后运行此文件。\n\n'+code+'\n\n# ===== 断言测试 =====\n'+task.tests+'\nprint("所有提供的测试通过。")\n',`${pad(l.number)}_${l.id}_${mode==='torch'?'torch':'practice'}.py`);}
 
 
 function openSearch(query=''){const dialog=$('#search-dialog');$('#search-input').value=query;renderSearch(query);if(!dialog.open)dialog.showModal();$('#search-input').focus();}
@@ -218,9 +248,11 @@ document.addEventListener('click',async event=>{
   const pre=frame.querySelector('pre'),line=frame.querySelector('[data-n="'+from+'"]');if(line)pre.scrollTop=line.offsetTop-pre.clientHeight/4;frame.scrollIntoView({block:'start',behavior:'smooth'});
  }
  else if(action==='download-exercise')downloadExercise();
+ else if(action==='copy-exercise')await copy($('#code-editor').value);
  else if(action==='reset-code'&&l){const mode=$('.editor-shell').dataset.mode,task=mode==='torch'?l.pytorchTask:l.exercise;const editor=$('#code-editor');editor.value=task.starter;editor.dispatchEvent(new Event('input'));toast('已恢复题目代码');}
  else if(action==='fill-solution'&&l){const mode=$('.editor-shell').dataset.mode,task=mode==='torch'?l.pytorchTask:l.exercise;const editor=$('#code-editor');editor.value=task.solution;editor.dispatchEvent(new Event('input'));editor.scrollIntoView({behavior:'smooth',block:'center'});toast('已填入参考实现');}
  else if(action==='run-tests')runCode(true);
+ else if(action==='run-code')runCode(false);
  else if(action==='stop-code')terminateRun();
  else if(action==='export-drafts')download(JSON.stringify({app:'embodied-ml-lab',exportedAt:new Date().toISOString(),state},null,2),'embodied-ml-drafts.json','application/json');
  else if(action==='import-drafts')$('#import-drafts').click();
