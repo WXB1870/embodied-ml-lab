@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-11-06T19:38:30Z",
+  "checked_at": "2026-11-07T07:04:17Z",
   "python": "3.14.7 | packaged by Anaconda, Inc. | (main, Aug 14 2026, 10:13:42) [Clang 20.1.8 ]",
   "environment": "CPU; isolated process and temporary directory per executed example; unchanged previously executed sources reuse recorded results",
   "total": 152,
@@ -22,12 +22,12 @@
       "lesson": "tensor",
       "case": "python",
       "passed": true,
+      "status": "passed",
+      "source_sha256": "b785fe9048342a57f1172c2a715370c0833294d580cbf5ce059f37e223daf5fb",
       "seconds": 0.011,
       "output": "通过：有效时刻平均、Padding 排除、空有效集处理。\n",
-      "source_sha256": "8cb7e9da055258beb9d2e5b8b954944e7a6e8b1049fe47145609f0f4a1db0f6e",
-      "status": "passed",
       "reused_unchanged_result": true,
-      "original_checked_at": "2026-11-06T08:38:29Z"
+      "original_checked_at": "2026-11-07T07:02:12Z"
     },
     {
       "lesson": "tensor",
@@ -88,12 +88,12 @@
       "lesson": "probability",
       "case": "python",
       "passed": true,
-      "seconds": 0.012,
-      "output": "通过：稳定性、归一化与平移不变性。\n",
-      "source_sha256": "49a2419310fba0fb485516fe11b7dbad79b1da2c539d2bbefc61a902a96e7680",
       "status": "passed",
+      "source_sha256": "103536dd4635dac3b13a73c16a52c2b5b879a2fd134e3c491a795fb5a0ed4ef6",
+      "seconds": 0.01,
+      "output": "通过：稳定性、归一化与平移不变性。\n",
       "reused_unchanged_result": true,
-      "original_checked_at": "2026-11-06T08:38:29Z"
+      "original_checked_at": "2026-11-07T07:02:12Z"
     },
     {
       "lesson": "probability",
@@ -187,12 +187,12 @@
       "lesson": "optimization",
       "case": "python",
       "passed": true,
-      "seconds": 0.012,
-      "output": "通过：矩估计、偏差修正及解耦衰减。\n",
-      "source_sha256": "fb0368fe84e99f78aea8c51c68f95b79420dd5db56c7913a2a7b1934cb0026bc",
       "status": "passed",
+      "source_sha256": "73dbf7e9e1e13bde42dce6ee7e328d5212877fabde1b36c3a630d82c0db1033f",
+      "seconds": 0.01,
+      "output": "通过：矩估计、偏差修正及解耦衰减。\n",
       "reused_unchanged_result": true,
-      "original_checked_at": "2026-11-06T08:38:29Z"
+      "original_checked_at": "2026-11-07T07:02:12Z"
     },
     {
       "lesson": "optimization",
@@ -1050,7 +1050,9 @@
       "status": "passed",
       "source_sha256": "89ff4cfa9017fab36163d0653dff0abca314be77e287741ad4bd606eaf115391",
       "seconds": 1.436,
-      "output": "{\n  \"seed\": 20261106,\n  \"torch\": \"2.15.0\",\n  \"dtype\": \"float64\",\n  \"shapes\": {\n    \"images\": [\n      4,\n      2,\n      3,\n      8,\n      8\n    ],\n    \"prefix\": [\n      4,\n      11,\n      16\n    ],\n    \"suffix\": [\n      4,\n      4,\n      12\n    ],\n    \"velocity\": [\n      4,\n      3,\n      3\n    ]\n  },\n  \"loss_before\": 2.3771188980402953,\n  \"loss_after_40_updates\": 0.14263712399147743,\n  \"first_step_gradient_norms\": {\n    \"vision\": 0.2022121367548402,\n    \"language\": 0.08521978855570553,\n    \"prefix\": 1.2444440465855955,\n    \"expert\": 4.067802428801788\n  },\n  \"cache_velocity_max_error\": 7.771561172376096e-16,\n  \"cache_sample_max_error\": 2.636779683484747e-16,\n  \"stale_cache_max_error\": 0.2560311459972162,\n  \"task\": \"planar named-colour approach; dx, dy, gripper in grid units\",\n  \"target_xy\": [\n    [\n      -0.5714285714285714,\n      -0.5714285714285714\n    ],\n    [\n      -0.5714285714285714,\n      0.5714285714285714\n    ],\n    [\n      0.5714285714285714,\n      -0.5714285714285714\n    ],\n    [\n      0.5714285714285714,\n      0.5714285714285714\n    ]\n  ],\n  \"checks\": [\n    \"label displacements reach the named colour\",\n    \"switching colour changes the target label\",\n    \"finite valid-mask FM loss\",\n    \"two parameter groups receive gradients\",\n    \"full/cache velocity and Euler equality\",\n    \"changed-image cache invalidation\",\n    \"missing-view isolation\",\n    \"graph-preserving cache gradient equality\",\n    \"frozen parameter versus input gradient\",\n    \"no_grad cuts input route\",\n    \"empty supervision rejected\"\n  ]\n}\n/Users/xavier/Documents/Codex/2026-11-07/new-chat/work/venv/lib/python3.14/site-packages/torch/_subclasses/functional_tensor.py:377: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:82.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n"
+      "output": "{\n  \"seed\": 20261106,\n  \"torch\": \"2.15.0\",\n  \"dtype\": \"float64\",\n  \"shapes\": {\n    \"images\": [\n      4,\n      2,\n      3,\n      8,\n      8\n    ],\n    \"prefix\": [\n      4,\n      11,\n      16\n    ],\n    \"suffix\": [\n      4,\n      4,\n      12\n    ],\n    \"velocity\": [\n      4,\n      3,\n      3\n    ]\n  },\n  \"loss_before\": 2.3771188980402953,\n  \"loss_after_40_updates\": 0.14263712399147743,\n  \"first_step_gradient_norms\": {\n    \"vision\": 0.2022121367548402,\n    \"language\": 0.08521978855570553,\n    \"prefix\": 1.2444440465855955,\n    \"expert\": 4.067802428801788\n  },\n  \"cache_velocity_max_error\": 7.771561172376096e-16,\n  \"cache_sample_max_error\": 2.636779683484747e-16,\n  \"stale_cache_max_error\": 0.2560311459972162,\n  \"task\": \"planar named-colour approach; dx, dy, gripper in grid units\",\n  \"target_xy\": [\n    [\n      -0.5714285714285714,\n      -0.5714285714285714\n    ],\n    [\n      -0.5714285714285714,\n      0.5714285714285714\n    ],\n    [\n      0.5714285714285714,\n      -0.5714285714285714\n    ],\n    [\n      0.5714285714285714,\n      0.5714285714285714\n    ]\n  ],\n  \"checks\": [\n    \"label displacements reach the named colour\",\n    \"switching colour changes the target label\",\n    \"finite valid-mask FM loss\",\n    \"two parameter groups receive gradients\",\n    \"full/cache velocity and Euler equality\",\n    \"changed-image cache invalidation\",\n    \"missing-view isolation\",\n    \"graph-preserving cache gradient equality\",\n    \"frozen parameter versus input gradient\",\n    \"no_grad cuts input route\",\n    \"empty supervision rejected\"\n  ]\n}\n/Users/xavier/Documents/Codex/2026-11-07/new-chat/work/venv/lib/python3.14/site-packages/torch/_subclasses/functional_tensor.py:377: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:82.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n",
+      "reused_unchanged_result": true,
+      "original_checked_at": "2026-11-06T19:38:30Z"
     },
     {
       "lesson": "vla-architecture",
@@ -1331,12 +1333,10 @@
       "lesson": "data-quality",
       "case": "python",
       "passed": true,
-      "seconds": 0.015,
-      "output": "逐样本权重与任务总概率检查通过。\n",
-      "source_sha256": "e7cddd79ab0a3f2467bc09bdb6cdb428878d307356c00fa3bab4c3243b38774e",
       "status": "passed",
-      "reused_unchanged_result": true,
-      "original_checked_at": "2026-11-06T08:38:29Z"
+      "source_sha256": "346f858c751965aaef11ee7d9f99263ab76c049a7d899889166a741a8efa9414",
+      "seconds": 0.012,
+      "output": "逐样本权重与任务总概率检查通过。\n"
     },
     {
       "lesson": "data-quality",
@@ -1594,11 +1594,9 @@
       "case": "python",
       "passed": true,
       "status": "passed",
-      "source_sha256": "fc0e26f79a62ffd21f5f0d6014078150541da5946b22481579501e0664abec96",
-      "seconds": 0.01,
-      "output": "准备状态、过期、指令版本和动作槽位检查通过。\n",
-      "reused_unchanged_result": true,
-      "original_checked_at": "2026-11-06T09:23:15Z"
+      "source_sha256": "9f1c6a5291b3aa327399e938043ddba4c45f47a8addcb1ac4169d1f6e571b8db",
+      "seconds": 0.009,
+      "output": "准备状态、过期、指令版本和动作槽位检查通过。\n"
     },
     {
       "lesson": "execution-latency",
@@ -1660,11 +1658,9 @@
       "case": "python",
       "passed": true,
       "status": "passed",
-      "source_sha256": "84a86b60f9e22f8e049eec39d15cc62191981237427f1517b2ab668b03a44c81",
-      "seconds": 0.012,
-      "output": "单位、参数化、缺失配置、因果声明与组泄漏检查通过。\n",
-      "reused_unchanged_result": true,
-      "original_checked_at": "2026-11-06T09:23:15Z"
+      "source_sha256": "2e8e118fb03a9f5e0a5b1638708b364a67366fdcfedf5772ea0ff6d4bc9b9580",
+      "seconds": 0.009,
+      "output": "单位、参数化、缺失配置、因果声明与组泄漏检查通过。\n"
     },
     {
       "lesson": "train-infer-contract",
