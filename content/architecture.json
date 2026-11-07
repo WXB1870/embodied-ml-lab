@@ -124,7 +124,17 @@
         ],
         "formula": "J_{\\mathrm{RMS}}=\\frac Ir-\\frac{xx^T}{D r^3},\\qquad r=\\sqrt{\\frac{x^Tx}{D}+\\epsilon}",
         "id": "3",
-        "lead": "RMSNorm 是使用一组特征的均方根调整其尺度、通常再施加逐通道缩放的归一化层。它与 LayerNorm 的核心区别是没有去均值。先明确这一步保留与消去什么方向，再比较两者的 Jacobian。"
+        "lead": "RMSNorm 是使用一组特征的均方根调整其尺度、通常再施加逐通道缩放的归一化层。它与 LayerNorm 的核心区别是没有去均值。先明确这一步保留与消去什么方向，再比较两者的 Jacobian。",
+        "example": {
+          "title": "同一行 [1,3]，LN 与 RMSNorm 分别留下什么",
+          "afterParagraph": 1,
+          "steps": [
+            "取逐通道缩放为 1、偏移为 0，并暂忽略 \\(\\epsilon\\)。LayerNorm 先减均值 2，再除标准差 1，输出为 [−1,1]。",
+            "RMSNorm 不减均值，均方根为 \\(\\sqrt{(1^2+3^2)/2}=\\sqrt5\\)，输出约为 [0.4472,1.3416]，均值并不为零。",
+            "把输入整体加 2 变成 [3,5]，LayerNorm 仍为 [−1,1]，RMSNorm 却变成 \\([3/\\sqrt{17},5/\\sqrt{17}]\\)。这直接展示共同平移对两种层的影响不同。"
+          ],
+          "conclusion": "RMSNorm 去掉的是均方根尺度，而不是共同偏移；下面的 Jacobian 将把这个前向差别写成方向性质。"
+        }
       },
       {
         "title": "训练模式、冻结参数与小 Batch",
@@ -418,7 +428,8 @@
             "若误写 y=F(x)，相同上游梯度只得到 0.2。",
             "若改 \\(F(x)=-x\\)，正确残差输出与输入梯度都为零，说明恒等项仍可能被抵消。"
           ],
-          "conclusion": "残差提供额外路径，但不承诺所有方向的梯度下界。"
+          "conclusion": "残差提供额外路径，但不承诺所有方向的梯度下界。",
+          "afterParagraph": 2
         },
         "id": "1",
         "lead": "输入梯度是损失对残差块输入的变化率，参数梯度是损失对变换分支参数的变化率。输入同时沿直接路径和分支到达输出，因此前者需要合并两条路径；后者则沿参数所在的分支求导。下面将这个区分写成微分。"
@@ -472,7 +483,8 @@
             "\\(\\frac{\\partial L}{\\partial w}=\\alpha x=0\\)；\\(\\frac{\\partial L}{\\partial\\alpha}=wx=6\\)；\\(\\frac{\\partial L}{\\partial x}=1\\)。",
             "更新 \\(\\alpha\\) 后，下一步 w 就可能获得梯度。"
           ],
-          "conclusion": "查看不同参数的梯度路径比笼统地说“梯度为零”更有意义。"
+          "conclusion": "查看不同参数的梯度路径比笼统地说“梯度为零”更有意义。",
+          "afterParagraph": 2
         },
         "id": "3",
         "formula": "\\begin{aligned}\\operatorname{Var}(x+\\alpha F)&=\\operatorname{Var}(x)+2\\alpha\\operatorname{Cov}(x,F)+\\alpha^2\\operatorname{Var}(F),\\\\ \\nabla_\\theta\\mathcal L&=\\alpha J_{F,\\theta}^\\top g,\\qquad \\partial_\\alpha\\mathcal L=F(x)^\\top g.\\end{aligned}",
@@ -741,7 +753,17 @@
             "caption": "先自下而上读左图：Q 与 K 先打分，Scale 对应除以匹配维度的平方根，SoftMax 将分数变成权重，最后用权重汇总 V。Mask 是可选步骤。右图把这一过程并行执行多次，再合并各头。原图：[Vaswani et al., 2017, Figure 2](https://arxiv.org/abs/1706.03762)；依论文首页的学术图表复用许可使用，[出处与许可说明](/assets/figures/attention-figure2-LICENSE.txt)。",
             "afterParagraph": 1
           }
-        ]
+        ],
+        "example": {
+          "title": "从两项 logits 算出输出",
+          "steps": [
+            "设一行 logits 为 [0, ln 3]，Softmax 权重就是 [1/4,3/4]。",
+            "Value 分别为 [2,0] 与 [0,4]，输出为 [0.5,3]。",
+            "只交换 Value 而不交换 Key，权重不变但输出改变；若 Key 与 Value 一起交换，最终输出保持不变。"
+          ],
+          "conclusion": "Q/K 决定权重，V 决定被组合的内容，二者职责可以用干预分开验证。",
+          "afterParagraph": 1
+        }
       },
       {
         "title": "点积方差与缩放因子",
@@ -770,15 +792,6 @@
           "权重大不等于影响大。所有 Value 相同时，任意 logits 都读出同一个向量，Q/K 路径的梯度为零；V 路径仍能得到梯度。分布接近单点时，未选位置的 \\(a_j\\)很小，选中位置的 \\(v_j-o\\) 也很小，分数梯度因而容易变小。若直接把注意力热图当作解释，这两种反例都会被漏掉。",
           "代码使用 \\(\\mathrm{logits}=[0,\\ln3]\\)、\\(V=[0,2]\\)，得到权重 [1/4,3/4]、输出 1.5，以及对两个 logits 的梯度 [−0.375,0.375]。梯度和为零对应共同平移不变性。然后把 Value 改成相同数，观察权重仍不均匀，但分数梯度消失。"
         ],
-        "example": {
-          "title": "从两项 logits 算出输出",
-          "steps": [
-            "设一行 logits 为 [0, ln 3]，Softmax 权重就是 [1/4,3/4]。",
-            "Value 分别为 [2,0] 与 [0,4]，输出为 [0.5,3]。",
-            "只交换 Value 而不交换 Key，权重不变但输出改变；若 Key 与 Value 一起交换，最终输出保持不变。"
-          ],
-          "conclusion": "Q/K 决定权重，V 决定被组合的内容，二者职责可以用干预分开验证。"
-        },
         "formula": "\\frac{\\partial a_i}{\\partial s_j}=a_i(\\delta_{ij}-a_j),\\qquad \\frac{\\partial o}{\\partial s_j}=a_j(v_j-o)",
         "code": "import math\nimport torch\n\ns = torch.tensor([0., math.log(3.)], dtype=torch.float64, requires_grad=True)\nv = torch.tensor([0., 2.], dtype=torch.float64)\na = s.softmax(-1)\nout = a @ v\ngrad, = torch.autograd.grad(out, s, retain_graph=True)\nmanual = a * (v - out)\ntorch.testing.assert_close(grad, manual)\ntorch.testing.assert_close(grad, torch.tensor([-.375, .375], dtype=s.dtype))\nsame_values = torch.full_like(v, 2.)\nzero_grad, = torch.autograd.grad(a @ same_values, s)\ntorch.testing.assert_close(zero_grad, torch.zeros_like(s))\nprint(\"读出 / 分数梯度:\", out.item(), grad.tolist())\nprint(\"相同 Value 的分数梯度:\", zero_grad.tolist())\n",
         "codeExplanation": "autograd 求的是输出对 logits 的导数，manual 按 \\(a_j(v_j-o)\\) 独立计算。保留第一次图只是为了在同一 Softmax 上更换 Value；实际训练不会为了这个实验而反复 retain_graph。",
@@ -1210,11 +1223,12 @@
         "example": {
           "title": "用一个二维通道对理解相对位置",
           "steps": [
-            "设 q=k=[1,0]，两个位置的旋转角分别为 α 和 β。",
-            "旋转后点积为 cos α cos β+sin α sin β=cos(β−α)。",
-            "同时把两个角加 δ，点积不变；只改变一个角，点积随相对差变化。"
+            "设 q=k=[1,0]。先取旋转角 α=0、β=π/2，旋转后的向量为 [1,0] 与 [0,1]，点积为 0。",
+            "同时将两角加 π/4，两个向量成为 \\([\\sqrt2/2,\\sqrt2/2]\\) 与 \\([-\\sqrt2/2,\\sqrt2/2]\\)，点积仍为 0。两者的绝对角度变了，相对角差没有变。",
+            "一般地，点积为 \\(\\cos\\alpha\\cos\\beta+\\sin\\alpha\\sin\\beta=\\cos(\\beta-\\alpha)\\)。同时加任意 δ 不改变它；只移动一个位置则会改变相对角差。"
           ],
-          "conclusion": "相对位置关系来自 Q 与 K 旋转的配合，而非某个向量单独存有绝对坐标。"
+          "conclusion": "相对位置关系来自 Q 与 K 旋转的配合，而非某个向量单独存有绝对坐标。",
+          "afterParagraph": 1
         },
         "id": "4",
         "lead": "旋转位置编码（RoPE）按位置旋转 Query 和 Key 的成对通道，使点积中包含相对位置差。它改变匹配时使用的表示，不是在输入上简单加一个位置向量。下面先看二维旋转，再推广到完整头宽。"
@@ -1507,7 +1521,8 @@
             "文本汇聚成一个 Query [B,1,24]，Cross-Attention 读取视觉后仍为 [B,1,24]。",
             "二类分类层输出 [B,2] logits，交叉熵标签为 [B] 的整数类别；输出不是空间坐标。"
           ],
-          "conclusion": "形状与目标明确后，才能逐段检查视觉、文本和分类损失之间的依赖。"
+          "conclusion": "形状与目标明确后，才能逐段检查视觉、文本和分类损失之间的依赖。",
+          "afterParagraph": 1
         },
         "id": "3",
         "lead": "Projector 是把一类特征映射到另一接口宽度的模块，跨模态融合则进一步建立不同模态之间的计算依赖。宽度对齐只使连接可计算，不会自动让视觉特征受语言影响。下面区分映射与交互这两项工作。"
@@ -2470,6 +2485,7 @@
       {
         "title": "参数、梯度与优化器状态",
         "body": [
+          "先走通每个 Batch 更新一次的最小链路：读入一批输入与目标，设置训练模式并清零旧梯度；前向得到预测，按声明的分母计算标量损失；backward 计算梯度，step 使用这些梯度更新同一组参数。本章项目的输入为 [B,4]、目标为 [B,2]。日志记录的是这次更新前计算的损失，下一次前向才反映更新后的模型。",
           "训练模式是另一类状态：model.train() 影响 Dropout、BN 等模块，不等于开启梯度开关；eval 下也可以构建图。普通每 Batch 更新一次时，应在该更新的梯度累积开始前 zero_grad。清零可以放在上一轮更新后或当前轮反向前，只要边界一致；但把 zero_grad 放在 backward 与 step 之间会直接擦掉这次更新所需的梯度。",
           "后面保留原有短训练循环，并在代码页提供一个贯穿多课的[共同训练项目](#/learn/training-loop?tab=code&anchor=demo-shared-training-project)。模型仍是 Linear(4,2)，任务仍是双输出合成回归；新增的只是变长记录、有效位与状态管理。只在训练集拟合输入和目标统计，参数与统计共同定义模型函数。数据集有 44 条独立生成的序列，前 32 条训练、后 12 条验证，每条长度为 1…5；它用于排除工程错误，不代表机器人数据的时间相关性或闭环难度。"
         ],

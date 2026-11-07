@@ -41,7 +41,7 @@
           "steps": [
             "令一个 token 为 [1,2]，weight 两行为 [3,4]、[-1,2]，bias 为 [1,0]。",
             "第一个输出为 \\(1\\times3+2\\times4+1=12\\)，第二个为 \\(1\\times(-1)+2\\times2=3\\)。",
-            "另一个 token 使用完全相同的 weight 和 bias；若输入 [2,3,2]，输出为 [2,3,2]，参数共 6 个。"
+            "另一个 token 使用完全相同的 weight 和 bias；若输入形状为 [2,3,2]，输出为 [2,3,2]，参数共 6 个。"
           ],
           "conclusion": "Linear 改变特征轴，不会自动混合时间或 Batch。"
         },
@@ -319,7 +319,8 @@
             "\\(\\operatorname{MSE}=\\frac{(-1)^2+1^2}{2}=1\\)；\\(\\frac{\\partial L}{\\partial w}=\\frac{2((-1)\\times1+1\\times2)}2=1\\)。",
             "\\(\\frac{\\partial L}{\\partial b}=\\frac{2(-1+1)}2=0\\)；学习率 0.1 的普通 SGD 将 w 更新为 0.9。"
           ],
-          "conclusion": "梯度的符号、求和和平均因子都可用两个样本手算。"
+          "conclusion": "梯度的符号、求和和平均因子都可用两个样本手算。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -410,7 +411,7 @@
         "title": "奇异值、低秩近似与优化条件数",
         "body": [
           "对秩为 r 的实矩阵，紧致奇异值分解为 \\(A=U_r\\Sigma_r V_r^\\top\\)，其中 \\(U_r\\)、\\(V_r\\) 的列分别是正交单位向量，\\(\\Sigma_r\\) 的对角线是按降序排列的正奇异值。等式 \\(Av_i=\\sigma_i u_i\\) 给出几何解释：输入沿 \\(v_i\\) 的单位变化，在输出中变成沿 \\(u_i\\)、长度为 \\(\\sigma_i\\) 的变化；零空间方向则完全消失。最大奇异值是欧氏范数下的最大放大倍数。特征值只对方阵定义，也不能普遍替代奇异值：剪切矩阵 \\(\\begin{bmatrix}1&10\\\\0&1\\end{bmatrix}\\) 的两个特征值都是 1，却能把 [0,1] 放大到长度 \\(\\sqrt{101}\\)。",
-          "保留最大的 k 个奇异值得到 \\(A_k=\\sum_{i=1}^k\\sigma_i u_i v_i^\\top\\)。它在所有秩不超过 k 的矩阵中最小化 Frobenius 范数误差，误差平方等于被舍弃奇异值的平方和。这解释了低秩近似保留主要变化方向的含义，但最优性只针对当前矩阵的未加权重建误差；训练数据、下游目标或输入协方差改变后，并不能直接推出任务损失也最优。LoRA 的低秩参数化限制的是可学习更新的秩，不等同于先对某个已知最优更新做截断 SVD。",
+          "保留最大的 k 个奇异值得到 \\(A_k=\\sum_{i=1}^k\\sigma_i u_i v_i^\\top\\)。Frobenius 范数是矩阵各元素平方和的平方根。这个截断矩阵在所有秩不超过 k 的矩阵中最小化该范数下的误差，误差平方等于被舍弃奇异值的平方和。这解释了低秩近似保留主要变化方向的含义，但最优性只针对当前矩阵的未加权重建误差；训练数据、下游目标或输入协方差改变后，并不能直接推出任务损失也最优。LoRA 的低秩参数化限制的是可学习更新的秩，不等同于先对某个已知最优更新做截断 SVD。",
           "当 A 满列秩时，\\(\\kappa_2(A)=\\frac{\\sigma_{\\max}}{\\sigma_{\\min}}\\) 描述不同输入方向的缩放差异；最小奇异值很小时，反推输入会放大某些输出扰动。若不能满列秩，恢复整个输入空间的条件数视为无穷大，不能只丢掉零奇异值再宣称可逆。对 \\(L(\\theta)=\\frac12\\lVert A\\theta-y\\rVert_2^2\\)，梯度为 \\(A^\\top(A\\theta-y)\\)，Hessian 为 \\(A^\\top A\\)，其特征值是 \\(\\sigma_i^2\\)，因此条件数为 \\(\\kappa_2(A)^2\\)。固定步长梯度下降中，各特征方向的误差每步乘以 \\(1-\\eta\\sigma_i^2\\)；\\(0<\\eta<\\frac{2}{\\sigma_{\\max}^2}\\) 保证这个满列秩二次问题收敛，但较小奇异值对应的方向可能收敛很慢。",
           "条件数因此连接了数据尺度、数值敏感性与优化速度，而不仅是矩阵能否求逆。标准化或预条件可以改善方向间的尺度差异，但不保证消除特征相关性；正则化也会改变曲率和最优解。上述精确关系针对固定矩阵的二次目标，不能直接当成深层网络全局训练速度的公式。实际训练中通常不必反复对大矩阵做完整 SVD；这里用小矩阵建立判断依据，并区分“某方向接近零”与“所有方向都被稳定保留”。"
         ],
@@ -639,14 +640,23 @@
         "body": [
           "条件分布来自同一个联合分布的不同分解。对离散变量 X、Y，有 \\(p(x,y)=p(y\\mid x)p(x)=p(x\\mid y)p(y)\\)。在 \\(p(x)>0\\) 的位置，把两种分解相等并除以 \\(p(x)\\)，得到贝叶斯公式；其中分母由对所有可能的 y 求和得到。连续变量将求和换为积分，公式中的 p 是相对于相应坐标测度的密度。概率为零的条件事件需要更谨慎的条件分布定义，不能直接进行 0/0 运算。",
           "先验 \\(p(y)\\) 表示观察当前 x 以前对 Y 的分布；似然 \\(p(x\\mid y)\\) 衡量不同 y 对当前观测的解释；后验 \\(p(y\\mid x)\\) 是更新后的分布。把似然看成 y 的函数时，它通常没有在 y 上归一化，所以不能把似然曲线直接称为后验。监督分类器可以直接参数化 \\(p_\\theta(y\\mid x)\\)，无需显式训练 \\(p(x\\mid y)\\)，但其预测仍取决于训练样本隐含的类别比例。",
-          "例如接触事件 \\(Y=1\\) 的先验概率为 0.1，某传感器报警在有接触时的概率为 0.9、无接触时为 0.2。报警后的接触概率是 \\(\\frac{0.09}{0.09+0.18}=\\frac13\\)，而不是 0.9。若部署时接触先验变为 0.5，且两类的报警条件分布确实保持不变，后验变为 \\(\\frac{0.45}{0.45+0.10}=\\frac9{11}\\)。这个算例说明先验改变会改变后验；它不证明真实场景一定满足类别条件分布不变。",
           "条件变量还可以是历史 h、任务 c 或潜变量 z。边缘化 \\(p(a\\mid c)=\\int p(a\\mid z,c)p(z\\mid c)\\,dz\\) 保留潜变量的不确定性；将 z 直接替换为其均值通常得到另一个模型，因为非线性函数的期望不等于均值处的函数值。这一差别将在 [潜变量与变分推断](#/learn/latent-variable-models) 和 [部分观测](#/learn/partial-observability) 中再次出现。"
         ],
         "formula": "p(y\\mid x)=\\frac{p(x\\mid y)p(y)}{\\sum_{y^\\prime}p(x\\mid y^\\prime)p(y^\\prime)},\\qquad p(x)=\\sum_y p(x,y)",
         "code": "import math\n\ndef posterior(prior, positive_if_contact=0.9, positive_if_no_contact=0.2):\n    evidence = prior * positive_if_contact + (1-prior) * positive_if_no_contact\n    if evidence <= 0:\n        raise ValueError(\"conditioning event must have positive probability\")\n    return prior * positive_if_contact / evidence\n\nassert math.isclose(posterior(0.1), 1/3)\nassert math.isclose(posterior(0.5), 9/11)\nprint(\"posterior under two priors:\", posterior(0.1), posterior(0.5))",
         "codeExplanation": "保持两种报警条件概率不变，只改变类别先验，检查贝叶斯分母如何改变后验。这里的数字是构造算例，不是传感器性能数据。",
         "lead": "联合分布描述多个变量同时取值的规律，边缘化是将暂不关心的变量求和或积分，条件化是使用已知信息缩小所讨论的分布。贝叶斯公式连接这些操作：用观测对原有分布重新加权，得到观测后的分布。",
-        "codeKind": "runnable"
+        "codeKind": "runnable",
+        "example": {
+          "title": "传感器报警，为什么接触概率不是 0.9",
+          "afterParagraph": 2,
+          "steps": [
+            "设接触事件 Y=1 的先验概率为 0.1，传感器在有接触时报警的概率为 0.9，在无接触时报警的概率为 0.2。先求两种产生报警的联合概率：\\(0.1\\times0.9=0.09\\) 与 \\(0.9\\times0.2=0.18\\)。",
+            "报警总概率为 \\(0.09+0.18=0.27\\)。已经知道发生报警后，接触的后验概率为 \\(0.09/0.27=1/3\\)，而不是传感器的条件报警概率 0.9。",
+            "若接触先验变成 0.5，且两类条件报警概率确实保持不变，同样计算得到 \\(0.45/(0.45+0.10)=9/11\\)。先验、似然和后验分别处在计算的不同位置。"
+          ],
+          "conclusion": "条件概率的方向不能倒读，后验还取决于事件的先验比例。这里是假设分布的手算，不证明真实传感器在不同部署条件下仍满足相同的条件分布。"
+        }
       },
       {
         "id": "moments-total-variance",
@@ -1005,7 +1015,8 @@
             "残差 \\(e=2\\) 位于线性区，损失为 \\(2-0.5=1.5\\)，导数为 1。",
             "若使用 \\(e^2\\)，这两个位置的导数分别为 1 和 4；改变的是相对影响与整体尺度，不只是损失名称。"
           ],
-          "conclusion": "损失的形状必须通过导数与训练作用连接起来，阈值还要与残差单位一致。"
+          "conclusion": "损失的形状必须通过导数与训练作用连接起来，阈值还要与残差单位一致。",
+          "afterParagraph": 2
         },
         "codeKind": "runnable"
       },
@@ -1607,7 +1618,8 @@
             "得到 \\(m_1=0.2\\)、\\(v_1=0.004\\)；偏置修正后 \\(\\hat m_1=2\\)、\\(\\hat v_1=4\\)。",
             "忽略很小的 \\(\\varepsilon\\)，更新为 \\(-\\eta\\frac22=-\\eta\\)，而不是普通 SGD 的 \\(-2\\eta\\)。"
           ],
-          "conclusion": "自适应尺度使“梯度翻倍，第一步也翻倍”的 SGD 直觉不再成立。"
+          "conclusion": "自适应尺度使“梯度翻倍，第一步也翻倍”的 SGD 直觉不再成立。",
+          "afterParagraph": 1
         },
         "id": "2",
         "lead": "Adam 是同时维护梯度一阶矩与平方梯度二阶矩的自适应优化算法。前者汇总方向，后者估计逐坐标尺度，偏置修正补偿零初始状态带来的早期偏差。理解这三步以后，再写出完整更新。"
@@ -1913,7 +1925,8 @@
             "还原到原单位后，残差分别为 0.2 和 1。",
             "若原单位残差都为 1，归一化平方误差则分别为 \\(\\frac14\\) 和 \\(\\frac1{100}\\)。"
           ],
-          "conclusion": "标准化同时决定了训练更关注哪些原单位误差。"
+          "conclusion": "标准化同时决定了训练更关注哪些原单位误差。",
+          "afterParagraph": 1
         },
         "id": "2",
         "lead": "目标标准化是对预测标签进行坐标变换，并要求输出按同一约定还原。标准化坐标中的等权平方误差，对应原坐标中按尺度加权的误差。下面追踪这一变化，说明它为何同时属于数值处理和目标设计。"
@@ -1931,7 +1944,8 @@
             "先减去最大值 1001，得到 [-1,0]，指数约为 [0.3679,1]。",
             "归一化得到约 [0.2689,0.7311]；减去常数没有改变理论概率。"
           ],
-          "conclusion": "稳定公式避免非法中间量，同时避免通过任意截断改变合理概率。"
+          "conclusion": "稳定公式避免非法中间量，同时避免通过任意截断改变合理概率。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -2566,22 +2580,23 @@
         "title": "张量形状、参数朝向与参数量",
         "body": [
           "采用行向量组成 Batch 的约定：输入 X 为 [B,D]，第一层权重 \\(W_1\\) 为 [H,D]，偏置为 [H]，所以 `X@W1.T` 得到 [B,H]。第二层权重为 [O,H]，输出为 [B,O]。不要凭矩阵名判断乘法方向，应从相邻内维是否相等，以及每个轴代表什么来核对。nn.Linear(D,H).weight 的第一维是输出数，这与某些教材把权重写成 [D,H] 的约定相反。",
-          "两层有偏置的 \\(D\\to H\\to O\\) 网络，参数量是 \\(DH+H+HO+O\\)。\\(6\\to8\\to3\\) 的例子有 \\(48+8+24+3=83\\) 个参数。Batch 大小不进入参数量，因为不同样本共享同一组权重。Batch 和序列长度会改变计算量及中间激活大小。若把 100 个 token 展平成一个大向量再接全连接，输入维度会从 D 变成 100D，参数量及结构假设都会变化。",
+          "两层有偏置的 \\(D\\to H\\to O\\) 网络，参数量是 \\(DH+H+HO+O\\)。Batch 大小不进入参数量，因为不同样本共享同一组权重。Batch 和序列长度会改变计算量及中间激活大小。若把 100 个 token 展平成一个大向量再接全连接，输入维度会从 D 变成 100D，参数量及结构假设都会变化。",
           "输入也可以是 [B,T,D]。Linear(D,H) 会在每个 b,t 位置复用同一个映射，输出 [B,T,H]，不会自动让两个时间步互相通信。把前两个轴临时合为 \\(BT\\) 后计算，再恢复形状，与保留三维输入等价；把 T 和 D 合并则是另一种模型。维度重排需用 transpose/permute，reshape 只改变元素如何分组，不能替代轴交换。",
           "参数量与训练内存不是一回事。参数需要存储权重，优化器还可能维护一阶、二阶状态；训练反向需要保留中间激活。把序列长度翻倍不增加共享 Linear 的权重，却通常增加激活占用与矩阵乘法工作量。估算时分别列出参数、梯度、优化器状态和激活，并注明 dtype，不能只用一个参数量乘常数覆盖所有训练设置。",
-          "后文固定 \\(B=3,D=2,H=3,O=2\\)，使用代码页已有的 [manual-backprop](#/learn/mlp?tab=code&anchor=demo-manual-backprop) 参数。它有 \\(2\\times3+3+3\\times2+2=17\\) 个可训练数；\\(X\\) 参与求导验证，但不是优化器需要更新的模型参数。这个区别将在一次 SGD 更新中明确体现。"
+          "后文固定 \\(B=3,D=2,H=3,O=2\\)，继续使用刚才的 2→3→2 网络，参数来自代码页的 [manual-backprop](#/learn/mlp?tab=code&anchor=demo-manual-backprop)。X 参与求导验证，但不是优化器更新的模型参数；这个区别将在一次 SGD 更新中明确体现。"
         ],
         "formula": "P=DH+H+HO+O,\\qquad [B,T,D]\\xrightarrow{\\operatorname{Linear}(D,H)}[B,T,H]",
         "code": "layer = torch.nn.Linear(6, 8)\nx = torch.randn(2, 5, 6)\nassert layer(x).shape == (2, 5, 8)\nassert layer.weight.shape == (8, 6)",
-        "codeExplanation": "保留 B、T，只变换最后一个特征轴；这里 \\(2\\times5\\) 个位置共享 56 个参数。 这是形状片段，先执行 import torch；完整可运行的同网络实现见 manual-backprop。",
+        "codeExplanation": "这个补充形状片段用 6→8 的单层演示 [B,T,D] 输入：保留 B、T，只变换最后一个特征轴，2×5 个位置共享 56 个参数。先执行 import torch；贯穿本章的 2→3→2 网络有 17 个参数，完整前向与手写反向见 manual-backprop。",
         "example": {
-          "title": "把一个 8→16→4 网络的参数逐项数清楚",
+          "title": "从同一个 2→3→2 网络数出 17 个参数",
+          "afterParagraph": 1,
           "steps": [
-            "输入 x 的形状是 [B,8]。第一层 nn.Linear(8,16) 的 weight 是 [16,8]，bias 是 [16]；计算 x @ weight.T + bias 后得到 [B,16]。",
-            "激活函数逐元素作用，形状仍为 [B,16]。第二层 Linear(16,4) 的 weight 是 [4,16]，bias 是 [4]，最终输出 [B,4]。",
-            "参数总数为 \\(8\\times16+16+16\\times4+4=212\\)。把 B 从 2 改成 128，参数仍为 212；变化的是中间激活和相关计算量。"
+            "输入 X:[B,2]。第一层 Linear(2,3) 的权重为 [3,2]、偏置为 [3]，输出为 [B,3]，参数数为 \\(3\\times2+3=9\\)。",
+            "ReLU 不增加参数，第二层 Linear(3,2) 的权重为 [2,3]、偏置为 [2]，输出为 [B,2]，参数数为 \\(2\\times3+2=8\\)。",
+            "总数为 \\(9+8=17\\)。后面的三条输入使用同一组参数；把 Batch 从 3 改成 30，不会把 17 变成 170，只会改变激活与计算量。"
           ],
-          "conclusion": "先按每层权重与偏置求和，再考虑 Batch、序列长度等运行时维度。模型参数不因一个 Batch 内多放了样本而增加。"
+          "conclusion": "贯穿案例的前向、反向与一次更新使用这 17 个可训练数。先逐层计数，再推广到一般 D→H→O 公式；补充形状片段会单独注明所用尺寸。"
         },
         "focus": {
           "kind": "易错",
@@ -3263,7 +3278,17 @@
           "check": "初始化后用真实形状的输入测量各层均值、二阶矩与梯度，而不只确认调用了某个 init 函数。"
         },
         "id": "4",
-        "lead": "参数初始化是为训练选择起始权重与偏置的规则，fan-in 是一个输出单元实际接收的输入连接数。连接越多，加权求和的尺度越容易改变，所以初始化需要随连接数和激活方式调整。接下来从二阶矩推导这项尺度选择。"
+        "lead": "参数初始化是为训练选择起始权重与偏置的规则，fan-in 是一个输出单元实际接收的输入连接数。连接越多，加权求和的尺度越容易改变，所以初始化需要随连接数和激活方式调整。接下来从二阶矩推导这项尺度选择。",
+        "example": {
+          "title": "fan-in=4 时，把二阶矩逐项算出来",
+          "afterParagraph": 2,
+          "steps": [
+            "在正文的独立、零均值权重与对称预激活假设下，令 fan-in=4，输入二阶矩 q=1，先取权重方差 \\(\\sigma_w^2=1/4\\)。预激活二阶矩为 \\(4\\times(1/4)\\times1=1\\)，经过 ReLU 后变成 1/2。",
+            "改为 He 方差 \\(\\sigma_w^2=2/4=1/2\\)，预激活二阶矩变为 2，ReLU 后变回 1。保持的是初始化平均意义下的二阶矩，不是每个有限样本的数值。",
+            "此时权重标准差是 \\(\\sqrt{1/2}\\approx0.7071\\)，不是 0.5。若再假设预激活是高斯，ReLU 输出均值不为零，其方差也不等于这个二阶矩。"
+          ],
+          "conclusion": "fan-in、权重方差、标准差与输出二阶矩是不同的量；先按声明假设算清它们，再解读初始化实验。"
+        }
       },
       {
         "title": "fan-in、fan-out 与权重朝向",
@@ -3574,7 +3599,17 @@
         ],
         "formula": "J_{\\mathrm{RMS}}=\\frac Ir-\\frac{xx^T}{D r^3},\\qquad r=\\sqrt{\\frac{x^Tx}{D}+\\epsilon}",
         "id": "3",
-        "lead": "RMSNorm 是使用一组特征的均方根调整其尺度、通常再施加逐通道缩放的归一化层。它与 LayerNorm 的核心区别是没有去均值。先明确这一步保留与消去什么方向，再比较两者的 Jacobian。"
+        "lead": "RMSNorm 是使用一组特征的均方根调整其尺度、通常再施加逐通道缩放的归一化层。它与 LayerNorm 的核心区别是没有去均值。先明确这一步保留与消去什么方向，再比较两者的 Jacobian。",
+        "example": {
+          "title": "同一行 [1,3]，LN 与 RMSNorm 分别留下什么",
+          "afterParagraph": 1,
+          "steps": [
+            "取逐通道缩放为 1、偏移为 0，并暂忽略 \\(\\epsilon\\)。LayerNorm 先减均值 2，再除标准差 1，输出为 [−1,1]。",
+            "RMSNorm 不减均值，均方根为 \\(\\sqrt{(1^2+3^2)/2}=\\sqrt5\\)，输出约为 [0.4472,1.3416]，均值并不为零。",
+            "把输入整体加 2 变成 [3,5]，LayerNorm 仍为 [−1,1]，RMSNorm 却变成 \\([3/\\sqrt{17},5/\\sqrt{17}]\\)。这直接展示共同平移对两种层的影响不同。"
+          ],
+          "conclusion": "RMSNorm 去掉的是均方根尺度，而不是共同偏移；下面的 Jacobian 将把这个前向差别写成方向性质。"
+        }
       },
       {
         "title": "训练模式、冻结参数与小 Batch",
@@ -3868,7 +3903,8 @@
             "若误写 y=F(x)，相同上游梯度只得到 0.2。",
             "若改 \\(F(x)=-x\\)，正确残差输出与输入梯度都为零，说明恒等项仍可能被抵消。"
           ],
-          "conclusion": "残差提供额外路径，但不承诺所有方向的梯度下界。"
+          "conclusion": "残差提供额外路径，但不承诺所有方向的梯度下界。",
+          "afterParagraph": 2
         },
         "id": "1",
         "lead": "输入梯度是损失对残差块输入的变化率，参数梯度是损失对变换分支参数的变化率。输入同时沿直接路径和分支到达输出，因此前者需要合并两条路径；后者则沿参数所在的分支求导。下面将这个区分写成微分。"
@@ -3922,7 +3958,8 @@
             "\\(\\frac{\\partial L}{\\partial w}=\\alpha x=0\\)；\\(\\frac{\\partial L}{\\partial\\alpha}=wx=6\\)；\\(\\frac{\\partial L}{\\partial x}=1\\)。",
             "更新 \\(\\alpha\\) 后，下一步 w 就可能获得梯度。"
           ],
-          "conclusion": "查看不同参数的梯度路径比笼统地说“梯度为零”更有意义。"
+          "conclusion": "查看不同参数的梯度路径比笼统地说“梯度为零”更有意义。",
+          "afterParagraph": 2
         },
         "id": "3",
         "formula": "\\begin{aligned}\\operatorname{Var}(x+\\alpha F)&=\\operatorname{Var}(x)+2\\alpha\\operatorname{Cov}(x,F)+\\alpha^2\\operatorname{Var}(F),\\\\ \\nabla_\\theta\\mathcal L&=\\alpha J_{F,\\theta}^\\top g,\\qquad \\partial_\\alpha\\mathcal L=F(x)^\\top g.\\end{aligned}",
@@ -4307,7 +4344,7 @@
       "pitfall-3": "section-receptive-field",
       "pitfall-4": "section-equivariance"
     },
-    "lead": "卷积神经网络（CNN）是一类通过局部连接和参数共享处理空间数据的神经网络。同一卷积核在不同位置提取局部特征，多层卷积与非线性逐步组合这些特征，读出模块再形成分类或空间预测。它把图像的局部结构写进了网络连接。本章沿同一个 SmallCNN 追踪图像到输出，再解释窗口几何、感受野、采样与信息保留。",
+    "lead": "卷积神经网络（CNN）是一类通过局部连接和参数共享处理空间数据的神经网络。同一卷积核在不同位置提取局部特征，多层卷积与非线性逐步组合这些特征，读出模块再形成分类或空间预测。它把图像的局部结构写进了网络连接。本章的 SmallCNN 接收 12×12 RGB 图像，经两次“卷积＋ReLU”，再由全局平均池化和线性层给出两类输出。后续沿同一网络解释窗口、感受野、采样与信息保留。",
     "sections": [
       {
         "id": "local-correlation",
@@ -4511,7 +4548,8 @@
             "groups=4时，每组仅连接2个输入通道，每个输出核权重形状为[2,3,3]；总参数为\\(16\\times2\\times9+16=304\\)。",
             "若先使用8通道depthwise，再用1×1投影到16通道，两层均有bias，则参数为\\((8\\times9+8)+(16\\times8+16)=224\\)。它属于不同结构，不能仅凭输出形状就认为与任意普通卷积等价。"
           ],
-          "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。"
+          "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。",
+          "afterParagraph": 3
         },
         "lead": "分组卷积只允许对应的通道组相互连接；深度可分离卷积则通常先逐通道做空间滤波，再用逐点卷积混合通道。这些结构通过限制连接降低成本，也限制了可表示的变换。下面先看连接，再分析秩。"
       },
@@ -4538,7 +4576,8 @@
             "第二层k=3、s=1、d=2，它在上一层上跨2个格点取样，因此 \\(R=3+(3-1)\\times2\\times2=11\\)，J仍为2。",
             "若第二层dilation改回1，\\(R=3+2\\times1\\times2=7\\)。常说“两层3×3得到5×5”只适用于两层stride与dilation均为1的对应设置。"
           ],
-          "conclusion": "递推时先用上一层J增加感受野，再更新J；把顺序颠倒会得到错误范围。"
+          "conclusion": "递推时先用上一层J增加感受野，再更新J；把顺序颠倒会得到错误范围。",
+          "afterParagraph": 2
         },
         "focus": {
           "kind": "易错",
@@ -4553,26 +4592,35 @@
       },
       {
         "id": "activation-pooling",
-        "title": "激活、归一化与池化",
+        "title": "激活与池化：先看主模型，再比较归一化",
         "body": [
           "把一层卷积展成线性算子 \\(C\\)，带偏置的输出为 \\(z=Cx+b\\)。只串联这类操作仍得到仿射函数；逐元素激活得到 \\(h_i=\\phi(z_i)\\)，其局部 Jacobian 为 \\(J=\\operatorname{diag}(\\phi^{\\prime}(z))C\\)。对 ReLU，正预激活的导数为一、负预激活为零，所以不同输入会启用不同局部映射。零点不可导，PyTorch 选择零导数作为实现约定；这不意味着所有框架必须采用同一种折点约定。",
           "若上游梯度为 \\(g=\\nabla_hL\\)，传回预激活的梯度就是 \\(g\\odot\\mathbf1\\{z>0\\}\\)。负位置的这条路径会被关闭，但同一权重仍可通过其他样本或其他空间位置获得更新；有残差时还可能存在旁路。多层卷积与激活由此形成输入相关的分段仿射结构。滤波器的实际含义由训练决定，不能把每一层机械指定为边缘、纹理或物体检测器。",
-          "BatchNorm2d 保持 `[B,C,H,W]` 形状，对每个通道分别在样本、高和宽三个轴上统计。固定通道 \\(c\\)，令 \\(N=BHW\\)，将该通道的元素编号为 \\(x_{c,1},\\ldots,x_{c,N}\\)。训练前向为 \\[\\mu_c=\\frac1N\\sum_nx_{c,n},\\quad v_c=\\frac1N\\sum_n(x_{c,n}-\\mu_c)^2,\\quad z_{c,n}=\\frac{x_{c,n}-\\mu_c}{r_c},\\quad y_{c,n}=\\gamma_cz_{c,n}+\\beta_c,\\quad r_c=\\sqrt{v_c+\\epsilon}.\\]均值和尺度都由当前输入计算，\\(\\gamma_c,\\beta_c\\) 则是每个通道共享的可学习参数。",
-          "BN 的反向不能只把上游梯度除以标准差。记 \\(g_{c,n}=\\partial L/\\partial y_{c,n}\\)、\\(q_{c,n}=\\gamma_cg_{c,n}\\)，沿相同统计集合取平均，有 \\[\\frac{\\partial L}{\\partial x_{c,n}}=\\frac{q_{c,n}-\\operatorname{mean}(q_c)-z_{c,n}\\operatorname{mean}(q_c\\odot z_c)}{r_c}.\\]第一项来自输入直接变化，第二项修正均值的变化，第三项修正方差的变化；完整微分见[归一化的 Jacobian](#/learn/normalization?tab=theory&section=2)。因此某个像素的梯度会依赖同通道其他位置甚至其他样本，BN 不是逐像素的固定缩放。",
-          "训练时使用当前批次的总体式方差，并更新运行统计；默认评估时用保存的运行均值和方差，此时它们对当前输入是常数。PyTorch 更新 `running_var` 使用对应的无偏批次方差，不能把它和训练前向的分母混为一谈。小批次、相关视频帧或分布变化会影响统计估计；冻结 \\(\\gamma,\\beta\\) 并不会停止训练模式下的 Buffer 更新。需要固定视觉编码器时，应分别决定参数冻结、Norm 模式与梯度路径，而不是把 `requires_grad=False` 当作全部冻结。",
           "池化在每个通道内对窗口集合 \\(\\Omega_u\\) 汇聚，其中 \\(u\\) 是输出位置。无填充且窗口包含 \\(K\\) 个元素时，平均池化为 \\(y_u=K^{-1}\\sum_{j\\in\\Omega_u}x_j\\)，最大池化为 \\(y_u=\\max_{j\\in\\Omega_u}x_j\\)。前者是固定线性组合，后者是由输入选择分支的分段线性函数。两者的步幅都决定输出窗口如何移动，因此需要继续沿用前面感受野与采样间距的分析。",
           "平均池化满足 \\(\\partial y_u/\\partial x_j=1/K\\)（\\(j\\in\\Omega_u\\)），唯一最大值位于 \\(j_u^*\\) 时，最大池化满足 \\(\\partial y_u/\\partial x_j=\\mathbf1\\{j=j_u^*\\}\\)。如果输入位置被多个窗口覆盖，它的梯度还要将各个窗口贡献相加。并列最大值处不可导，实现会选取一种梯度分配，不能声称平均分给所有并列位置是最大池化的必然行为。",
-          "例如窗口 \\([1,4;3,2]\\) 的平均值为 2.5，输出梯度为一时四个输入各收到 0.25；最大值为 4，梯度全部到达右上位置。对一维输入 \\([1,3,2]\\) 使用大小二、步幅一的重叠窗口，并对两个输出求和，平均池化梯度为 \\([0.5,1,0.5]\\)，最大池化梯度为 \\([0,2,0]\\)。中间位置接收两条路径的贡献，不能只按某一个窗口写回梯度。",
           "当池化步幅大于一时，还发生空间下采样。平均池化等价于先用方框核做局部平均再取样，能够衰减部分高频，但这个有限滤波器并非理想带限滤波，不能保证完全消除混叠。最大池化是非线性选择，也不自动满足下采样所需的频率条件。改变输入采样相位后，即使边界使用周期约定，池化结果也可能变化；下一节将用频率和奇偶相位进一步解释。",
           "全局平均池化（GAP）将整个空间轴变成一个窗口：\\(\\bar F_{b,c}=(HW)^{-1}\\sum_{i,j}F_{b,c,i,j}\\)。特征图 \\([4,0;0,0]\\) 与 \\([0,0;0,4]\\) 的响应位置不同，GAP 却都为一；任何只读取该单通道均值的后续函数都无法区分二者。其反向把同一输出梯度除以 \\(HW\\) 分配给每个位置。这个反例针对当前特征图到均值的映射：若上游已把空间关系写进其他通道，GAP 仍可能保留任务需要的信息，不能仅凭最后一个平均算子判断整网空间能力。",
           "边界约定也会改变池化的函数。`AvgPool2d` 的 `count_include_pad` 决定补零是否进入平均分母；`MaxPool2d` 的隐式填充值是负无穷，不是普通卷积的零。用全负输入或边界窗口核对这些差异，再根据任务选择保持空间 token、多尺度特征或全局汇聚。代码页的[激活、批次统计与池化的梯度对照](#/learn/cnn-receptive-field?tab=code&anchor=demo-activation-pooling-gradients)将上述公式与 Autograd 逐项比较。",
+          "BatchNorm2d 保持 `[B,C,H,W]` 形状，对每个通道分别在样本、高和宽三个轴上统计。固定通道 \\(c\\)，令 \\(N=BHW\\)，将该通道的元素编号为 \\(x_{c,1},\\ldots,x_{c,N}\\)。训练前向为 \\[\\mu_c=\\frac1N\\sum_nx_{c,n},\\quad v_c=\\frac1N\\sum_n(x_{c,n}-\\mu_c)^2,\\quad z_{c,n}=\\frac{x_{c,n}-\\mu_c}{r_c},\\quad y_{c,n}=\\gamma_cz_{c,n}+\\beta_c,\\quad r_c=\\sqrt{v_c+\\epsilon}.\\]均值和尺度都由当前输入计算，\\(\\gamma_c,\\beta_c\\) 则是每个通道共享的可学习参数。",
+          "BN 的反向不能只把上游梯度除以标准差。记 \\(g_{c,n}=\\partial L/\\partial y_{c,n}\\)、\\(q_{c,n}=\\gamma_cg_{c,n}\\)，沿相同统计集合取平均，有 \\[\\frac{\\partial L}{\\partial x_{c,n}}=\\frac{q_{c,n}-\\operatorname{mean}(q_c)-z_{c,n}\\operatorname{mean}(q_c\\odot z_c)}{r_c}.\\]第一项来自输入直接变化，第二项修正均值的变化，第三项修正方差的变化；完整微分见[归一化的 Jacobian](#/learn/normalization?tab=theory&section=2)。因此某个像素的梯度会依赖同通道其他位置甚至其他样本，BN 不是逐像素的固定缩放。",
+          "训练时使用当前批次的总体式方差，并更新运行统计；默认评估时用保存的运行均值和方差，此时它们对当前输入是常数。PyTorch 更新 `running_var` 使用对应的无偏批次方差，不能把它和训练前向的分母混为一谈。小批次、相关视频帧或分布变化会影响统计估计；冻结 \\(\\gamma,\\beta\\) 并不会停止训练模式下的 Buffer 更新。需要固定视觉编码器时，应分别决定参数冻结、Norm 模式与梯度路径，而不是把 `requires_grad=False` 当作全部冻结。",
           "贯穿 SmallCNN 没有 BatchNorm，便于直接观察卷积、ReLU 和 GAP 的局部路径。对 logits 的交叉熵梯度先乘分类器权重，得到 `[B,12]` 的汇聚特征梯度；GAP 再将每个通道的该梯度以 \\(1/144\\) 分给 12×12 个位置。代码逐元素验证这一式子，然后观察 ReLU 将哪些位置置零。若加入训练态 BN，样本和空间之间又增加统计依赖，此时不能继续套用“一个局部输出只依赖局部输入”的纯卷积结论。"
         ],
         "formula": "\\begin{aligned}\\frac{\\partial L}{\\partial x_j}&=\\sum_{u:j\\in\\Omega_u}g_u\\frac{\\partial y_u}{\\partial x_j},\\\\\\frac{\\partial y_u^{\\rm avg}}{\\partial x_j}&=\\frac1K\\quad(j\\in\\Omega_u),\\\\\\frac{\\partial y_u^{\\rm max}}{\\partial x_j}&=\\mathbf1\\{j=j_u^*\\}\\quad\\text{（唯一最大值）}.\\end{aligned}",
         "code": "import torch\nimport torch.nn.functional as F\n\ndtype = torch.float64\nx = torch.tensor([[[[1., 4.], [3., 2.]]]], dtype=dtype,\n                 requires_grad=True)\navg = F.avg_pool2d(x, 2)\nmaximum = F.max_pool2d(x, 2)\ng_avg, = torch.autograd.grad(avg.sum(), x)\ng_max, = torch.autograd.grad(maximum.sum(), x)\ntorch.testing.assert_close(g_avg, torch.full_like(x, 0.25))\ntorch.testing.assert_close(g_max, torch.tensor(\n    [[[[0., 1.], [0., 0.]]]], dtype=dtype))\n\n# Same channel mean, different spatial locations.\nmaps = torch.tensor([[[[4., 0.], [0., 0.]]],\n                     [[[0., 0.], [0., 4.]]]], dtype=dtype)\npooled = F.adaptive_avg_pool2d(maps, 1)\nassert not torch.equal(maps[0], maps[1])\ntorch.testing.assert_close(pooled, torch.ones_like(pooled))\nprint(\"平均/最大池化的梯度和 GAP 空间反例均通过。\")\n",
         "codeExplanation": "先用唯一最大值窗口隔离两种梯度分配，再用两个响应位置不同、均值相同的特征图验证 GAP 的不可区分性。这里没有训练随机模型，断言检验的是明确算子的性质。完整实现进一步检查重叠窗口、BN 反向和运行统计。",
-        "lead": "激活使卷积特征发生非线性变化，归一化调整指定集合的统计尺度，池化汇总一个局部区域以改变分辨率或读出信息。它们是 CNN 中承担不同职责的模块，不能统称为“提取特征”。下面沿前向与反向分别分析。",
-        "codeKind": "runnable"
+        "lead": "激活使卷积特征发生非线性变化，池化汇总空间响应，归一化则调整指定集合的统计尺度。主案例使用 ReLU 和全局平均池化，不包含 BatchNorm。先认识这条实际路径，再用归一化作结构对照，分别追踪前向与反向。",
+        "codeKind": "runnable",
+        "example": {
+          "title": "同一个窗口，平均池化与最大池化怎样前传和回传",
+          "afterParagraph": 4,
+          "steps": [
+            "窗口为 \\(\\begin{bmatrix}1&4\\\\3&2\\end{bmatrix}\\)，平均池化得到 \\((1+4+3+2)/4=2.5\\)，最大池化得到 4。输出形状相同，保留的信息不同。",
+            "若该输出的上游梯度为 1，平均池化给四个位置各传回 1/4；最大池化在唯一最大值的右上位置传回 1，其余为零。",
+            "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
+          ],
+          "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
+        }
       },
       {
         "id": "equivariance",
@@ -5029,7 +5077,17 @@
             "caption": "先自下而上读左图：Q 与 K 先打分，Scale 对应除以匹配维度的平方根，SoftMax 将分数变成权重，最后用权重汇总 V。Mask 是可选步骤。右图把这一过程并行执行多次，再合并各头。原图：[Vaswani et al., 2017, Figure 2](https://arxiv.org/abs/1706.03762)；依论文首页的学术图表复用许可使用，[出处与许可说明](/assets/figures/attention-figure2-LICENSE.txt)。",
             "afterParagraph": 1
           }
-        ]
+        ],
+        "example": {
+          "title": "从两项 logits 算出输出",
+          "steps": [
+            "设一行 logits 为 [0, ln 3]，Softmax 权重就是 [1/4,3/4]。",
+            "Value 分别为 [2,0] 与 [0,4]，输出为 [0.5,3]。",
+            "只交换 Value 而不交换 Key，权重不变但输出改变；若 Key 与 Value 一起交换，最终输出保持不变。"
+          ],
+          "conclusion": "Q/K 决定权重，V 决定被组合的内容，二者职责可以用干预分开验证。",
+          "afterParagraph": 1
+        }
       },
       {
         "title": "点积方差与缩放因子",
@@ -5058,15 +5116,6 @@
           "权重大不等于影响大。所有 Value 相同时，任意 logits 都读出同一个向量，Q/K 路径的梯度为零；V 路径仍能得到梯度。分布接近单点时，未选位置的 \\(a_j\\)很小，选中位置的 \\(v_j-o\\) 也很小，分数梯度因而容易变小。若直接把注意力热图当作解释，这两种反例都会被漏掉。",
           "代码使用 \\(\\mathrm{logits}=[0,\\ln3]\\)、\\(V=[0,2]\\)，得到权重 [1/4,3/4]、输出 1.5，以及对两个 logits 的梯度 [−0.375,0.375]。梯度和为零对应共同平移不变性。然后把 Value 改成相同数，观察权重仍不均匀，但分数梯度消失。"
         ],
-        "example": {
-          "title": "从两项 logits 算出输出",
-          "steps": [
-            "设一行 logits 为 [0, ln 3]，Softmax 权重就是 [1/4,3/4]。",
-            "Value 分别为 [2,0] 与 [0,4]，输出为 [0.5,3]。",
-            "只交换 Value 而不交换 Key，权重不变但输出改变；若 Key 与 Value 一起交换，最终输出保持不变。"
-          ],
-          "conclusion": "Q/K 决定权重，V 决定被组合的内容，二者职责可以用干预分开验证。"
-        },
         "formula": "\\frac{\\partial a_i}{\\partial s_j}=a_i(\\delta_{ij}-a_j),\\qquad \\frac{\\partial o}{\\partial s_j}=a_j(v_j-o)",
         "code": "import math\nimport torch\n\ns = torch.tensor([0., math.log(3.)], dtype=torch.float64, requires_grad=True)\nv = torch.tensor([0., 2.], dtype=torch.float64)\na = s.softmax(-1)\nout = a @ v\ngrad, = torch.autograd.grad(out, s, retain_graph=True)\nmanual = a * (v - out)\ntorch.testing.assert_close(grad, manual)\ntorch.testing.assert_close(grad, torch.tensor([-.375, .375], dtype=s.dtype))\nsame_values = torch.full_like(v, 2.)\nzero_grad, = torch.autograd.grad(a @ same_values, s)\ntorch.testing.assert_close(zero_grad, torch.zeros_like(s))\nprint(\"读出 / 分数梯度:\", out.item(), grad.tolist())\nprint(\"相同 Value 的分数梯度:\", zero_grad.tolist())\n",
         "codeExplanation": "autograd 求的是输出对 logits 的导数，manual 按 \\(a_j(v_j-o)\\) 独立计算。保留第一次图只是为了在同一 Softmax 上更换 Value；实际训练不会为了这个实验而反复 retain_graph。",
@@ -5384,11 +5433,12 @@
         "example": {
           "title": "用一个二维通道对理解相对位置",
           "steps": [
-            "设 q=k=[1,0]，两个位置的旋转角分别为 α 和 β。",
-            "旋转后点积为 cos α cos β+sin α sin β=cos(β−α)。",
-            "同时把两个角加 δ，点积不变；只改变一个角，点积随相对差变化。"
+            "设 q=k=[1,0]。先取旋转角 α=0、β=π/2，旋转后的向量为 [1,0] 与 [0,1]，点积为 0。",
+            "同时将两角加 π/4，两个向量成为 \\([\\sqrt2/2,\\sqrt2/2]\\) 与 \\([-\\sqrt2/2,\\sqrt2/2]\\)，点积仍为 0。两者的绝对角度变了，相对角差没有变。",
+            "一般地，点积为 \\(\\cos\\alpha\\cos\\beta+\\sin\\alpha\\sin\\beta=\\cos(\\beta-\\alpha)\\)。同时加任意 δ 不改变它；只移动一个位置则会改变相对角差。"
           ],
-          "conclusion": "相对位置关系来自 Q 与 K 旋转的配合，而非某个向量单独存有绝对坐标。"
+          "conclusion": "相对位置关系来自 Q 与 K 旋转的配合，而非某个向量单独存有绝对坐标。",
+          "afterParagraph": 1
         },
         "id": "4",
         "lead": "旋转位置编码（RoPE）按位置旋转 Query 和 Key 的成对通道，使点积中包含相对位置差。它改变匹配时使用的表示，不是在输入上简单加一个位置向量。下面先看二维旋转，再推广到完整头宽。"
@@ -5873,7 +5923,8 @@
             "对样本 0、token 1，第一个头来自投影后通道 0..3，第二个头来自通道 4..7。检查这八个数，才能分辨两个尺寸均为 4 的轴。",
             "按相反顺序交换轴、合并通道，得到 `[2,4,8]`；输出投影混合各头内容，再进入第一条残差。"
           ],
-          "conclusion": "拆头是在每个token内部切分通道，不能让时间位置混进head维度。"
+          "conclusion": "拆头是在每个token内部切分通道，不能让时间位置混进head维度。",
+          "afterParagraph": 1
         },
         "lead": "多头注意力并行执行多套投影与读取，再拼接各头结果，用输出投影混合回模型宽度。各头可以选择不同位置关系，输出投影则把这些读出接回同一个表示。下面先追踪合头，再分析参数与表达限制。",
         "codeKind": "fragment",
@@ -6155,7 +6206,7 @@
           "title": "输入、目标与损失位置分别对齐",
           "steps": [
             "仍用输入 [0,1,2,3] 与标签 [1,2,3,4]。四行 Logit 分别预测 1、2、3、4，不能拿同位置的输入 0、1、2、3 当答案。",
-            "若输入 0、1 属于只提供上下文的提示，就把前两项损失忽略；输入 0、1 仍应作为后续位置可读取的 Key。忽略标签与删除上下文是不同操作。",
+            "若输入 0、1 属于 Prompt，回答从 2 开始，则只忽略目标 1 对应的第一项损失。输入位置 1 的 Logit 预测第一个回答 2，这项监督必须保留；输入 0、1 仍是后续位置可读取的 Key。Loss Mask 应按目标归属设置，不能直接按 Logit 当前输入是否属于 Prompt 设置。",
             "如果模型封装已经内部shift，而数据侧又提前shift一次，就变成跨两步预测。应该打印一个样本每个logit位置对应的目标token，而不是只观察总loss。"
           ],
           "conclusion": "监督位置、输入可见性与Padding处理应分别写清，再检查组合后的行为。"
@@ -6200,7 +6251,8 @@
             "因此两行可见性分别为`[True,True,True,True,False]`和`[True,True,True,True,True]`。它对应 `key_position <= P + query_local_position`。",
             "直接对 \\(2\\times5\\) 矩阵取无偏移 `tril` 会得到仅第一个 Key、仅前两个 Key 可见，错误屏蔽了已经存在的历史。若新 Token 已旋转 RoPE，其位置也必须从 \\(P\\) 开始。"
           ],
-          "conclusion": "非方形因果Mask与位置编码都要使用绝对位置。可将整段前向结果与多种分块大小的缓存结果逐项比较。"
+          "conclusion": "非方形因果Mask与位置编码都要使用绝对位置。可将整段前向结果与多种分块大小的缓存结果逐项比较。",
+          "afterParagraph": 1
         },
         "lead": "KV Cache 是保存各层历史 Key 和 Value、在后续调用中复用的增量计算机制。只有历史表示保持不变时，这份中间结果才仍有效。主案例的因果结构提供这一条件，下面将它连接到位置偏移和等价性。"
       },
@@ -6678,7 +6730,8 @@
             "使用 `mean=std=0.5` 逐通道标准化后得到 [1,-1,-1]。如果读取成 BGR，亮通道会落在第三维。",
             "一个原本为 0.5 的浮点通道若又除以 255，再做上述标准化，会从正确的 0 变成约 -0.996。"
           ],
-          "conclusion": "dtype 是存储类型，数值范围是约定；必须分开验证。"
+          "conclusion": "dtype 是存储类型，数值范围是约定；必须分开验证。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -7019,7 +7072,8 @@
             "文本汇聚成一个 Query [B,1,24]，Cross-Attention 读取视觉后仍为 [B,1,24]。",
             "二类分类层输出 [B,2] logits，交叉熵标签为 [B] 的整数类别；输出不是空间坐标。"
           ],
-          "conclusion": "形状与目标明确后，才能逐段检查视觉、文本和分类损失之间的依赖。"
+          "conclusion": "形状与目标明确后，才能逐段检查视觉、文本和分类损失之间的依赖。",
+          "afterParagraph": 1
         },
         "id": "3",
         "lead": "Projector 是把一类特征映射到另一接口宽度的模块，跨模态融合则进一步建立不同模态之间的计算依赖。宽度对齐只使连接可计算，不会自动让视觉特征受语言影响。下面区分映射与交互这两项工作。"
@@ -7458,7 +7512,8 @@
             "第一列的正确分数领先 1，第二列领先 3，因此文本到图像损失为 \\(\\tfrac12[\\log(1+e^{-1})+\\log(1+e^{-3})]\\)。",
             "对称目标再取两者平均；候选分数没有改变，变化的是每次归一化所使用的集合。"
           ],
-          "conclusion": "共享一个相似度矩阵不意味着两个方向的交叉熵相等。"
+          "conclusion": "共享一个相似度矩阵不意味着两个方向的交叉熵相等。",
+          "afterParagraph": 1
         },
         "id": "2",
         "lead": "双向对比交叉熵分别把“由图找文”和“由文找图”作为候选分类任务，再合并两项损失。它们使用同一相似度矩阵，却沿不同轴归一化。先定义两个检索方向，再推导特征和尺度的更新。"
@@ -8048,7 +8103,7 @@
       {
         "title": "条件依赖与信息路径",
         "body": [
-          "条件模型写成 \\(f_\\theta(x,c)\\)：x 是当前需要处理的状态或 token，c 是语言、视觉、状态或生成时间等条件。输入字典里出现 c 不代表输出依赖 c；真正的信息路径可能被 Mask 遮住、被 detach 截断，或在训练中被权重忽略。先写出每个条件通过哪条算子路径影响哪个输出，才能讨论融合是否有效。",
+          "条件模型写成 \\(f_\\theta(x,c)\\)：x 是当前处理的状态或 token，c 是语言、视觉、状态或生成时间等条件。输入字典里出现 c，不代表输出实际使用了它：未读取的分支、遮住条件的 Mask 或学得的权重都可能使前向忽略条件。detach 则是另一件事，它保留本次前向数值及其随条件变化的关系，切断的是通向条件上游的梯度。先分别画出前向依赖与反向路径，再判断融合是否有效。",
           "不同条件具有不同结构。一个生成时间标量可以编码成向量，一条语言指令含有词序，多张图像包含空间位置。把所有条件都平均成一个向量会降低接口成本，也会丢失局部检索能力；保留全部 token 增加灵活性，同时增加注意力开销。接口选择应对应任务所需信息，而不只是为了拼接时 shape 匹配。",
           "还要区分条件的时间含义：序列位置描述“第几个 token”，动作时间描述“预测哪个执行时刻”，生成时间描述“当前噪声或流状态”。三者可能同时进入一个模型。把它们统一称为 t 而不注明尺度和来源，容易造成训练和采样使用不同条件的错误。"
         ],
@@ -8098,7 +8153,8 @@
             "第一行输出 \\([2\\times1-1,0\\times2+5]=[1,5]\\)，第二行输出 \\([2\\times3-1,0\\times4+5]=[5,5]\\)。",
             "第二通道不再依赖原特征，因为 \\(\\gamma_2=0\\)；对 h 的局部梯度在该通道也为零，但 \\(\\beta_2\\) 仍可接收梯度。"
           ],
-          "conclusion": "逐通道缩放同时改变前向信息与反向梯度，零梯度有时来自有意的乘法结构。"
+          "conclusion": "逐通道缩放同时改变前向信息与反向梯度，零梯度有时来自有意的乘法结构。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -8134,7 +8190,8 @@
             "\\(\\frac{\\partial L}{\\partial w}=gx=0\\)；\\(\\frac{\\partial L}{\\partial g}=wx=6\\)。内部 w 首步不更新，门控却可以离开零点。",
             "如果再令 \\(w=0\\)，则门控梯度也为零；若 \\(g=ac\\) 且 \\(a=0\\)，条件 c 的梯度同样为零，但 a 的梯度还可能非零。"
           ],
-          "conclusion": "检查结构预期、门控参数和更新后梯度，比要求所有参数首步非零更准确。"
+          "conclusion": "检查结构预期、门控参数和更新后梯度，比要求所有参数首步非零更准确。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -8735,7 +8792,17 @@
           "完整代码使用只含二次项的线性高斯模型，以 \\(\\epsilon\\in\\{-1,+1\\}\\) 两个等权点准确匹配零均值和单位二阶矩，核对 Autograd 与解析期望的梯度。这是该二次函数的确定性矩检验，不是宣称两个点能精确积分任意非线性 VAE。"
         ],
         "formula": "\\begin{aligned}Z&=\\mu_\\phi(a)+\\exp(\\ell_\\phi(a)/2)\\odot\\epsilon,\\qquad\\epsilon\\sim\\mathcal N(0,I)\\\\ \\nabla_\\phi\\mathbb E[h_\\theta(Z)]&=\\mathbb E_\\epsilon\\!\\left[\\left(\\frac{\\partial Z}{\\partial\\phi}\\right)^{\\!\\top}\\nabla_Zh_\\theta(Z)\\right].\\end{aligned}",
-        "lead": "重参数化是把参数相关分布的采样改写为固定噪声经过可微变换的办法。这样参数变化仍能通过样本值影响目标，梯度便可沿变换回传。下面用高斯均值与尺度展示它解决的求导问题。"
+        "lead": "重参数化是把参数相关分布的采样改写为固定噪声经过可微变换的办法。这样参数变化仍能通过样本值影响目标，梯度便可沿变换回传。下面用高斯均值与尺度展示它解决的求导问题。",
+        "example": {
+          "title": "沿前面的高斯后验，让一份噪声穿过参数",
+          "afterParagraph": 1,
+          "steps": [
+            "继续使用前面 \\(q=\\mathcal N(1,1/2)\\) 的例子。均值 μ=1，标准差 \\(\\sigma=\\sqrt{1/2}\\)。取一次固定噪声 ε=1，样本为 \\(z=1+\\sqrt{1/2}\\approx1.7071\\)。",
+            "固定同一份 ε，只把 μ 增加 0.1，z 也增加 0.1；因此该采样变换对 μ 的导数为 1。随机噪声的存在，并没有使这条参数依赖消失。",
+            "若网络输出 \\(\\ell=\\log\\sigma^2=\\log(1/2)\\)，则 \\(\\partial z/\\partial\\ell=\\tfrac12e^{\\ell/2}\\epsilon\\approx0.3536\\)。这里要对标准差而非方差求采样变换的导数。"
+          ],
+          "conclusion": "一次采样中固定基础噪声，仍能沿均值与尺度的可微变换回传。它是期望梯度的一份样本估计，不等于用一份噪声精确计算了整个期望。"
+        }
       },
       {
         "id": "posterior-collapse",
@@ -8964,7 +9031,8 @@
             "从条件 0 的一个分量中心取确定性探针 \\(a=(1.6,0.6)\\)，噪声取 \\(\\epsilon=(-1,2)\\)。直接构造 \\(x_1=\\sqrt{0.64}a+\\sqrt{0.36}\\epsilon=(0.68,1.68)\\)。",
             "训练网络读取 \\(x_1,k=1,c=0\\)，预测这份隐藏噪声 \\(\\epsilon\\)。将单步 \\(\\alpha_1=0.8\\) 误作累计系数，会构造不同的中间分布。"
           ],
-          "conclusion": "这对固定向量随后用于恢复干净值；训练时仍抽取新的数据、噪声与等级。"
+          "conclusion": "这对固定向量随后用于恢复干净值；训练时仍抽取新的数据、噪声与等级。",
+          "afterParagraph": 1
         },
         "id": "1",
         "lead": "累计信号系数记录经过多级加噪后仍保留多少原始信号。高斯转移的组合允许直接构造任意等级的带噪样本，无需逐步模拟整个前向链。下面推导这项捷径，再跟踪同一二维探针。"
@@ -8974,7 +9042,7 @@
         "body": [
           "常见训练目标是预测构造 \\(x_k\\) 时用到的 \\(\\epsilon\\)，并最小化预测与真实噪声之间的平方误差。网络输入包括 \\(x_k\\)、等级 k 及观测条件 c。只给 \\(x_k\\) 不给 k，会让同一个数值在不同信噪比下需要不同解释；只给 k 不给 c，则无法根据图像、状态或指令选择条件动作分布。",
           "固定 \\(x_k\\)、k、c 时，可能有多组干净动作与噪声产生同一个中间状态。MSE 最优预测是 \\(\\mathbb E[\\epsilon\\mid x_k,k,c]\\)，不是逐个记住所有隐藏配对的那一份噪声。因此持续重采样下的损失不一定趋于零，不能看到非零训练误差就认定训练管线有问题。固定有限三元组的最小过拟合测试与真实随机训练目标是两种实验。",
-          "原始变分目标可导出不同等级的权重，常用简化噪声 MSE 是具体选择。改变等级采样分布或时间权重，会改变有限模型更关注的区域；比较实验应记录这些设定。动作有效位、各维尺度与归约方式同样参与目标定义，只报告一个总噪声 MSE 可能掩盖关键动作维或某个噪声区间失效。",
+          "原始变分目标可导出不同等级的权重，常用简化噪声 MSE 是具体选择；完整来源在后文[回看训练目标](#/learn/diffusion?section=variational-objective)中推导。改变等级采样分布或时间权重，会改变有限模型更关注的区域；比较实验应记录这些设定。动作有效位、各维尺度与归约方式同样参与目标定义，只报告一个总噪声 MSE 可能掩盖关键动作维或某个噪声区间失效。",
           "在这份混合数据上，`oracle_noise` 可以显式计算 \\(\\mathbb E[\\epsilon\\mid x_k,k,c]\\)，因此完整训练示例同时报告“网络对采样噪声的误差”和“网络对解析最优预测的误差”。两者分别包含不同误差来源；前者不应被要求降到零。解析计算及与速度场的转换见 [同一二维分布上的两条路径](#/learn/score-sde?tab=theory&section=shared-mixture)。"
         ],
         "formula": "L_\\epsilon=\\mathbb E_{a,c,k,\\varepsilon}\\big[\\|\\varepsilon_\\theta(x_k,k,c)-\\varepsilon\\|^2\\big]",
@@ -8986,40 +9054,6 @@
         },
         "id": "2",
         "lead": "噪声回归是让网络从带噪状态、噪声等级和可用条件，预测构造该状态时加入的噪声。训练端知道这份噪声，所以可以建立监督；推理端再用预测构造反向更新。先认识这个输入输出任务，再解释其概率依据。"
-      },
-      {
-        "id": "posterior-derivation",
-        "title": "给定干净样本的后验：由两个 Gaussian 核配方",
-        "body": [
-          "反向生成需要 \\(p_\\theta(x_{k-1}\\mid x_k,c)\\)，但真实反向分布要对未知干净数据积分，通常不易直接计算。训练时已经知道 a，因此可计算 \\(q(x_{k-1}\\mid x_k,a)\\)。前向 Markov 性给出 \\(q(y\\mid x_k,a)\\propto q(x_k\\mid y)q(y\\mid a)\\)，其中 \\(y=x_{k-1}\\)。这两个分布都是高斯，关于 y 的指数是二次函数。",
-          "下面先限制 \\(k\\ge1\\)，使 \\(1-\\bar\\alpha_{k-1}>0\\)。将两个平方展开，\\(y^\\top y\\) 的系数给出精度 \\(\\Lambda=\\frac{\\alpha_k}{\\beta_k}+\\frac{1}{1-\\bar\\alpha_{k-1}}\\)；线性项给出自然均值参数 \\(\\eta=\\frac{\\sqrt{\\alpha_k}\\,x_k}{\\beta_k}+\\frac{\\sqrt{\\bar\\alpha_{k-1}}\\,a}{1-\\bar\\alpha_{k-1}}\\)。高斯配方因此得到协方差 \\(\\Lambda^{-1}I\\)、均值 \\(\\Lambda^{-1}\\eta\\)。",
-          "利用 \\(\\bar\\alpha_k=\\alpha_k\\bar\\alpha_{k-1}\\) 化简，得到后验方差 \\(\\tilde\\beta_k=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}\\)，以及下式的干净样本项与当前噪声状态项。这个后验使用了训练时的 a；部署网络不能把 a 当作已知输入，因此还需学习能从 \\(x_k,k,c\\) 提供相关信息的预测器。",
-          "由 \\(x_k=\\sqrt{\\bar\\alpha_k}\\,a+\\sqrt{1-\\bar\\alpha_k}\\,\\epsilon\\) 解出 a，并代入后验均值，可得 \\(\\frac{1}{\\sqrt{\\alpha_k}}\\left[x_k-\\frac{\\beta_k\\epsilon}{\\sqrt{1-\\bar\\alpha_k}}\\right]\\)。这一步说明 epsilon 参数化的均值形式从何而来。训练样本中的 \\(\\epsilon\\) 是一个隐藏端点配对的噪声，网络对给定 \\(x_k\\) 的 MSE 最优预测仍是其条件均值。",
-          "\\(k=0\\) 对应从第一个噪声状态返回干净 a，给定 a 的后验退化为点质量，不能把含 \\(\\log\\tilde\\beta_0\\) 的普通高斯 KL 公式直接使用。变分目标在这里单独使用解码似然项；教学采样代码最后返回均值，是输出规则，不是已经计算了这个解码似然。"
-        ],
-        "formula": "\\begin{aligned}\n\\log q(y\\mid x_k,a)&=C-\\frac{\\|x_k-\\sqrt{\\alpha_k}y\\|^2}{2\\beta_k}\n-\\frac{\\|y-\\sqrt{\\bar\\alpha_{k-1}}a\\|^2}{2(1-\\bar\\alpha_{k-1})}\\\\\n\\tilde\\beta_k&=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k},\\\\\n\\tilde\\mu_k&=\\frac{\\sqrt{\\bar\\alpha_{k-1}}\\beta_k}{1-\\bar\\alpha_k}a+\n\\frac{\\sqrt{\\alpha_k}(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}x_k,\\qquad k\\ge1 .\n\\end{aligned}",
-        "code": "import math\nimport torch\n\ntorch.set_default_dtype(torch.float64)\nbeta = torch.tensor(0.12)\nalpha = 1 - beta\nalpha_bar_previous = torch.tensor(0.72)\nalpha_bar = alpha_bar_previous * alpha\nclean = torch.tensor([[-0.7, 1.2], [0.4, -1.1]])\nnoise = torch.tensor([[0.3, -0.2], [1.3, 0.6]])\nnoisy = alpha_bar.sqrt()*clean + (1-alpha_bar).sqrt()*noise\n\n# Complete the square in the product q(x_k|y) q(y|clean).\nprecision = alpha/beta + 1/(1-alpha_bar_previous)\nnatural_mean = alpha.sqrt()*noisy/beta + alpha_bar_previous.sqrt()*clean/(1-alpha_bar_previous)\nposterior_variance = beta*(1-alpha_bar_previous)/(1-alpha_bar)\nposterior_mean = (\n    alpha_bar_previous.sqrt()*beta/(1-alpha_bar)*clean\n    + alpha.sqrt()*(1-alpha_bar_previous)/(1-alpha_bar)*noisy)\ntorch.testing.assert_close(precision.reciprocal(), posterior_variance)\ntorch.testing.assert_close(natural_mean/precision, posterior_mean)\n\n# The same mean can be parameterized by the sampled forward noise.\nepsilon_form = (noisy-beta/(1-alpha_bar).sqrt()*noise)/alpha.sqrt()\ntorch.testing.assert_close(epsilon_form, posterior_mean)\nprint(\"posterior variance:\", posterior_variance.item())\nprint(\"max mean difference:\", (natural_mean/precision-posterior_mean).abs().max().item())\n\n# This posterior is non-degenerate only for k>=1 in the zero-based convention.\nclean_boundary_variance = beta * (1-1) / (1-alpha)\nassert clean_boundary_variance == 0\nprint(\"passed: Gaussian product, epsilon mean and clean-boundary variance\")\n",
-        "codeExplanation": "先按自然参数计算两个 Gaussian 核的乘积，再与化简后的后验均值/方差对照；最后代入已知前向噪声验证 epsilon 形式。这个 oracle 不使用学习网络，能够把公式错误与模型预测误差分开。",
-        "lead": "这里的条件后验是已知当前带噪状态与干净训练样本时，前一级状态的分布。它是训练中可计算的比较对象，与生成时没有干净答案的反向模型不同。下面先求出它，再说明网络需要近似什么。"
-      },
-      {
-        "id": "variational-objective",
-        "title": "从轨迹 ELBO 推导时间加权的噪声回归",
-        "body": [
-          "固定一个训练样本 \\((a,c)\\)，把整条噪声轨迹 \\(x_{0:K-1}\\) 视为潜变量。生成联合分布为 \\(p_\\theta(a,x_{0:K-1}\\mid c)=p(x_{K-1})p_\\theta(a\\mid x_0,c)\\prod_{k=1}^{K-1}p_\\theta(x_{k-1}\\mid x_k,c)\\)。以前向链 \\(q(x_{0:K-1}\\mid a)\\) 作为变分分布，[VAE 的 ELBO](#/learn/latent-variable-models?tab=theory&section=elbo-derivation) 给出负对数似然的上界：",
-          "\\[L_{\\rm VLB}=\\mathbb E_q\\!\\left[\\log q(x_{0:K-1}\\mid a)-\\log p_\\theta(a,x_{0:K-1}\\mid c)\\right]\\ge-\\log p_\\theta(a\\mid c).\\]",
-          "要把这个整条轨迹的比值变成局部比较，关键是对同一个前向联合分布采用反向链式分解。固定 \\(a\\) 后，Markov 链的反向条件只需当前 \\(x_k\\) 与 \\(a\\)，因此 \\(q(x_{0:K-1}\\mid a)=q(x_{K-1}\\mid a)\\prod_{k=1}^{K-1}q(x_{k-1}\\mid x_k,a)\\)。这里是在重写已知分布，不是声明训练时已经学到了反向模型。",
-          "将这两个乘积放入对数比，逐项得到终端项 \\(\\log[q(x_{K-1}\\mid a)/p(x_{K-1})]\\)、各级项 \\(\\log[q(x_{k-1}\\mid x_k,a)/p_\\theta(x_{k-1}\\mid x_k,c)]\\)，以及 \\(-\\log p_\\theta(a\\mid x_0,c)\\)。对各级项先按 \\(q(x_{k-1}\\mid x_k,a)\\) 求期望，它就成为一个 KL；再按 \\(q(x_k\\mid a)\\) 求期望。这个全期望步骤解释了为什么最终出现“局部 KL 的平均”。",
-          "具体地，负 ELBO 为 \\[L_{\\rm prior}+\\sum_{k=1}^{K-1}\\mathbb E_{q(x_k\\mid a)}\\!\\left[D_{\\rm KL}\\!\\left(q(x_{k-1}\\mid x_k,a)\\,\\Vert\\,p_\\theta(x_{k-1}\\mid x_k,c)\\right)\\right]+L_{\\rm recon}\\]\\(L_{\\rm prior}=D_{\\rm KL}\\!\\left(q(x_{K-1}\\mid a)\\,\\Vert\\,p(x_{K-1})\\right)\\)；当前向日程和先验固定时，它不参与 \\(\\theta\\) 的梯度。\\(L_{\\rm recon}=\\mathbb E_{q(x_0\\mid a)}[-\\log p_\\theta(a\\mid x_0,c)]\\)。这一分解把困难的整条轨迹比值转为可计算的局部 Gaussian 比较。",
-          "设反向模型使用固定协方差 \\(\\rho_k^2 I\\)，而均值采用 epsilon 参数化。两个 Gaussian 的 KL 中，只有均值平方差依赖这个预测网络；协方差比值、对数行列式等合并成 \\(C_k\\)。用上一节的均值形式相减，差值恰好是 \\(-\\frac{\\beta_k(\\epsilon_\\theta-\\epsilon)}{\\sqrt{\\alpha_k}\\sqrt{1-\\bar\\alpha_k}}\\)。因此相应 \\(\\theta\\) 目标等于 \\(\\lambda_k\\lVert\\epsilon_\\theta-\\epsilon\\rVert^2\\)，\\(\\lambda_k=\\frac{\\beta_k^2}{2\\rho_k^2\\alpha_k(1-\\bar\\alpha_k)}\\)。",
-          "若反向方差也由网络学习，则协方差项一般依赖 \\(\\theta\\)，不能继续删除 \\(C_k\\) 或只训练这个简单 MSE。\\(k=0\\) 的重建项、先验项和离散数据的解码约定也需要单独处理；因此“DDPM loss 就是任意 mean MSE”并不准确。",
-          "常用 \\(L_{\\rm simple}\\) 对噪声等级均匀采样并使用无权重 epsilon MSE，是对原始变分目标的重新加权。若以非均匀概率 \\(r(k)>0\\) 抽样，却仍想估计某个指定的求和目标 \\(\\sum_k\\lambda_k L_k\\)，应使用 \\(\\lambda_k/r(k)\\) 的重要性权重；若目标是等级平均，还要包含相应的总数因子。有限模型容量下，改变权重会改变优化关注的噪声区间。",
-          "下面代码故意选择与真实后验不同的固定反向方差，验证 KL=加权 MSE+常数，并比较两者对 \\(\\epsilon_\\theta\\) 的 Autograd 梯度。它检验的是给定固定方差与索引条件下的恒等式，不比较不同训练目标在真实数据上的最终性能。"
-        ],
-        "formula": "\\begin{aligned}\nL_{\\mathrm{VLB}}&=L_{\\mathrm{prior}}+\n\\sum_{k=1}^{K-1}\\mathbb E\\,D_{\\mathrm{KL}}\\!\\left(q(x_{k-1}\\mid x_k,a)\\Vert p_\\theta(x_{k-1}\\mid x_k,c)\\right)+L_{\\mathrm{recon}},\\\\\nD_{\\mathrm{KL}}&=\\frac{\\|\\tilde\\mu_k-\\mu_\\theta\\|^2}{2\\rho_k^2}+C_k\\\\\n&=\\underbrace{\\frac{\\beta_k^2}{2\\rho_k^2\\alpha_k(1-\\bar\\alpha_k)}}_{\\lambda_k}\n\\|\\epsilon_\\theta(x_k,k,c)-\\epsilon\\|^2+C_k .\n\\end{aligned}",
-        "code": "import torch\n\ntorch.set_default_dtype(torch.float64)\nbeta = torch.tensor(0.12)\nalpha = 1-beta\nab_previous = torch.tensor(0.72)\nab = alpha*ab_previous\nposterior_variance = beta*(1-ab_previous)/(1-ab)\nreverse_variance = beta  # Fixed, intentionally different from the posterior.\nclean = torch.tensor([[-0.7,1.2],[0.4,-1.1]])\nnoise = torch.tensor([[0.3,-0.2],[1.3,0.6]])\nnoisy = ab.sqrt()*clean + (1-ab).sqrt()*noise\nepsilon_hat = (noise + torch.tensor([[0.2,-0.3],[0.1,0.4]])).requires_grad_()\nposterior_mean = (noisy-beta/(1-ab).sqrt()*noise)/alpha.sqrt()\nmodel_mean = (noisy-beta/(1-ab).sqrt()*epsilon_hat)/alpha.sqrt()\nq = torch.distributions.Independent(\n    torch.distributions.Normal(posterior_mean, posterior_variance.sqrt()), 1)\np = torch.distributions.Independent(\n    torch.distributions.Normal(model_mean, reverse_variance.sqrt()), 1)\nkl = torch.distributions.kl_divergence(q,p)\nweight = beta.square()/(2*reverse_variance*alpha*(1-ab))\nweighted_noise_error = weight*(epsilon_hat-noise).square().sum(-1)\ndimension = clean.shape[-1]\nconstant = 0.5*dimension*(\n    posterior_variance/reverse_variance-1\n    + torch.log(reverse_variance/posterior_variance))\ntorch.testing.assert_close(kl, weighted_noise_error+constant)\ng_kl = torch.autograd.grad(kl.mean(),epsilon_hat,retain_graph=True)[0]\ng_mse = torch.autograd.grad(weighted_noise_error.mean(),epsilon_hat)[0]\ntorch.testing.assert_close(g_kl,g_mse)\nprint(\"time weight:\", weight.item(), \"fixed covariance constant:\", constant.item())\nprint(\"passed: KL equals weighted epsilon MSE plus a theta-independent constant\")\n",
-        "codeExplanation": "Independent(Normal(...),1) 把动作向量作为一个联合事件，对维度求和后计算 KL。协方差常数与网络均值无关，故删除后保留相同的期望梯度；若使用逐元素 mean，必须同时追踪额外的维度因子。",
-        "lead": "轨迹 ELBO 把整条加噪过程看作潜变量，为数据对数似然建立下界。它将全局生成目标分解为若干反向分布的局部比较，由此导出带时间权重的噪声回归。下面沿同一条轨迹展开各项。"
       },
       {
         "title": "epsilon、干净动作与 v 预测不能混用",
@@ -9036,7 +9070,8 @@
             "若噪声预测恰为 \\((-1,2)\\)，则 \\(\\hat a=(x-0.6\\hat\\epsilon)/0.8=(1.6,0.6)\\)。实际网络有预测误差，采样器仍需按声明的转移继续更新。",
             "直接输出 \\(\\hat\\epsilon=(-1,2)\\) 或 \\(x=(0.68,1.68)\\)，虽然同为二维，却没有得到干净样本。若生成变量是动作，之后还要进行对应的反归一化与动作解码。"
           ],
-          "conclusion": "输出参数化决定数值的含义；恢复关系不等于单步采样已经完成。"
+          "conclusion": "输出参数化决定数值的含义；恢复关系不等于单步采样已经完成。",
+          "afterParagraph": 1
         },
         "id": "3",
         "lead": "扩散输出参数化规定网络预测的是噪声、干净样本，还是两者的某种线性组合。它们具有相同形状，却要用不同公式进入采样器。下面用同一个带噪点说明怎样恢复数据，以及误读输出会产生什么。"
@@ -9058,7 +9093,7 @@
       {
         "title": "反向一步的均值、方差与最后一步",
         "body": [
-          "在 epsilon 参数化的标准 DDPM 形式中，反向均值由当前 \\(x_k\\) 与预测噪声组成：\\(\\mu_\\theta=\\frac{1}{\\sqrt{\\alpha_k}}\\left[x_k-\\frac{\\beta_k\\hat\\epsilon}{\\sqrt{1-\\bar\\alpha_k}}\\right]\\)。若采用前向后验方差，\\(\\tilde\\beta_k=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}\\)。以下采用这一方差选择，其他实现还可能使用不同固定方差或学习方差，不能仅凭“DDPM”名称假设完全相同。",
+          "在 epsilon 参数化的标准 DDPM 形式中，反向均值由当前 \\(x_k\\) 与预测噪声组成：\\(\\mu_\\theta=\\frac{1}{\\sqrt{\\alpha_k}}\\left[x_k-\\frac{\\beta_k\\hat\\epsilon}{\\sqrt{1-\\bar\\alpha_k}}\\right]\\)。若采用前向后验方差，\\(\\tilde\\beta_k=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}\\)。以下采用这一方差选择，其他实现还可能使用不同固定方差或学习方差，不能仅凭“DDPM”名称假设完全相同。 均值与方差的来源将在后文[给定干净样本的高斯后验](#/learn/diffusion?section=posterior-derivation)中推导，先把它们接成一次完整生成更新。",
           "随后从 \\(\\mu_\\theta+\\sqrt{\\tilde\\beta_k}\\,z\\) 得到下一个状态，其中 z 是新的标准高斯噪声；它不是训练时的那份 \\(\\epsilon\\)，也不是网络输出。对于数组的最后生成一步 \\(k=0\\)，把前一累计系数视为 1，后验方差为零，直接返回均值，不再添加噪声。若在这一点仍加随机项，得到的是被重新污染的终端输出。",
           "需要同时核对平方根、累计乘积和边界索引。把 \\(\\tilde\\beta\\) 当标准差直接乘 z，会把方差缩小一次；读取数组 [-1] 来表示干净端，会错误取到最高噪声端。最后一步应写成明确分支，并用任意巨大 noise 输入验证其结果完全不受影响。"
         ],
@@ -9075,7 +9110,7 @@
       {
         "title": "采样日程不能任意删步",
         "body": [
-          "推理从最高噪声状态出发，按所选反向日程逐步更新，条件 c 通常在这一动作块的生成期间保持固定。前面的一步公式是为特定相邻等级推导的；如果只保留每十个训练等级，却继续使用相邻等级的 \\(\\beta\\) 和 \\(\\tilde\\beta\\)，并没有正确实现跳步采样。减少步数需要采用与间隔一致的系数或对应采样算法。",
+          "推理从最高噪声状态出发，按所选反向日程逐步更新，条件 c 通常在这一动作块的生成期间保持固定。前面给出的一步公式对应特定相邻等级；如果只保留每十个训练等级，却继续使用相邻等级的 \\(\\beta\\) 和 \\(\\tilde\\beta\\)，并没有正确实现跳步采样。减少步数需要采用与间隔一致的系数或对应采样算法。",
           "DDIM、不同 ODE/SDE 采样器以及蒸馏模型提供不同速度与误差取舍，它们不是在 for 循环里简单改 range 就等价。比较时除步数外，还需记录网络调用次数、实际延迟、噪声随机性和任务成功率。固定初始噪声只固定了起点；随机 DDPM 的中间噪声也必须固定，才能获得可重复对照。",
           "采样通常使用 eval 和 no_grad，避免 Dropout 或梯度图带来额外变化及内存开销，但两者处理不同问题。模型架构里若含需要模式切换的模块，只有 no_grad 并不能切换其行为。任何采样优化都应先通过公式和数值对照，再到真实条件上评估生成质量。"
         ],
@@ -9096,6 +9131,40 @@
         "codeExplanation": "ddim_step 只负责 \\(\\eta=0\\) 的单步代数更新，输入的 alpha_bar_t 与 alpha_bar_s 是累计系数。Oracle 检查跨越非相邻噪声等级、到达干净端点、恒等更新及非法系数；容差采用 float64 精度。真实采样循环中，eps_hat 应由模型使用当前 \\(x_t\\)、当前时间与条件重新预测。",
         "id": "added-0",
         "lead": "DDIM 是一类与扩散噪声预测配套的采样构造，确定性版本在给定初始噪声后不再每步加入新随机量。它通过干净样本估计重新组合目标等级状态，因此可以明确处理非相邻等级。下面核对两端系数。"
+      },
+      {
+        "id": "posterior-derivation",
+        "title": "回看反向一步：给定干净样本的高斯后验",
+        "body": [
+          "反向生成需要 \\(p_\\theta(x_{k-1}\\mid x_k,c)\\)，但真实反向分布要对未知干净数据积分，通常不易直接计算。训练时已经知道 a，因此可计算 \\(q(x_{k-1}\\mid x_k,a)\\)。前向 Markov 性给出 \\(q(y\\mid x_k,a)\\propto q(x_k\\mid y)q(y\\mid a)\\)，其中 \\(y=x_{k-1}\\)。这两个分布都是高斯，关于 y 的指数是二次函数。",
+          "下面先限制 \\(k\\ge1\\)，使 \\(1-\\bar\\alpha_{k-1}>0\\)。将两个平方展开，\\(y^\\top y\\) 的系数给出精度 \\(\\Lambda=\\frac{\\alpha_k}{\\beta_k}+\\frac{1}{1-\\bar\\alpha_{k-1}}\\)；线性项给出自然均值参数 \\(\\eta=\\frac{\\sqrt{\\alpha_k}\\,x_k}{\\beta_k}+\\frac{\\sqrt{\\bar\\alpha_{k-1}}\\,a}{1-\\bar\\alpha_{k-1}}\\)。高斯配方因此得到协方差 \\(\\Lambda^{-1}I\\)、均值 \\(\\Lambda^{-1}\\eta\\)。",
+          "利用 \\(\\bar\\alpha_k=\\alpha_k\\bar\\alpha_{k-1}\\) 化简，得到后验方差 \\(\\tilde\\beta_k=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}\\)，以及下式的干净样本项与当前噪声状态项。这个后验使用了训练时的 a；部署网络不能把 a 当作已知输入，因此还需学习能从 \\(x_k,k,c\\) 提供相关信息的预测器。",
+          "由 \\(x_k=\\sqrt{\\bar\\alpha_k}\\,a+\\sqrt{1-\\bar\\alpha_k}\\,\\epsilon\\) 解出 a，并代入后验均值，可得 \\(\\frac{1}{\\sqrt{\\alpha_k}}\\left[x_k-\\frac{\\beta_k\\epsilon}{\\sqrt{1-\\bar\\alpha_k}}\\right]\\)。这一步说明 epsilon 参数化的均值形式从何而来。训练样本中的 \\(\\epsilon\\) 是一个隐藏端点配对的噪声，网络对给定 \\(x_k\\) 的 MSE 最优预测仍是其条件均值。",
+          "\\(k=0\\) 对应从第一个噪声状态返回干净 a，给定 a 的后验退化为点质量，不能把含 \\(\\log\\tilde\\beta_0\\) 的普通高斯 KL 公式直接使用。变分目标在这里单独使用解码似然项；教学采样代码最后返回均值，是输出规则，不是已经计算了这个解码似然。"
+        ],
+        "formula": "\\begin{aligned}\n\\log q(y\\mid x_k,a)&=C-\\frac{\\|x_k-\\sqrt{\\alpha_k}y\\|^2}{2\\beta_k}\n-\\frac{\\|y-\\sqrt{\\bar\\alpha_{k-1}}a\\|^2}{2(1-\\bar\\alpha_{k-1})}\\\\\n\\tilde\\beta_k&=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k},\\\\\n\\tilde\\mu_k&=\\frac{\\sqrt{\\bar\\alpha_{k-1}}\\beta_k}{1-\\bar\\alpha_k}a+\n\\frac{\\sqrt{\\alpha_k}(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}x_k,\\qquad k\\ge1 .\n\\end{aligned}",
+        "code": "import math\nimport torch\n\ntorch.set_default_dtype(torch.float64)\nbeta = torch.tensor(0.12)\nalpha = 1 - beta\nalpha_bar_previous = torch.tensor(0.72)\nalpha_bar = alpha_bar_previous * alpha\nclean = torch.tensor([[-0.7, 1.2], [0.4, -1.1]])\nnoise = torch.tensor([[0.3, -0.2], [1.3, 0.6]])\nnoisy = alpha_bar.sqrt()*clean + (1-alpha_bar).sqrt()*noise\n\n# Complete the square in the product q(x_k|y) q(y|clean).\nprecision = alpha/beta + 1/(1-alpha_bar_previous)\nnatural_mean = alpha.sqrt()*noisy/beta + alpha_bar_previous.sqrt()*clean/(1-alpha_bar_previous)\nposterior_variance = beta*(1-alpha_bar_previous)/(1-alpha_bar)\nposterior_mean = (\n    alpha_bar_previous.sqrt()*beta/(1-alpha_bar)*clean\n    + alpha.sqrt()*(1-alpha_bar_previous)/(1-alpha_bar)*noisy)\ntorch.testing.assert_close(precision.reciprocal(), posterior_variance)\ntorch.testing.assert_close(natural_mean/precision, posterior_mean)\n\n# The same mean can be parameterized by the sampled forward noise.\nepsilon_form = (noisy-beta/(1-alpha_bar).sqrt()*noise)/alpha.sqrt()\ntorch.testing.assert_close(epsilon_form, posterior_mean)\nprint(\"posterior variance:\", posterior_variance.item())\nprint(\"max mean difference:\", (natural_mean/precision-posterior_mean).abs().max().item())\n\n# This posterior is non-degenerate only for k>=1 in the zero-based convention.\nclean_boundary_variance = beta * (1-1) / (1-alpha)\nassert clean_boundary_variance == 0\nprint(\"passed: Gaussian product, epsilon mean and clean-boundary variance\")\n",
+        "codeExplanation": "先按自然参数计算两个 Gaussian 核的乘积，再与化简后的后验均值/方差对照；最后代入已知前向噪声验证 epsilon 形式。这个 oracle 不使用学习网络，能够把公式错误与模型预测误差分开。",
+        "lead": "前面已经按给定均值和方差完成了反向更新，现在回头推导这两个量的来源。这里的条件后验是已知当前带噪状态与干净训练样本时，前一级状态的分布。它是训练中可计算的比较对象，与生成时没有干净答案的反向模型不同。"
+      },
+      {
+        "id": "variational-objective",
+        "title": "回看训练目标：从轨迹 ELBO 到噪声回归",
+        "body": [
+          "固定一个训练样本 \\((a,c)\\)，把整条噪声轨迹 \\(x_{0:K-1}\\) 视为潜变量。生成联合分布为 \\(p_\\theta(a,x_{0:K-1}\\mid c)=p(x_{K-1})p_\\theta(a\\mid x_0,c)\\prod_{k=1}^{K-1}p_\\theta(x_{k-1}\\mid x_k,c)\\)。以前向链 \\(q(x_{0:K-1}\\mid a)\\) 作为变分分布，[VAE 的 ELBO](#/learn/latent-variable-models?tab=theory&section=elbo-derivation) 给出负对数似然的上界：",
+          "\\[L_{\\rm VLB}=\\mathbb E_q\\!\\left[\\log q(x_{0:K-1}\\mid a)-\\log p_\\theta(a,x_{0:K-1}\\mid c)\\right]\\ge-\\log p_\\theta(a\\mid c).\\]",
+          "要把这个整条轨迹的比值变成局部比较，关键是对同一个前向联合分布采用反向链式分解。固定 \\(a\\) 后，Markov 链的反向条件只需当前 \\(x_k\\) 与 \\(a\\)，因此 \\(q(x_{0:K-1}\\mid a)=q(x_{K-1}\\mid a)\\prod_{k=1}^{K-1}q(x_{k-1}\\mid x_k,a)\\)。这里是在重写已知分布，不是声明训练时已经学到了反向模型。",
+          "将这两个乘积放入对数比，逐项得到终端项 \\(\\log[q(x_{K-1}\\mid a)/p(x_{K-1})]\\)、各级项 \\(\\log[q(x_{k-1}\\mid x_k,a)/p_\\theta(x_{k-1}\\mid x_k,c)]\\)，以及 \\(-\\log p_\\theta(a\\mid x_0,c)\\)。对各级项先按 \\(q(x_{k-1}\\mid x_k,a)\\) 求期望，它就成为一个 KL；再按 \\(q(x_k\\mid a)\\) 求期望。这个全期望步骤解释了为什么最终出现“局部 KL 的平均”。",
+          "具体地，负 ELBO 为 \\[L_{\\rm prior}+\\sum_{k=1}^{K-1}\\mathbb E_{q(x_k\\mid a)}\\!\\left[D_{\\rm KL}\\!\\left(q(x_{k-1}\\mid x_k,a)\\,\\Vert\\,p_\\theta(x_{k-1}\\mid x_k,c)\\right)\\right]+L_{\\rm recon}\\]\\(L_{\\rm prior}=D_{\\rm KL}\\!\\left(q(x_{K-1}\\mid a)\\,\\Vert\\,p(x_{K-1})\\right)\\)；当前向日程和先验固定时，它不参与 \\(\\theta\\) 的梯度。\\(L_{\\rm recon}=\\mathbb E_{q(x_0\\mid a)}[-\\log p_\\theta(a\\mid x_0,c)]\\)。这一分解把困难的整条轨迹比值转为可计算的局部 Gaussian 比较。",
+          "设反向模型使用固定协方差 \\(\\rho_k^2 I\\)，而均值采用 epsilon 参数化。两个 Gaussian 的 KL 中，只有均值平方差依赖这个预测网络；协方差比值、对数行列式等合并成 \\(C_k\\)。用上一节的均值形式相减，差值恰好是 \\(-\\frac{\\beta_k(\\epsilon_\\theta-\\epsilon)}{\\sqrt{\\alpha_k}\\sqrt{1-\\bar\\alpha_k}}\\)。因此相应 \\(\\theta\\) 目标等于 \\(\\lambda_k\\lVert\\epsilon_\\theta-\\epsilon\\rVert^2\\)，\\(\\lambda_k=\\frac{\\beta_k^2}{2\\rho_k^2\\alpha_k(1-\\bar\\alpha_k)}\\)。",
+          "若反向方差也由网络学习，则协方差项一般依赖 \\(\\theta\\)，不能继续删除 \\(C_k\\) 或只训练这个简单 MSE。\\(k=0\\) 的重建项、先验项和离散数据的解码约定也需要单独处理；因此“DDPM loss 就是任意 mean MSE”并不准确。",
+          "常用 \\(L_{\\rm simple}\\) 对噪声等级均匀采样并使用无权重 epsilon MSE，是对原始变分目标的重新加权。若以非均匀概率 \\(r(k)>0\\) 抽样，却仍想估计某个指定的求和目标 \\(\\sum_k\\lambda_k L_k\\)，应使用 \\(\\lambda_k/r(k)\\) 的重要性权重；若目标是等级平均，还要包含相应的总数因子。有限模型容量下，改变权重会改变优化关注的噪声区间。",
+          "下面代码故意选择与真实后验不同的固定反向方差，验证 KL=加权 MSE+常数，并比较两者对 \\(\\epsilon_\\theta\\) 的 Autograd 梯度。它检验的是给定固定方差与索引条件下的恒等式，不比较不同训练目标在真实数据上的最终性能。"
+        ],
+        "formula": "\\begin{aligned}\nL_{\\mathrm{VLB}}&=L_{\\mathrm{prior}}+\n\\sum_{k=1}^{K-1}\\mathbb E\\,D_{\\mathrm{KL}}\\!\\left(q(x_{k-1}\\mid x_k,a)\\Vert p_\\theta(x_{k-1}\\mid x_k,c)\\right)+L_{\\mathrm{recon}},\\\\\nD_{\\mathrm{KL}}&=\\frac{\\|\\tilde\\mu_k-\\mu_\\theta\\|^2}{2\\rho_k^2}+C_k\\\\\n&=\\underbrace{\\frac{\\beta_k^2}{2\\rho_k^2\\alpha_k(1-\\bar\\alpha_k)}}_{\\lambda_k}\n\\|\\epsilon_\\theta(x_k,k,c)-\\epsilon\\|^2+C_k .\n\\end{aligned}",
+        "code": "import torch\n\ntorch.set_default_dtype(torch.float64)\nbeta = torch.tensor(0.12)\nalpha = 1-beta\nab_previous = torch.tensor(0.72)\nab = alpha*ab_previous\nposterior_variance = beta*(1-ab_previous)/(1-ab)\nreverse_variance = beta  # Fixed, intentionally different from the posterior.\nclean = torch.tensor([[-0.7,1.2],[0.4,-1.1]])\nnoise = torch.tensor([[0.3,-0.2],[1.3,0.6]])\nnoisy = ab.sqrt()*clean + (1-ab).sqrt()*noise\nepsilon_hat = (noise + torch.tensor([[0.2,-0.3],[0.1,0.4]])).requires_grad_()\nposterior_mean = (noisy-beta/(1-ab).sqrt()*noise)/alpha.sqrt()\nmodel_mean = (noisy-beta/(1-ab).sqrt()*epsilon_hat)/alpha.sqrt()\nq = torch.distributions.Independent(\n    torch.distributions.Normal(posterior_mean, posterior_variance.sqrt()), 1)\np = torch.distributions.Independent(\n    torch.distributions.Normal(model_mean, reverse_variance.sqrt()), 1)\nkl = torch.distributions.kl_divergence(q,p)\nweight = beta.square()/(2*reverse_variance*alpha*(1-ab))\nweighted_noise_error = weight*(epsilon_hat-noise).square().sum(-1)\ndimension = clean.shape[-1]\nconstant = 0.5*dimension*(\n    posterior_variance/reverse_variance-1\n    + torch.log(reverse_variance/posterior_variance))\ntorch.testing.assert_close(kl, weighted_noise_error+constant)\ng_kl = torch.autograd.grad(kl.mean(),epsilon_hat,retain_graph=True)[0]\ng_mse = torch.autograd.grad(weighted_noise_error.mean(),epsilon_hat)[0]\ntorch.testing.assert_close(g_kl,g_mse)\nprint(\"time weight:\", weight.item(), \"fixed covariance constant:\", constant.item())\nprint(\"passed: KL equals weighted epsilon MSE plus a theta-independent constant\")\n",
+        "codeExplanation": "Independent(Normal(...),1) 把动作向量作为一个联合事件，对维度求和后计算 KL。协方差常数与网络均值无关，故删除后保留相同的期望梯度；若使用逐元素 mean，必须同时追踪额外的维度因子。",
+        "lead": "前面用噪声 MSE 训练了回归器，下面再问它与数据似然是什么关系。轨迹 ELBO 把整条加噪过程看作潜变量，将全局生成目标分解为若干反向分布的局部比较，由此导出带时间权重的噪声回归。这个推导也说明简化目标省去了哪些权重。"
       },
       {
         "id": "representative-diffusion-designs",
@@ -9453,8 +9522,9 @@
         "id": "forward-sde",
         "title": "SDE 和 Fokker–Planck：样本噪声怎样改变密度",
         "body": [
-          "考虑 Itô SDE：\\(dX_t=f(X_t,t)\\,dt+g(t)\\,dW_t\\)，其中 \\(f\\in\\mathbb R^D\\) 是漂移，\\(g(t)\\ge0\\) 是只依赖时间的标量扩散系数，\\(W_t\\) 为 \\(D\\) 维标准 Brownian motion。一个长度 \\(h>0\\) 的独立 Brownian 增量具有协方差 \\(hI\\)，因此 Euler–Maruyama 更新中的噪声项是 \\(g\\sqrt h\\,\\xi\\)，而不是 \\(gh\\,\\xi\\)；后者的噪声方差会错误地变成 \\(h^2\\) 量级。",
+          "考虑 Itô SDE：\\(dX_t=f(X_t,t)\\,dt+g(t)\\,dW_t\\)，其中 \\(f\\in\\mathbb R^D\\) 是漂移，\\(g(t)\\ge0\\) 是只依赖时间的标量扩散系数，\\(W_t\\) 为 \\(D\\) 维标准 Brownian motion。标准布朗运动从零出发，路径连续，互不重叠时间段的增量相互独立，长度为 h 的增量服从 \\(\\mathcal N(0,hI)\\)。因此，对长度 h>0 的一步， Euler–Maruyama 更新中的噪声项是 \\(g\\sqrt h\\,\\xi\\)，而不是 \\(gh\\,\\xi\\)；后者的噪声方差会错误地变成 \\(h^2\\) 量级。",
           "先冻结当前 \\(x,t\\)，把一个小步近似写成 \\(\\Delta X=f(x,t)h+g(t)\\sqrt h\\,\\xi\\)，其中 \\(\\mathbb E\\xi=0\\)、\\(\\mathbb E[\\xi\\xi^\\top]=I\\)。其均值是 \\(fh\\)，二阶矩是 \\(g^2hI+ff^\\top h^2\\)。对足够光滑的测试函数作二阶展开：\\(\\varphi(x+\\Delta X)-\\varphi(x)=\\nabla\\varphi(x)^\\top\\Delta X+\\frac12\\Delta X^\\top H_\\varphi(x)\\Delta X+R\\)，其中 \\(H_\\varphi\\) 是 Hessian。",
+          "记号也要先固定：对标量函数 φ，\\(\\Delta\\varphi=\\sum_i\\partial^2\\varphi/\\partial x_i^2\\) 是 Laplace 算子；对向量场 j，\\(\\nabla\\cdot j=\\sum_i\\partial j_i/\\partial x_i\\) 是散度。前者将二阶变化相加，后者在概率通量中表示局部净流出。它们都对状态坐标求导，而非对网络参数求导。",
           "取条件期望并除以 \\(h\\)，一阶项给出 \\(f\\cdot\\nabla\\varphi\\)，二阶项中的 \\(g^2hI\\) 给出 \\(\\frac12g^2\\operatorname{tr}(H_\\varphi)=\\frac12g^2\\Delta\\varphi\\)，\\(ff^\\top h^2\\) 对应项则随 \\(h\\to0\\) 消失。若局部矩与导数满足使余项满足 \\(\\mathbb E[R]/h\\to0\\) 的条件，便得到下面的生成元；Itô 公式对连续过程给出相同的期望恒等式。这说明随机增量虽只有零均值，仍通过二阶项改变密度。",
           "\\[\\frac d{dt}\\mathbb E[\\varphi(X_t)]=\\mathbb E[\\nabla\\varphi\\cdot f+\\frac{g^2}{2}\\Delta\\varphi]\\]",
           "再把对 \\(X_t\\) 的期望写成密度积分。在测试函数紧支撑，或边界衰减足以消去边界项的条件下，\\(\\int p f\\cdot\\nabla\\varphi=-\\int\\varphi\\nabla\\cdot(fp)\\)；扩散项分部积分两次，\\(\\int p\\Delta\\varphi=\\int\\varphi\\Delta p\\)。把导数移到 \\(p_t\\) 后，才能从所有测试函数的恒等式得到密度方程。",
@@ -9488,11 +9558,20 @@
           "将它与漂移通量合并，得到连续性方程 \\(\\partial_t p=-\\nabla\\!\\cdot(pu_t)\\)，其中 \\(u_t=f-\\frac{g^2}{2}s_t\\)。满足适当的解存在性、唯一性与边界条件时，ODE \\(\\frac{dX}{dt}=u_t\\) 与原 SDE 具有相同的各时刻边际密度。",
           "这里的“一样”只针对边际分布 \\(p_t\\)，不表示样本路径、给定两端点的条件过程或多时刻联合分布相同。SDE 持续注入随机增量，ODE 在给定初始点后是确定的。逆向生成时，把这个 ODE 从 \\(T\\) 积分到 0，或使用 \\(\\tau\\) 时钟下的 \\(-f+\\frac{g^2}{2}s_t\\)。",
           "反向 SDE 的 score 系数是 \\(g^2\\)，概率流 ODE 的系数是 \\(g^2/2\\)。因子不同来自它们密度方程中是否还含随机扩散项。不能删除反向 SDE 的随机项但保留原漂移，声称得到了概率流 ODE。",
-          "一个诊断例是平稳标准高斯下的 VP 过程：\\(s=-x\\)，\\(f=-\\beta x/2\\)，\\(g^2=\\beta\\)。概率流 ODE 的速度为零；正反向 SDE 都仍然可以是保持单位高斯边际的 Ornstein–Uhlenbeck 过程。这个例子直接显示，相同边际分布并不要求相同样本运动。",
           "完整代码在一个二维高斯混合密度上，用 Autograd 分别计算时间导数、Fokker–Planck 右端和 ODE 连续性方程右端，逐点核对恒等式。这是公式层面的验证；学习到的 score 只有近似准确时，实际生成边际也只能近似遵循上述关系。"
         ],
         "formula": "\\begin{aligned}\\partial_tp_t&=-\\nabla\\cdot(f p_t)+\\tfrac12g^2\\nabla\\cdot(p_ts_t)\\\\&=-\\nabla\\cdot\\!\\left[p_t\\left(f-\\tfrac12g^2s_t\\right)\\right],\\\\u_t(x)&=f(x,t)-\\tfrac12g(t)^2s_t(x).\\end{aligned}",
-        "lead": "概率流 ODE 是与给定扩散过程具有相同边际密度演化的确定性微分方程。它用一个速度场替代随机扰动所产生的概率通量，但样本轨迹分布并不相同。下面从本章的密度方程推导这个速度。"
+        "lead": "概率流 ODE 是与给定扩散过程具有相同边际密度演化的确定性微分方程。它用一个速度场替代随机扰动所产生的概率通量，但样本轨迹分布并不相同。下面从本章的密度方程推导这个速度。",
+        "example": {
+          "title": "同样保持标准高斯，样本可以运动，也可以静止",
+          "afterParagraph": 3,
+          "steps": [
+            "考虑平稳单位高斯上的 VP 过程。取 β=2，在 x=1 处，Score 为 −1，前向漂移 \\(f=-\\beta x/2=-1\\)，扩散强度 \\(g=\\sqrt2\\) 不为零。",
+            "概率流 ODE 的速度为 \\(f-(g^2/2)s=-1-(2/2)(-1)=0\\)，所以它的每个初始样本在这个平稳例子中保持原位。",
+            "SDE 仍有漂移和随机增量，单个样本继续运动，但群体的标准高斯边际不变。对反向时钟，反向 SDE 在这里也仍有非零随机项；这不是“把反向 SDE 的噪声删掉”得到的 ODE。"
+          ],
+          "conclusion": "相同边际分布描述各时刻的样本群体，不要求相同的单条轨迹或多时刻联合分布。连续方程的这一关系也不意味着任意有限步离散器都精确保持边际。"
+        }
       },
       {
         "id": "parameterization-bridge",
@@ -10067,7 +10146,8 @@
             "一步Heun先预测候选2，再在终点候选处求速度2，最终为\\(1+0.5(1+2)=2.5\\)。精确值为\\(e\\approx2.71828\\)。",
             "两步Heun每步\\(h=0.5\\)，每次乘\\(1+h+\\frac{h^2}{2}=1.625\\)，终点为\\(1.625^2=2.640625\\)。它用了4次速度求值，不能与两次求值的两步Euler称为相同计算预算。"
           ],
-          "conclusion": "先验证方向、步长和第二阶段求值，再接神经网络；同时报告步数、NFE与实际延迟。"
+          "conclusion": "先验证方向、步长和第二阶段求值，再接神经网络；同时报告步数、NFE与实际延迟。",
+          "afterParagraph": 3
         },
         "focus": {
           "kind": "常用",
@@ -10111,7 +10191,7 @@
           "取任意光滑、紧支撑的测试函数 \\(\\varphi(x)\\)。它可以理解为对空间某一小块区域的平滑计数；\\(\\mathbb E[\\varphi(X_t)]\\) 描述该区域的概率质量。在允许交换微分与期望的正则条件下，链式法则给出：",
           "\\[\\frac d{dt}\\mathbb E[\\varphi(X_t)]=\\mathbb E[\\nabla\\varphi(X_t)\\cdot U_t]\\] 对单个样本先用链式法则，再求平均；这一步尚未使用密度方程。",
           "再按 \\(X_t\\) 条件化。因为 \\(\\nabla\\varphi(X_t)\\) 已由当前位置决定，\\(U_t\\) 可以替换为其条件均值 \\(u_t\\)；将期望写成密度积分后，对空间分部积分。\\(\\varphi\\) 在边界外为零，边界通量项消失，于是得到下式。等式对所有这样的 \\(\\varphi\\) 都成立，就是连续性方程的弱形式；密度足够光滑时可以写成熟悉的偏微分方程。",
-          "直观上，\\(p_tu_t\\) 是概率通量，散度为正代表净流出，所以密度的时间导数取负号。若速度场满足使 ODE 解存在且唯一、概率方程与流相容的条件，从 \\(p_0\\) 抽样后积分这个场，就会经过规定的 \\(p_t\\)。仅有一个形式上的 PDE，仍需满足存在性与边界条件，并处理可能的奇异端点。"
+          "散度把通量各分量沿对应坐标的变化相加：\\(\\nabla\\cdot j=\\sum_i\\partial j_i/\\partial x_i\\)。直观上，\\(p_tu_t\\) 是概率通量，散度为正代表净流出，所以密度的时间导数取负号。若速度场满足使 ODE 解存在且唯一、概率方程与流相容的条件，从 \\(p_0\\) 抽样后积分这个场，就会经过规定的 \\(p_t\\)。仅有一个形式上的 PDE，仍需满足存在性与边界条件，并处理可能的奇异端点。"
         ],
         "formula": "\\begin{aligned}\\frac{d}{dt}\\mathbb E[\\varphi(X_t)]&=\\mathbb E[\\nabla\\varphi(X_t)\\cdot U_t]\\\\&=\\int\\nabla\\varphi(x)\\cdot u_t(x)p_t(x)\\,dx\\\\&=-\\int\\varphi(x)\\nabla\\!\\cdot(p_tu_t)(x)\\,dx\\\\\\Longrightarrow\\quad\\partial_t p_t&+\\nabla\\!\\cdot(p_tu_t)=0\\end{aligned}",
         "takeaway": "条件期望保留任意测试函数的期望变化，这正是样本速度能够定义边际运输的原因。",
@@ -10223,7 +10303,8 @@
             "改用\\(s=1-t\\)，同一状态位于\\(s=0.75\\)，\\(x(s)=5-3s\\)，速度是-3。沿生成方向把\\(s\\)减少0.25，更新量为\\((-0.25)(-3)=0.75\\)。",
             "两种约定都从2.75移动到3.5。如果只翻转速度却继续使用正步长，就会向反方向移动。"
           ],
-          "conclusion": "读仓库时成组核对插值、target与采样网格；变量名称无法代替端点定义。"
+          "conclusion": "读仓库时成组核对插值、target与采样网格；变量名称无法代替端点定义。",
+          "afterParagraph": 1
         },
         "lead": "时间重参数化是用另一个时钟描述同一条运动，例如把噪声端从零改记为一。它同时改变时间输入、路径导数和积分步长。下面用链式法则说明怎样成套转换，而非只改变目标的一个符号。"
       },
@@ -10747,7 +10828,8 @@
             "只观察 p 的常数预测 f 的风险为 \\(\\tfrac12(f+0.2)^2+\\tfrac12(f-0.2)^2=f^2+0.04\\)。",
             "最优 f=0，最小 MSE 为 0.04；选择任一单侧动作的 MSE 为 0.08。零动作是该损失的最优均值，却不会向任何目标前进。"
           ],
-          "conclusion": "先确认条件是否包含任务所需信息，再将均值输出的问题归因于网络或优化。"
+          "conclusion": "先确认条件是否包含任务所需信息，再将均值输出的问题归因于网络或优化。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -11094,7 +11176,7 @@
       {
         "title": "完整相对位姿：顺序不可交换",
         "body": [
-          "位姿 T 由旋转 R 和平移 p 组成，属于 \\(\\mathrm{SE}(3)\\)。身体坐标下的相对变换定义为 \\(\\Delta T_{\\rm body}=T_t^{-1}T_{t+1}\\)，于是 \\(T_{t+1}=T_t\\Delta T_{\\rm body}\\)。空间坐标下的增量可以定义为 \\(\\Delta T_{\\rm space}=T_{t+1}T_t^{-1}\\)，对应 \\(T_{t+1}=\\Delta T_{\\rm space}T_t\\)。左右乘不是记号偏好，而是增量表达坐标系的不同。",
+          "位姿 T 由旋转 R 和平移 p 组成，可写成 \\(T=\\begin{bmatrix}R&p\\\\0&1\\end{bmatrix}\\) 的 4×4 齐次矩阵；\\(\\mathrm{SE}(3)\\) 指由这些三维旋转和平移组成的刚体变换集合。身体坐标下的相对变换定义为 \\(\\Delta T_{\\rm body}=T_t^{-1}T_{t+1}\\)，于是 \\(T_{t+1}=T_t\\Delta T_{\\rm body}\\)。空间坐标下的增量可以定义为 \\(\\Delta T_{\\rm space}=T_{t+1}T_t^{-1}\\)，对应 \\(T_{t+1}=\\Delta T_{\\rm space}T_t\\)。左右乘不是记号偏好，而是增量表达坐标系的不同。",
           "展开身体增量可见其旋转为 \\(R_t^\\top R_{t+1}\\)、平移为 \\(R_t^\\top(p_{t+1}-p_t)\\)。因此平移与旋转具有清楚的共同参考。若只把两组欧拉角逐元素相减，然后与工具系位移拼接，通常没有实现上述群上的相对变换；有限旋转不可交换，Euler 角还有周期、轴顺序和奇异性问题。",
           "对于很小的运动，可用局部旋转向量或李代数坐标表示增量，但它是局部参数化，仍需说明指数映射、参考坐标与单位。把局部近似推广到大角度运动前，应通过组合恢复、逆变换和多次更新的对照检查。与机器人接口连接时，尤其要核对库采用的四元数顺序和旋转约定。"
         ],
@@ -11111,7 +11193,7 @@
       {
         "title": "旋转表示与损失要一起设计",
         "body": [
-          "同一个旋转可以由 q 与 −q 两个单位四元数表示。直接计算两者欧氏 MSE，会把物理上相同的姿态当成相距很远的标签；若没有单位范数约束，网络输出还可能不对应合法旋转。可以采用一致的表示处理和符号不变的旋转误差，但规范化与符号选择在边界处仍应做数值检查。",
+          "单位四元数以四个数 \\(q=(w,x,y,z)\\) 表示旋转，并满足 \\(w^2+x^2+y^2+z^2=1\\)；分量排列仍需与具体接口一致。同一个旋转可以由 q 与 −q 两个单位四元数表示。直接计算两者欧氏 MSE，会把物理上相同的姿态当成相距很远的标签；若没有单位范数约束，网络输出还可能不对应合法旋转。可以采用一致的表示处理和符号不变的旋转误差，但规范化与符号选择在边界处仍应做数值检查。",
           "Euler 角维度少，但存在周期跳变和参数化奇异性。旋转矩阵有九个数和正交约束；连续六维表示通常还要经过正交化才能得到旋转。不存在只根据输出维数就能决定的最佳表示，关键是数据覆盖、模型优化、解码过程以及评价的几何误差是否匹配。",
           "对 \\(R_{\\rm pred}\\) 与 \\(R_{\\rm true}\\)，可用相对旋转的角度衡量姿态差，计算 arccos 前要把理论上在 [−1,1] 的输入按数值误差裁剪。不要把旋转误差的弧度与位置误差的米直接解释成同一种量。训练目标可加权，但评估时应分别报告可解释的物理指标，以免一个标量掩盖某类严重偏差。"
         ],
@@ -11139,7 +11221,8 @@
             "未标准化 MSE 从 0.0001 变成 100，数值放大 10⁶ 倍，但物理误差没有变化。",
             "若均值、尺度与标签同时按同一单位转换，标准化后的误差应保持一致。"
           ],
-          "conclusion": "比较训练损失前先核对单位与尺度；只调任务权重可能是在补偿接口不一致。"
+          "conclusion": "比较训练损失前先核对单位与尺度；只调任务权重可能是在补偿接口不一致。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "常用",
@@ -11597,14 +11680,14 @@
         ]
       },
       {
-        "question": "预测 \\(H=16\\) 步、执行 E=4 步，推理延迟增加后，能否直接把 E 调大解决？",
+        "question": "预测 \\(H=16\\) 步、执行 K=4 步，推理延迟增加后，能否直接把 K 调大解决？",
         "answer": [
-          "E 调大通常能延长已有动作的播放时间，但也延长了再次获得反馈前的开放执行阶段。它改变反应能力、源观测年龄与重规划节奏，并不消除延迟。先测量端到端延迟分布、动作间隔、可用队列长度和实际消费速度。",
-          "新的 chunk 到达时，要根据观测时间戳对齐到未执行的未来槽位，丢弃已经过去的部分。若有效剩余时长仍不足以覆盖下一次推理，调整 E 本身不一定解决问题。比较方法时应固定动作语义并记录停止、过期与队列耗尽事件。"
+          "K 调大通常能延长已有动作的播放时间，但也延长了再次获得反馈前的开放执行阶段。它改变反应能力、源观测年龄与重规划节奏，并不消除延迟。先测量端到端延迟分布、动作间隔、可用队列长度和实际消费速度。",
+          "新的 chunk 到达时，要根据观测时间戳对齐到未执行的未来槽位，丢弃已经过去的部分。若有效剩余时长仍不足以覆盖下一次推理，调整 K 本身不一定解决问题。比较方法时应固定动作语义并记录停止、过期与队列耗尽事件。"
         ],
         "codeFocus": "code.source 的 execution_horizon 与部署层的时间戳/队列消费逻辑。",
         "acceptance": [
-          "区分 H、E、控制频率和推理延迟。",
+          "区分 H、K、控制频率和推理延迟。",
           "说明更长执行窗口对反馈新鲜度的影响。"
         ]
       }
@@ -11645,7 +11728,7 @@
       {
         "title": "状态、观测与 Markov 性的区别",
         "body": [
-          "在 MDP 中，给定当前状态 \\(s_t\\) 与动作 \\(a_t\\)，下一状态分布不再依赖更早历史。这里的状态是模型定义中足够描述动力学的变量，未必就是相机图片或传给神经网络的 Tensor。位置相同但速度不同、接触模式不同或任务阶段不同，都可能导致同一动作产生不同后果。",
+          "在马尔可夫决策过程（MDP）中，给定当前状态 \\(s_t\\) 与动作 \\(a_t\\)，下一状态分布不再依赖更早历史。这里的状态是模型定义中足够描述动力学的变量，未必就是相机图片或传给神经网络的 Tensor。位置相同但速度不同、接触模式不同或任务阶段不同，都可能导致同一动作产生不同后果。",
           "机器人通常只能得到观测 \\(o_t\\)，例如图像、编码器或力传感数据，它们由隐藏状态产生且可能带噪声、延迟和遮挡。若只把当前观测输入策略，两个需要不同动作的真实状态可能被映射成同一个输入，这称为观测混叠。模型再大，也无法从完全相同且没有额外信息的输入区分两种隐藏状态。",
           "是否近似满足 Markov 性取决于任务与传感器，而不是数据字段叫 state 就成立。一个包含位置和速度的状态向量仍可能缺少摩擦、负载或接触历史；另一方面，某些慢速任务用当前观测就足够实用。应通过具有明确差异的动态场景验证信息需求，而非把使用记忆当成所有策略的默认答案。"
         ],
@@ -11673,7 +11756,8 @@
             "当前位置都为零，但估计速度分别为 +1 与 −1。",
             "若动作应抵消速度，标签分别是 −1 与 +1；只看当前位置的 MSE 最优常数为零。"
           ],
-          "conclusion": "历史的作用来自新增可辨认信息，不是单纯增加模型参数。"
+          "conclusion": "历史的作用来自新增可辨认信息，不是单纯增加模型参数。",
+          "afterParagraph": 1
         },
         "id": "2",
         "lead": "判断是否需要历史，可以先构造当前观测完全相同、正确行为却不同的两个样本。位置与速度的简单关系足以暴露这种歧义，并说明增加哪一种信息才有可能解决它。"
@@ -11681,7 +11765,7 @@
       {
         "title": "历史与信念状态在估计什么",
         "body": [
-          "POMDP 中可以用信念 \\(b_t(s)=P(s_t=s\\mid o_{0:t},a_{0:t-1})\\) 概括对隐藏状态的不确定性。过去动作很重要：相同两帧变化可能来自不同已执行控制或外部扰动。只保存图像历史而不考虑动作与采样间隔，未必足够解释状态演化。",
+          "部分可观测马尔可夫决策过程（POMDP）中可以用信念 \\(b_t(s)=P(s_t=s\\mid o_{0:t},a_{0:t-1})\\) 概括对隐藏状态的不确定性。过去动作很重要：相同两帧变化可能来自不同已执行控制或外部扰动。只保存图像历史而不考虑动作与采样间隔，未必足够解释状态演化。",
           "在已知转移与观测模型的标准设置下，先用动作把 \\(b_t\\) 传播到下一状态分布，再用新观测做贝叶斯更新并归一化。这说明记忆不仅是存储更多帧，也是结合先验动态和新证据估计当前状态。神经循环模块可以学习有用摘要，但它没有显式概率语义时，不能直接把 hidden 称为已校准的信念分布。",
           "有限长度历史是计算与信息的折中。短窗口可提供局部速度和最近事件，长任务阶段可能需要更早信息；增加窗口又会增加显存、重复输入与噪声。如果某信息从未被任何传感器观察到，再长历史也无法确定它。应区分可估计的不确定性、不可观测变量和模型没有学会利用的证据。"
         ],
@@ -11738,7 +11822,7 @@
         "example": {
           "title": "相同数值，梯度路径不同",
           "steps": [
-            "令 hidden 来自前一窗口计算。调用 hidden.`detach`() 后，其数值不变，后续前向仍使用这份记忆。",
+            "令 hidden 来自前一窗口计算。调用 `hidden.detach()` 后，其数值不变，后续前向仍使用这份记忆。",
             "对新回合位置乘零或写入初始状态，数值才改变，策略从新的记忆起点继续。",
             "`truncate=True` 可以先 `detach` 全部历史，再按 `reset_mask` 清零特定环境；这同时表达两个独立动作。"
           ],
@@ -11950,37 +12034,37 @@
         ],
         "formula": "c_k=E(o_{\\leq k},l),\\qquad A_k=(a_k,\\ldots,a_{k+H-1})\\in\\mathbb R^{H\\times D},\\qquad A_k\\sim p_\\theta(\\cdot\\mid c_k)",
         "comparison": {
-          "title": "动作组织、分布模型与执行方式分别判断",
+          "title": "动作块接口下的学习目标与生成方式",
           "columns": [
-            "生成方式",
-            "主要监督或目标",
-            "单个动作块的生成"
+            "方法（本章约定）",
+            "学习目标",
+            "生成时可用的信息与步骤"
           ],
           "rows": [
             [
               "确定性回归",
               "按指定噪声模型解释的 L1 / L2",
-              "一次输出 \\(H\\times D\\) 个值"
+              "给定条件 c，一次输出 H×D 个值。"
             ],
             [
-              "ACT / 条件 VAE",
-              "重建项 + 潜变量后验到先验的 KL",
-              "给定条件与潜变量，并行读出动作查询"
+              "ACT",
+              "重建动作块，并约束训练后验相对先验的 KL",
+              "条件 c；原 ACT 设置 z=0 后解码。z=0 不等于最可能动作或一般的条件均值。"
             ],
             [
-              "Diffusion Policy",
-              "与调度器配套的噪声、数据或速度目标",
-              "多次更新整块噪声动作"
+              "Diffusion",
+              "从带噪动作、等级和条件预测噪声",
+              "条件 c 与初始噪声；本章余弦路径从数据 0 到噪声 1，生成沿 1→0 更新。"
             ],
             [
-              "Flow Policy",
-              "概率路径上的条件速度回归",
-              "对整块动作积分 ODE"
+              "Flow",
+              "从路径状态、生成时间和条件回归路径速度",
+              "条件 c 与初始噪声；本章直线路径从噪声 0 到数据 1，生成沿 0→1 积分。"
             ],
             [
               "离散动作自回归",
-              "移位后动作 token 的交叉熵",
-              "按指定顺序生成 token，再解码动作"
+              "移位后动作 Token 的交叉熵",
+              "按指定顺序生成 Token，再解码成动作；Token 数不一定等于执行步数。"
             ]
           ]
         },
@@ -12048,7 +12132,17 @@
         ],
         "formula": "A_k=G_\\theta(Z,c_k),\\qquad (a_k,\\ldots,a_{k+K-1})=A_k[0:K],\\qquad c_{k+K}=E(o_{\\leq k+K},l)",
         "takeaway": "闭环的关键是用新观测重新条件化；正确采样之后还必须正确解释时间和动作语义。",
-        "lead": "滚动时域执行是每次预测较长动作段，只执行其中一部分，然后用新观测重新预测的方法。它把联合生成与环境反馈连接起来。预测 H 步和执行 K 步承担不同职责，不能用一个“步数”代替。"
+        "lead": "滚动时域执行是每次预测较长动作段，只执行其中一部分，然后用新观测重新预测的方法。它把联合生成与环境反馈连接起来。预测 H 步和执行 K 步承担不同职责，不能用一个“步数”代替。",
+        "example": {
+          "title": "四步预测、两步执行、八次生成迭代不是同一种步数",
+          "afterParagraph": 1,
+          "steps": [
+            "取 H=4、K=2、N=8。一次调用中，生成器用 8 次迭代联合更新四个动作位置，最终得到 \\((a_k,a_{k+1},a_{k+2},a_{k+3})\\)，不是得到 32 条命令。",
+            "执行前两条命令后，在决策 k+2 重新获得观测，构造新的条件 \\(c_{k+2}\\)。旧条件下剩余的两条动作不是已经确定必须执行的未来。",
+            "按这个同步例子的协议丢弃旧块余项，再生成覆盖 k+2 至 k+5 的新块。若改为融合旧预测，就必须按同一物理槽位与动作参考对齐，不能直接平均相同数组下标。"
+          ],
+          "conclusion": "H 定义输出时域，K 定义反馈更新间隔，N 定义一次生成的计算过程。改变其中一个，不能自动代替另外两个。"
+        }
       },
       {
         "id": "oracle-experiment-derivation",
@@ -12878,9 +12972,11 @@
           "steps": [
             "in_dim=5、out_dim=2、rank=2，原层带偏置并全部冻结。",
             "冻结参数为 5×2+2=12；A 有 2×5=10 个数，B 有 2×2=4 个数。",
-            "低秩分支可训练参数合计 14，这个很小的例子甚至多于原层；优势取决于实际尺寸和秩。"
+            "低秩分支可训练参数合计 14，这个很小的例子甚至多于原层；优势取决于实际尺寸和秩。",
+            "再只比较一个 4096→4096 层的权重：基座有 \\(4096^2=16{,}777{,}216\\) 个数，rank=8 的两因子只有 \\(8(4096+4096)=65{,}536\\) 个，为前者的 1/256。这里不计偏置，用于对照大矩阵、小秩时的参数节省。"
           ],
-          "conclusion": "LoRA 参数节省是相对于大矩阵与较小秩而言，不能对任意尺寸默认成立。"
+          "conclusion": "LoRA 参数节省是相对于大矩阵与较小秩而言，不能对任意尺寸默认成立。",
+          "afterParagraph": 2
         },
         "id": "1",
         "lead": "LoRA 是在冻结的线性权重旁增加两个小矩阵，其乘积构成低秩权重增量的方法。它用较少可训练参数限制增量的表达方式。下面先定义两因子形状，再计算前向和参数量。",
@@ -12910,7 +13006,8 @@
             "\\(\\frac{\\partial L}{\\partial A}\\) 中包含 B，因此 A 的首步梯度为零；\\(\\frac{\\partial L}{\\partial B}\\) 可以非零。",
             "若 \\(A=B=0\\)，则两式都为零；若第一步 B 更新后 A 仍长期没有梯度，应继续检查路径和优化器。"
           ],
-          "conclusion": "初始化预期、首步行为与后续更新需要分开判断。"
+          "conclusion": "初始化预期、首步行为与后续更新需要分开判断。",
+          "afterParagraph": 3
         },
         "focus": {
           "kind": "易错",
@@ -13301,10 +13398,11 @@
           "title": "两状态价值来自联立关系",
           "steps": [
             "固定策略下，状态 0 总转移到 1，状态 1 总转移到 0；离开状态 0 得到奖励 1，离开状态 1 得到奖励 0，折扣为 \\(\\gamma=0.9\\)。",
-            "Bellman 关系为 \\(V_0=1+\\gamma V_1\\)、\\(V_1=\\gamma V_0\\)。代入得到 \\(V_0=1/(1-\\gamma^2)\\)、\\(V_1=\\gamma/(1-\\gamma^2)\\)。",
+            "Bellman 关系为 \\(V_0=1+\\gamma V_1\\)、\\(V_1=\\gamma V_0\\)。代入得到 \\(V_0=1/(1-\\gamma^2)\\)、\\(V_1=\\gamma/(1-\\gamma^2)\\)。代入 γ=0.9，得到 \\(V_0\\approx5.2632\\)、\\(V_1\\approx4.7368\\)，它们均不是当前一步的奖励。",
             "这与直接累加交替奖励的几何级数一致。价值来自固定策略下的未来回报，而非当前一步奖励。"
           ],
-          "conclusion": "联立方程与轨迹回报给出同一结果，展示 Bellman 关系如何把长时信息变成局部自洽条件。"
+          "conclusion": "联立方程与轨迹回报给出同一结果，展示 Bellman 关系如何把长时信息变成局部自洽条件。",
+          "afterParagraph": 2
         },
         "code": "import torch\n\ndtype = torch.float64\ngamma = 0.9\np = torch.tensor([[0., 1.], [1., 0.]], dtype=dtype)\nr = torch.tensor([1., 0.], dtype=dtype)\nv = torch.linalg.solve(torch.eye(2, dtype=dtype) - gamma * p, r)\nclosed = torch.tensor([1 / (1 - gamma ** 2), gamma / (1 - gamma ** 2)], dtype=dtype)\ntorch.testing.assert_close(v, closed, rtol=1e-12, atol=1e-12)\ntorch.testing.assert_close(v, r + gamma * p @ v, rtol=1e-12, atol=1e-12)\ndirect = sum(gamma ** k for k in range(0, 1000, 2))\ntorch.testing.assert_close(v[0], torch.tensor(direct, dtype=dtype))\nprint(\"通过：Bellman 联立解、解析几何级数与直接奖励累加一致。\")\n",
         "codeExplanation": "此处转移矩阵由一个固定策略确定，奖励有界且折扣小于 1。求解两个标量价值用于核对方程含义，不涉及神经网络拟合或策略改进，也不能据此推断任意 critic 训练都会收敛。"
@@ -13386,7 +13484,17 @@
           "check": "单独改变新回合奖励，旧回合优势必须不变；单独改变截断末状态价值，旧回合优势应按 \\(\\gamma\\) 与 \\(\\lambda\\) 的系数变化。"
         },
         "id": "added-0",
-        "lead": "优势是某动作价值相对当前状态价值的差，广义优势估计（GAE）用多步 TD 残差的加权和近似它。自举是否保留与残差递推能否跨过边界，是两种不同的 Mask 语义。下面先分清它们再写递推。"
+        "lead": "优势是某动作价值相对当前状态价值的差，广义优势估计（GAE）用多步 TD 残差的加权和近似它。自举是否保留与残差递推能否跨过边界，是两种不同的 Mask 语义。下面先分清它们再写递推。",
+        "example": {
+          "title": "两条转移的 GAE 可以倒序手算",
+          "afterParagraph": 2,
+          "steps": [
+            "取同一回合连续两条转移，奖励为 [1,2]，价值估计为 \\(V(s_0)=0.5,V(s_1)=1\\)，第二条真正终止。令 γ=0.9、λ=0.5，真实终态不使用后继价值。",
+            "两个 TD 残差为 \\(\\delta_0=1+0.9\\times1-0.5=1.4\\) 与 \\(\\delta_1=2-1=1\\)。从片段末端令 \\(\\hat A_2=0\\)，倒序得到 \\(\\hat A_1=1\\)、\\(\\hat A_0=1.4+0.9\\times0.5\\times1=1.85\\)。",
+            "若某条转移是外部截断，仍要用该回合真实末观测的 V 构造它的 δ；但下一数组行若已是新回合，递推 Mask c 必须为零，不能再接入那个回合的优势。"
+          ],
+          "conclusion": "先在每条真实转移上算 TD 残差，再在同一回合内倒序组合。是否保留 bootstrap 与是否继续跨行递推，必须分开决定。"
+        }
       },
       {
         "title": "让数值与张量操作遵循同一语义",
@@ -13747,6 +13855,16 @@
               "0"
             ]
           ]
+        },
+        "example": {
+          "title": "正负优势下，PPO 的 min 选择不同分支",
+          "afterParagraph": 2,
+          "steps": [
+            "取裁剪幅度 ε=0.2，并讨论要最大化的单样本代理目标。若优势 A=2、比率 r=1.4，未裁剪项为 2.8，裁剪项为 \\(1.2\\times2=2.4\\)，min 取 2.4；继续提高这个比率不再增加该项收益。",
+            "若优势 A=−2、比率 r=0.6，未裁剪项为 −1.2，裁剪项为 \\(0.8\\times(-2)=-1.6\\)，min 取 −1.6；把已不受欢迎动作的概率继续压低，也不再从该项获得额外收益。",
+            "但 A=−2、r=1.4 时，min 取 −2.8，惩罚仍随比率变化；不能无条件把所有比率先 clamp，再只计算那一个乘积。梯度下降实现还要对上述代理目标取负。"
+          ],
+          "conclusion": "裁剪改变单样本的优化激励，不是对所有状态、参数更新或策略 KL 的硬性范围保证。"
         }
       },
       {
@@ -14522,6 +14640,7 @@
       {
         "title": "参数、梯度与优化器状态",
         "body": [
+          "先走通每个 Batch 更新一次的最小链路：读入一批输入与目标，设置训练模式并清零旧梯度；前向得到预测，按声明的分母计算标量损失；backward 计算梯度，step 使用这些梯度更新同一组参数。本章项目的输入为 [B,4]、目标为 [B,2]。日志记录的是这次更新前计算的损失，下一次前向才反映更新后的模型。",
           "训练模式是另一类状态：model.train() 影响 Dropout、BN 等模块，不等于开启梯度开关；eval 下也可以构建图。普通每 Batch 更新一次时，应在该更新的梯度累积开始前 zero_grad。清零可以放在上一轮更新后或当前轮反向前，只要边界一致；但把 zero_grad 放在 backward 与 step 之间会直接擦掉这次更新所需的梯度。",
           "后面保留原有短训练循环，并在代码页提供一个贯穿多课的[共同训练项目](#/learn/training-loop?tab=code&anchor=demo-shared-training-project)。模型仍是 Linear(4,2)，任务仍是双输出合成回归；新增的只是变长记录、有效位与状态管理。只在训练集拟合输入和目标统计，参数与统计共同定义模型函数。数据集有 44 条独立生成的序列，前 32 条训练、后 12 条验证，每条长度为 1…5；它用于排除工程错误，不代表机器人数据的时间相关性或闭环难度。"
         ],
@@ -15356,7 +15475,7 @@
         "body": [
           "设任务索引为 \\(k=1,\\ldots,M\\)，任务内数据分布为 \\(D_k\\)，希望优化的任务权重为 \\(p_k\\ge0\\)、\\(\\sum_kp_k=1\\)。目标风险是 \\(R_p(\\theta)=\\sum_k p_k\\,\\mathbb E_{D_k}[\\ell_\\theta]\\)。实际采样先以概率 \\(q_k\\) 选任务，再从 \\(D_k\\) 选记录；若对应损失还乘 \\(\\lambda_k\\)，平均更新就来自 \\(\\sum_k q_k\\lambda_k\\,\\mathbb E_{D_k}[\\ell_\\theta]\\)。",
           "当目标权重非零的任务都有 \\(q_k>0\\)，且希望只改变采样方式、不改变这个目标时，取 \\(\\lambda_k=p_k/q_k\\) 才能逐项恢复 \\(R_p\\)。这依赖任务内采样仍为 \\(D_k\\)；若任务内也按难度筛选，还需处理那部分概率。重要性校正不保证方差更小，极小的 \\(q_k\\) 反而可能带来很大的权重。",
-          "例如两任务的目标比例为 \\((0.8,0.2)\\)，暂时考虑各自平均损失为 \\((1,4)\\)。目标风险是 1.6；均匀抽任务后直接平均得到 2.5；乘权重 \\((1.6,0.4)\\) 后才恢复 1.6。若均匀抽样本来就是为了加强第二个任务，则不应抵消它，而应明确采用了新的目标分布。过采样再叠加额外类别权重，也必须按乘积解释。",
+          "若均匀抽样本来就是为了加强第二个任务，则不应抵消它，而应明确采用了新的目标分布。过采样再叠加额外类别权重，也必须按乘积解释。",
           "评估应使用事先定义的任务分布，并同时报告按任务等权与按实际试验数汇总等指标。训练采样比例无需与评价完全相同，但差异要明确，否则一个总分的改善可能只反映评价组份变化。清洗与重采样的消融也要固定其余数据身份及预算，才能判断具体规则的作用。",
           "数据报告可以集中记录组交叉、缺失率、时间偏移、每维有效数、过滤原因与抽样分布。规则变更应绑定数据版本与对照结果，使训练差异能够追溯到经验分布的具体变化。",
           "可用的数据集需要同时满足记录语义正确、划分支持目标结论、统计量只拟合合法训练元素、采样权重对应期望任务分布。整理数据的最终产物是一份明确的学习问题，而不仅是能被读取的文件集合。"
@@ -15365,7 +15484,17 @@
         "lead": "混合数据分布是按任务概率组合多个任务内分布得到的总体分布。采样比例改变模型看见的任务频率，损失权重又可进一步重加权。两者一起定义训练期望，需要共同解释。",
         "formula": "\\begin{aligned}R_p(\\theta)&=\\sum_k p_k\\,\\mathbb E_{D_k}[\\ell_\\theta],\\\\\\mathbb E_{K\\sim q,D_K}[\\lambda_K\\ell_\\theta]&=\\sum_kq_k\\lambda_k\\,\\mathbb E_{D_k}[\\ell_\\theta],\\\\\\lambda_k&=p_k/q_k\\quad\\text{when }q_k>0\\text{ on the target support}.\\end{aligned}",
         "code": "import torch\n\ntorch.set_default_dtype(torch.float64)\np = torch.tensor([0.8, 0.2])\nq = torch.tensor([0.5, 0.5])\nloss_by_task = torch.tensor([1., 4.], requires_grad=True)\ntarget = p @ loss_by_task\nuncorrected = q @ loss_by_task\ncorrected = q @ ((p/q)*loss_by_task)\ntorch.testing.assert_close(target, torch.tensor(1.6))\ntorch.testing.assert_close(uncorrected, torch.tensor(2.5))\ntorch.testing.assert_close(corrected, target)\ng_target, = torch.autograd.grad(target, loss_by_task, retain_graph=True)\ng_corrected, = torch.autograd.grad(corrected, loss_by_task)\ntorch.testing.assert_close(g_target, g_corrected)\ntorch.testing.assert_close(g_corrected, p)\nprint(\"target, uncorrected, corrected:\",\n      target.item(), uncorrected.item(), corrected.item())\nprint(\"effective task coefficients:\", g_corrected.tolist())\n",
-        "codeExplanation": "用两任务的精确有限和替代随机采样，直接验证期望权重，不让抽样噪声掩盖目标差异。对每任务损失求梯度得到其系数；再乘该任务损失对模型参数的梯度，就是链式法则下的参数更新贡献。真实数据中还要检查 q 是否确实等于采样器实现的任务概率。"
+        "codeExplanation": "用两任务的精确有限和替代随机采样，直接验证期望权重，不让抽样噪声掩盖目标差异。对每任务损失求梯度得到其系数；再乘该任务损失对模型参数的梯度，就是链式法则下的参数更新贡献。真实数据中还要检查 q 是否确实等于采样器实现的任务概率。",
+        "example": {
+          "title": "同一组任务损失，采样和加权怎样改变目标",
+          "afterParagraph": 2,
+          "steps": [
+            "设两任务的目标概率为 (0.8,0.2)，当前任务内平均损失分别为 (1,4)。目标风险是 0.8×1+0.2×4=1.6。",
+            "若改成各占一半地抽任务，且不作损失校正，期望损失变成 0.5×1+0.5×4=2.5。",
+            "若仍想优化原目标，应分别乘上 p/q=(1.6,0.4)：0.5×1.6×1+0.5×0.4×4=1.6。"
+          ],
+          "conclusion": "改变曝光频率和改变目标权重是两个选择；是否校正应由想优化的任务分布决定。"
+        }
       }
     ],
     "shapes": [
@@ -15574,7 +15703,8 @@
             "若改成两个 SGD 小步，每步学习率 0.1，先用 \\(L_1\\) 得到 \\(\\theta=0.1\\)，再用 \\(L_2\\) 的当前梯度 1.1 得到 \\(\\theta=-0.01\\)。",
             "把顺序反过来，结果为 +0.01。即使把每个小步学习率改为 0.05，仍分别得到 −0.0025 或 +0.0025，而累积更新仍为 0。"
           ],
-          "conclusion": "逐微批 step 会在新的参数点重新求梯度；把学习率按微批数缩小，也不能普遍恢复一次大批更新。"
+          "conclusion": "逐微批 step 会在新的参数点重新求梯度；把学习率按微批数缩小，也不能普遍恢复一次大批更新。",
+          "afterParagraph": 1
         },
         "id": "0",
         "lead": "梯度可加性是同一参数点处，加权目标之和的导数等于各目标导数之和的性质。梯度累积利用它分开计算一个有效批次。先固定参数与每项系数，才能把累积和多次小步更新区分开。"
@@ -15626,7 +15756,8 @@
             "分别裁剪后为 0.5 和 -0.5，相加得到 0。",
             "先求和得到 1，再裁剪得到 0.5。"
           ],
-          "conclusion": "一次完整更新与逐块裁剪是两个不同算法。"
+          "conclusion": "一次完整更新与逐块裁剪是两个不同算法。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "常用",
@@ -15871,7 +16002,8 @@
             "缩放后梯度约为 \\(6.55\\times10^{-4}\\)，落到更容易表示的量级。",
             "优化前除以 65536 才回到原本梯度；若忘记还原，相当于大幅改变更新尺度。"
           ],
-          "conclusion": "正确缩放不应改变优化问题，只改变中间数值的表示范围。"
+          "conclusion": "正确缩放不应改变优化问题，只改变中间数值的表示范围。",
+          "afterParagraph": 1
         },
         "id": "2",
         "lead": "梯度缩放是把损失乘正因子，使反向梯度同步放大，再在更新前除回该因子的技术。它用于缓解部分低精度梯度的下溢，不修复已经错误的前向。下面解释其数学等价与动态调整。"
@@ -15889,7 +16021,8 @@
             "若直接裁剪到 1，再除以 1024，真实梯度只剩 \\(\\frac1{1024}\\)。",
             "先还原成范数 2，再裁剪到 1，才是原先设定的阈值。"
           ],
-          "conclusion": "裁剪阈值有单位，必须与梯度所处的缩放状态一致。"
+          "conclusion": "裁剪阈值有单位，必须与梯度所处的缩放状态一致。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -16121,7 +16254,8 @@
             "每类约 4 MB，四类合计约 16 MB（十进制）。",
             "前向激活、Batch、临时工作区和框架开销还需另外计算。"
           ],
-          "conclusion": "16P 是这组假设下的状态估计，不是普遍的训练峰值公式。"
+          "conclusion": "16P 是这组假设下的状态估计，不是普遍的训练峰值公式。",
+          "afterParagraph": 1
         },
         "id": "0",
         "lead": "训练内存账目是按对象与生命周期统计当前计算需要保存哪些数值。常驻参数状态、反向激活和临时工作区有不同来源，因此需要不同节省方法。先分清对象，再估算参数数目以外的成本。"
@@ -16180,7 +16314,8 @@
             "重计算策略保存 x 和必要状态，反向需要 \\(h_1\\text{ / }h_2\\) 时再从 x 重做这段前向。",
             "节省的是部分中间保存，增加的是再次求值；x、参数、梯度与优化器状态仍要存在。"
           ],
-          "conclusion": "激活重计算改变保存策略，不改变期望优化的数学函数。"
+          "conclusion": "激活重计算改变保存策略，不改变期望优化的数学函数。",
+          "afterParagraph": 1
         },
         "id": "4",
         "lead": "激活重计算是在反向需要中间量时，重新执行选定前向区段来恢复它们的机制。它减少保存量，却要求重算仍对应原来的函数。先看保存与重算怎样配合，再讨论区段选择。"
@@ -16480,10 +16615,10 @@
       {
         "title": "先证明单进程等价，再扩展真实训练",
         "body": [
-          "演示启动两个真实 CPU/Gloo 进程，使用可整除的小数据集，将一次 DDP 更新与单进程完整批次更新逐参数对照。它检验的是简单线性模型、相等本地计数与默认梯度平均条件下的等价；不声称覆盖特殊分片、批内对比或所有通信实现。当前交付环境若禁止本机通信，真实双进程项会明确标为未完成，不能用单进程数学检查代替。",
+          "演示启动两个真实 CPU/Gloo 进程，使用可整除的小数据集，将一次 DDP 更新与单进程完整批次更新逐参数对照。它检验的是简单线性模型、相等本地计数与默认梯度平均条件下的等价，不覆盖特殊分片、批内对比或所有通信实现。Gloo 是本例使用的进程通信后端；运行程序需要允许本地进程通信。不能建立通信时，单进程数学练习仍可核对缩放公式，但不能代替两进程演示。",
           "在具备通信权限的本地环境运行时，先使用小数据、固定初始化和简单模型，确认分片无重复、全局计数正确、各副本一致。再逐项引入变长 Mask、累积、AMP 和实际模型。若一次加入所有组件，loss 差异可能来自数据、随机性、归约或通信，很难定位。",
           "最终还需评估扩展效率：更多进程带来更大总 Batch，但通信、数据加载和不均匀工作量可能限制吞吐。正确性和性能分别验证，记录有效样本吞吐、同步耗时与每 rank 工作量，而不是只报告使用了多少张卡。",
-          "共同训练项目的 `masked_error_sum` 已返回局部分子 \\(S_r\\) 和有效标量数 \\(N_r\\)。若扩展到 R 个默认平均梯度的 DDP rank，先以相同通信顺序汇总 \\(N=\\sum_rN_r\\)，每个 rank 反传 \\(R S_r/N\\)，DDP 平均后得到 \\(\\sum_r\\nabla S_r/N\\)；日志另外归约 detached 的分子与分母。非最后微步的前向和反向应一同放在 no_sync 内，最后微步完成同步。必须保证各 rank 更新/通信边界一致，包括空监督与尾批；这只是适配关系，单进程累积通过不等于通信验证通过。当前真实 Gloo 示例仍为 environment_blocked，不能把共同项目的 CPU 数值对照写成真实 DDP 已通过。",
+          "共同训练项目的 `masked_error_sum` 已返回局部分子 \\(S_r\\) 和有效标量数 \\(N_r\\)。若扩展到 R 个默认平均梯度的 DDP rank，先以相同通信顺序汇总 \\(N=\\sum_rN_r\\)，每个 rank 反传 \\(R S_r/N\\)，DDP 平均后得到 \\(\\sum_r\\nabla S_r/N\\)；日志另外归约 detached 的分子与分母。非最后微步的前向和反向应一同放在 no_sync 内，最后微步完成同步。必须保证各 rank 更新/通信边界一致，包括空监督与尾批；这只是把单进程项目扩展为 DDP 的适配关系；完成后仍需在真实进程通信中对照各副本参数和全局更新，不能从单进程累积等价直接推出通信正确。",
           "DDP 是协作计算方式，目标的全局定义仍需由数据分片、局部权重、梯度归约与更新边界共同实现。先以单进程参照解释等价条件，再扩展通信与恢复，才能判断一次同步是否完成了所需训练。"
         ],
         "id": "7",
@@ -16513,7 +16648,7 @@
       "explanations": [
         {
           "lines": "1–22",
-          "text": "mp.spawn 启动独立进程，file:// 只负责 rendezvous，Gloo 的数据通信仍需要本机 socket。当前交付环境在初始化阶段被限制，尚未验证通信路径。"
+          "text": "mp.spawn 启动独立进程，file:// 只用于进程发现与初始化协调（rendezvous）；Gloo 的数据通信仍需要本机 socket，因此共享同一文件不能代替通信权限。"
         },
         {
           "lines": "23–32",
@@ -16524,7 +16659,7 @@
           "text": "每个 rank 都做参数对照与 all_reduce；只有打印限制在 rank 0。支持本机通信的环境运行通过后，才可确认这项两进程演示。"
         }
       ],
-      "expected": "在支持本机进程通信的环境运行时，应启动两个 Gloo 进程，并通过与单进程更新的参数断言。当前交付环境的通信初始化受限，此项未计为运行通过。",
+      "expected": "运行成功时应启动两个 Gloo 进程，并通过各 rank 与单进程更新的参数断言；具体 loss 只对应本例固定数据。",
       "runtimeNote": "此示例启动两个本地 CPU/Gloo 进程；当前交付环境限制本机通信，未能完成此项运行验证。请下载后在支持本地进程通信的环境执行。",
       "validationStatus": "environment_blocked"
     },
@@ -16683,7 +16818,8 @@
             "无类别权重、无特殊归约的单标签交叉熵应为 \\(-\\log\\frac14=\\log4\\approx1.3863\\)。",
             "若结果明显不同，先检查标签类型、重复 Softmax、ignore_index 与类别权重。"
           ],
-          "conclusion": "确定性基准能把 loss 解释从猜测变成可复查计算。"
+          "conclusion": "确定性基准能把 loss 解释从猜测变成可复查计算。",
+          "afterParagraph": 1
         },
         "id": "2",
         "lead": "数值基准是对特定输入和参数可以手算的预期输出或损失，例如零 Logit 的分类代价。它提供独立参照，而不是凭经验猜测合理数量级。下面先让模型满足可解释基准，再恢复复杂配置。"
@@ -16692,7 +16828,6 @@
         "title": "固定小批次实验能证明什么，不能证明什么",
         "body": [
           "固定少量样本、初始化与随机因素，让模型反复拟合相同目标，是检查管线可学习性的有效方法。先关闭不必要增强和 Dropout，使用明确的损失分母与可解释输出范围；对简单合成目标，应该观察到预测和参数沿正确方向变化。若无法拟合，应优先排查图、标签、优化器与容量，而不是先上更大数据。",
-          "固定实验失败时，还要区分“该模型没有实现可拟合关系”与“给定输入根本不能区分标签”。例如两条输入完全相同，目标却分别为 −1 和 +1，则任何确定性预测 \\(c\\) 的平均平方误差都是 \\(\\tfrac12[(c+1)^2+(c-1)^2]=1+c^2\\)，下界为 1。增大确定性网络不能消除这个矛盾；应检查条件是否缺失、标签是否错配，或者任务本身是否需要分布式预测。这是[条件均值分解](#/learn/probability?tab=theory&section=2)在诊断中的具体用途。",
           "但错误标签、泄漏输入和错误单位也可能被记住，因此小批拟合通过不证明语义正确或泛化良好。生成模型如果不断重采噪声和时间，训练对象并非固定样本，损失也可能有不可约方差。需要固定完整的条件—噪声—目标三元组做最小过拟合检查，再恢复真实随机训练协议，两种结果分开解释。",
           "少量样本的过拟合速度还受容量和目标复杂度影响，不能要求任意模型都在几步内归零。最小实验的意义是为某个假设提供对照证据，而不是建立一个所有任务必须达到的统一 loss 阈值。"
         ],
@@ -16730,7 +16865,17 @@
         },
         "code": "import torch\nfrom torch import nn\n\ntorch.manual_seed(41)\ntarget = torch.tensor([[-1.], [1.]], dtype=torch.float64)\n\ndef fit_fixed(x):\n    model = nn.Linear(1, 1, dtype=torch.float64)\n    with torch.no_grad():\n        model.weight.zero_()\n        model.bias.zero_()\n    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)\n    for _ in range(80):\n        optimizer.zero_grad(set_to_none=True)\n        loss = (model(x) - target).square().mean()\n        loss.backward()\n        optimizer.step()\n    with torch.no_grad():\n        prediction = model(x)\n        return float((prediction - target).square().mean()), prediction\n\nrepresentable_loss, _ = fit_fixed(target.clone())\nconflicting_loss, prediction = fit_fixed(torch.ones_like(target))\nassert representable_loss < 1e-12\ntorch.testing.assert_close(prediction[0], prediction[1])\ntorch.testing.assert_close(torch.tensor(conflicting_loss), torch.tensor(1.0))\nprint(\"可表示目标的 MSE:\", representable_loss)\nprint(\"同输入冲突标签的 MSE:\", conflicting_loss)\n",
         "codeExplanation": "两个实验使用相同线性模型、零初始化、优化器和更新次数，仅改变输入是否包含区分标签的信息。后一个实验达到可证明的 MSE 下界，说明“未归零”本身不能证明训练代码错误；前一个阈值只用于这个明确的合成线性问题。",
-        "codeKind": "runnable"
+        "codeKind": "runnable",
+        "example": {
+          "title": "同样输入、相反标签，MSE 能降到多少",
+          "afterParagraph": 1,
+          "steps": [
+            "两条输入完全相同，目标分别为 −1 和 +1。任何确定性网络对同样输入都只能给出同一个预测 c。",
+            "平均平方误差为 \\(\\tfrac12[(c+1)^2+(c-1)^2]=1+c^2\\)，在 c=0 时达到最小值 1。",
+            "因此，把确定性网络加宽也不能让这组监督的 MSE 归零。应检查是否遗漏条件、错配标签，或是否需要预测条件概率分布。"
+          ],
+          "conclusion": "小批次拟合前先判断目标是否可实现；这是[条件均值分解](#/learn/probability?tab=theory&section=2)在诊断中的应用。"
+        }
       },
       {
         "title": "把 None、零梯度和非有限梯度分开定位",
@@ -16760,7 +16905,8 @@
             "漏加优化器案例：分类器有非零梯度，optimizer.param_groups 却不包含它，分类器位移为零。",
             "两者最终都可能表现为 loss 改善有限，修复位置却分别是计算图和参数组。"
           ],
-          "conclusion": "同时观察图连接、优化器成员与实际位移，才能分清原因。"
+          "conclusion": "同时观察图连接、优化器成员与实际位移，才能分清原因。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -16971,7 +17117,8 @@
             "在 \\(\\theta=1\\) 时，两项 loss 分别为 1 与 1001，梯度却都为 2。",
             "若仅按 loss 数值把第二项缩小一千倍，就会人为降低一个本来同等强度的梯度。"
           ],
-          "conclusion": "数值大小与优化作用必须通过导数联系，不能直接等同。"
+          "conclusion": "数值大小与优化作用必须通过导数联系，不能直接等同。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -17012,7 +17159,8 @@
             "\\(\\lambda=0.25\\) 时总梯度为 0.5，SGD 仍沿降低任务 a 的局部方向更新。",
             "\\(\\lambda=0.5\\) 时总梯度为 0，\\(\\lambda=0.75\\) 时总梯度为 -0.5，方向反转。"
           ],
-          "conclusion": "同一个负余弦对应降低、抵消或反转，必须一起看范数与权重。"
+          "conclusion": "同一个负余弦对应降低、抵消或反转，必须一起看范数与权重。",
+          "afterParagraph": 1
         },
         "id": "3",
         "lead": "梯度冲突通常指任务梯度在共享坐标中点积为负；合成更新则还包含权重与其他任务贡献。冲突不必然使主任务损失上升，更不直接判定辅助任务长期有害。下面区分这几层结论。"
@@ -17238,19 +17386,19 @@
       {
         "title": "一个零训练误差却会漂移的反馈例子",
         "body": [
-          "设一维环境 \\(s_{t+1}=s_t+a_t+\\delta\\)，目标是维持 \\(s\\approx0\\)。专家提供负反馈 \\(a=-s\\)，能够抵消已有偏移；如果示教数据只包含理想 \\(s=0,\\ a=0\\)，那么恒零策略与负反馈策略在训练集上都完全正确。数据没有告诉模型偏离零以后应该往哪边修正。",
-          "部署时持续的小扰动 \\(\\delta\\) 会使恒零策略逐步累积偏移，而负反馈策略把下一状态拉到约 \\(\\delta\\)。这个例子表明，两种在示教上不可区分的函数，可能具有不同闭环性质。改善离线零误差没有空间可做，新增有正确恢复标签的偏移状态才补充了辨别信息。",
-          "这个确定性玩具系统只是机制反例。真实环境可能具有速度、动作延迟、接触与控制约束，专家动作也不一定是简单 −s。不能把其数值改善当成真实 DAgger 成功率，但可以用同样思路设计系统里的受控扰动，判断恢复行为是否缺失。",
-          "代码中的专家采用较缓的反馈 \\(a=-0.5s\\)，递推变为 \\(s_{t+1}=0.5s_t+\\delta\\)，稳定平衡点为 \\(2\\delta\\)；前面的 \\(a=-s\\) 用于直接呈现恢复机制。两者的具体轨迹不同，但都与训练集上无法识别反馈增益的恒零策略形成对照。"
+          "设一维环境 \\(s_{t+1}=s_t+a_t+\\delta\\)，目标是维持 \\(s\\approx0\\)。全章与代码统一使用专家负反馈 \\(a=-0.5s\\)，以修正已有偏移。如果示教只包含理想 \\(s=0,\\ a=0\\)，那么恒零策略与负反馈策略在训练集上都完全正确。数据没有告诉模型偏离零以后应该往哪边修正。",
+          "部署时持续的小扰动 \\(\\delta\\) 会使恒零策略逐步累积偏移，而专家反馈得到 \\(s_{t+1}=0.5s_t+\\delta\\)，稳定平衡点为 \\(2\\delta\\)。两种在示教上不可区分的函数，因此具有不同闭环性质。改善离线零误差已经没有空间，新增有正确恢复标签的偏移状态才补充了辨别信息。",
+          "这个确定性玩具系统只是机制反例。真实环境可能具有速度、动作延迟、接触与控制约束，专家动作也不一定是固定线性负反馈。不能把其数值改善当成真实 DAgger 成功率，但可以用同样思路设计系统里的受控扰动，判断恢复行为是否缺失。"
         ],
         "example": {
           "title": "恒零策略和负反馈策略在训练点一样",
           "steps": [
             "示教只有 \\((s=0,a=0)\\)，两种策略训练误差都是零。",
             "令 \\(\\delta=0.1\\)，从 \\(s_0=0\\) 开始，恒零策略状态变为 0.1、0.2、0.3……。",
-            "负反馈 \\(a_t=-s_t\\) 使每个下一状态保持 0.1，补充非零状态标签能区分两种策略。"
+            "负反馈 \\(a_t=-0.5s_t\\) 的状态依次为 0.1、0.15、0.175……，趋向 0.2。补充非零状态标签后，才能从恒零输出中识别这份反馈。"
           ],
-          "conclusion": "训练点上的拟合无法决定数据未约束区域的闭环行为。"
+          "conclusion": "训练点上的拟合无法决定数据未约束区域的闭环行为。",
+          "afterParagraph": 2
         },
         "id": "1",
         "lead": "访问分布不同为何会影响行为，可以用两个训练误差完全相同的策略说明。让它们面对同一个外部扰动，就能看到示教中缺失的恢复信息怎样转化为执行差异。"
@@ -17289,10 +17437,11 @@
           "title": "执行动作与监督动作分开保存",
           "steps": [
             "模型到达偏移状态 \\(s=0.3\\)，实际执行了 \\(a_{\\mathrm{model}}=0.1\\)。",
-            "专家在同一状态建议 \\(a_{\\mathrm{expert}}=-0.3\\)，新监督样本应是 (0.3,−0.3)。",
-            "执行日志保留 0.1 以解释环境转移，训练标签保留 −0.3 以学习纠正；两者不能混为同一字段。"
+            "同一个专家在该状态建议 \\(a_{\\mathrm{expert}}=-0.5\\times0.3=-0.15\\)，新监督样本应是 (0.3,−0.15)。",
+            "执行日志保留 0.1 以解释环境转移，训练标签保留 −0.15 以学习纠正；两者不能混为同一字段。"
           ],
-          "conclusion": "DAgger 增加的是策略访问状态上的专家信息，不是复制模型输出。"
+          "conclusion": "DAgger 增加的是策略访问状态上的专家信息，不是复制模型输出。",
+          "afterParagraph": 2
         },
         "focus": {
           "kind": "易错",
@@ -17553,7 +17702,8 @@
             "按零阶保持区间，索引 \\(\\lfloor0.23/0.1\\rfloor=2\\)：前两段区间已经过去，第 2 段当前仍有效。",
             "若协议只接收未来目标点，则要按该接口选择后续时刻并插值，不能从 1.0 秒重新播放。"
           ],
-          "conclusion": "先定义每个元素对应时间点还是保持区间，再计算前缀丢弃。"
+          "conclusion": "先定义每个元素对应时间点还是保持区间，再计算前缀丢弃。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -17568,11 +17718,20 @@
         "title": "异步队列需要覆盖下一次结果到达前的时间",
         "body": [
           "异步推理让执行端继续消费已有动作，同时后台生成下一块。队列应该在剩余有效播放时间低于某个阈值时发起请求，但阈值需覆盖端到端延迟及抖动，而不只是平均前向耗时。较早请求通常增加余量，也可能更频繁地用新块替换尚未执行的计划。",
-          "例如 \\(H=20,\\ \\Delta t=0.05\\) 秒的块名义长度是一秒，若结果到达时已经过去 0.3 秒，最多还剩约 0.7 秒。下一次生成若常需 0.6 秒，余量很小；若还有偶发 0.3 秒排队，就会耗尽。增加网络带宽未必能解决由 GPU 排队或条件预处理造成的缺口，应分段测量再调整。",
           "耗尽时必须有明确行为：等待、保持已接纳参考、返回控制模式或结束当前策略执行，具体选择取决于控制系统。继续重复一个旧目标不表示机器人完全不动，因为底层仍可能向它运动；不能把“没有新命令”解释成物理上的立即停止。延迟处理与实际控制模式需要一起验证。"
         ],
         "id": "2",
-        "lead": "异步动作队列保存已经生成、尚待执行的计划，使控制端能在后台推理期间继续消费有效动作。队列剩余时长需要覆盖下一结果到达前的等待。下面将推理耗时和执行覆盖放到同一时间轴。"
+        "lead": "异步动作队列保存已经生成、尚待执行的计划，使控制端能在后台推理期间继续消费有效动作。队列剩余时长需要覆盖下一结果到达前的等待。下面将推理耗时和执行覆盖放到同一时间轴。",
+        "example": {
+          "title": "一秒动作块为什么仍可能断供",
+          "afterParagraph": 1,
+          "steps": [
+            "H=20、间隔 Δt=0.05 秒，动作块的名义覆盖时长为 1 秒。",
+            "若结果可用时已有 0.3 秒过去，最多还剩约 0.7 秒。此时才请求下一块，0.6 秒的生成耗时只留下约 0.1 秒余量。",
+            "若这次再排队 0.3 秒，结果将在约 0.9 秒后到达，超过 0.7 秒的剩余覆盖，队列便可能耗尽。"
+          ],
+          "conclusion": "触发下一次请求应考虑端到端延迟及抖动；单次前向耗时和动作块名义长度不能直接保证持续供给。"
+        }
       },
       {
         "title": "版本、来源年龄与乱序返回",
@@ -17588,7 +17747,8 @@
             "B 先返回并开始执行，随后 A 才到达。",
             "若按到达顺序覆盖队列，会重新执行旧任务；检查 epoch 后应拒绝 A。"
           ],
-          "conclusion": "“最后收到”不等于“当前任务的最新有效预测”。"
+          "conclusion": "“最后收到”不等于“当前任务的最新有效预测”。",
+          "afterParagraph": 1
         },
         "id": "3",
         "lead": "任务版本标记结果属于哪次指令或回合，观测来源年龄标记其依据的新旧，请求顺序标记生成关系。返回先后不等于这三种身份的新旧。候选计划需要同时满足身份与时间要求。"
@@ -17618,7 +17778,17 @@
           "check": "同时记录 `q_ref`、`q_measured`、真实 dt 与控制模式；对不相容边界和非有限目标使用明确状态处理。"
         },
         "id": "5",
-        "lead": "参考限幅是在命令进入接口前，限制目标参考的数值或变化率的处理。它约束的是发送的参考，不直接保证机器人实际速度、跟随误差或接触力。下面推导参考层允许区间，再说明与反馈约束的区别。"
+        "lead": "参考限幅是在命令进入接口前，限制目标参考的数值或变化率的处理。它约束的是发送的参考，不直接保证机器人实际速度、跟随误差或接触力。下面推导参考层允许区间，再说明与反馈约束的区别。",
+        "example": {
+          "title": "把代码中的第一次参考限幅手算出来",
+          "afterParagraph": 1,
+          "steps": [
+            "沿用代码的上一参考 0、目标 0.2、周期 0.1 秒和允许参考变化率 0.5 单位/秒。",
+            "变化率给出区间 [−0.05,0.05]，与位置区间 [−0.5,0.5] 取交集仍为 [−0.05,0.05]。",
+            "将 0.2 投影到交集，得到接纳参考 0.05。这限制的是这一周期的参考增量。"
+          ],
+          "conclusion": "得到合法参考不等于实测速度已经满足同一界；底层跟踪与反馈还要分别判断。"
+        }
       },
       {
         "title": "用故障注入检查时序行为",
@@ -17822,7 +17992,8 @@
             "macro=(0.9+0.1)/2=0.5；micro=91/110≈0.8273。",
             "两个数都计算正确，但一个按任务等权，一个按实际试验数加权。"
           ],
-          "conclusion": "报告分组成功次数与试验次数，并明确总体指标的权重。"
+          "conclusion": "报告分组成功次数与试验次数，并明确总体指标的权重。",
+          "afterParagraph": 1
         },
         "id": "1",
         "lead": "Macro 平均给每个任务相同权重，Micro 平均给每次试验相同权重。任务试验数不同时，两者估计的总体不同。先声明目标任务分布，再选择对应的汇总方法。"
@@ -17870,12 +18041,22 @@
       {
         "title": "配对对照与 bootstrap 为什么要一起重采样",
         "body": [
-          "若两个方法在同一组起始条件上测试，每个条件形成一个配对结果 \\((A_i,B_i)\\)。比较差值 \\(D_i=B_i-A_i\\) 可以消除一部分条件难度差异。配对 bootstrap 应抽取条件索引，再同时带走该索引的 \\(A_i\\) 与 \\(B_i\\)；分别独立打乱两边，会破坏配对结构并改变所估计的差值分布。",
+          "若两个方法在同一组起始条件上测试，每个条件形成一个配对结果 \\((A_i,B_i)\\)。比较差值 \\(D_i=B_i-A_i\\) 可以消除一部分条件难度差异。配对 bootstrap 的一轮重采样，是从 n 个条件中有放回地抽取 n 个索引，再同时带走每个索引的 \\(A_i\\) 与 \\(B_i\\)；分别独立打乱两边，会破坏配对结构并改变所估计的差值分布。",
           "配对不等于每次实际环境完全相同。真实机器人测试可能因磨损、物体复位误差或执行顺序变化产生额外差异，应随机化或交错方法次序，并记录影响因素。若有多个训练种子或场景组，需要在相应层级保持配对，而不是只按文件行号认定可配对。",
           "两个成功率区间是否重叠，不是配对差异是否显著的等价判断。应直接估计差值及其不确定性，并同时说明效应是否具有实际意义。一个统计上可辨认的微小提升，可能不足以补偿明显更高的延迟或资源成本；反之，较宽区间也不能证明两方法等效。"
         ],
         "id": "4",
-        "lead": "配对对照让不同方法使用同一组条件，配对 bootstrap 按这些共同条件索引重采样两边结果，以估计差值的波动。这里的 bootstrap 是统计重采样，不是 TD 中估计尾值的自举。配对关系应贯穿整个计算。"
+        "lead": "配对对照让不同方法使用同一组条件，配对 bootstrap 按这些共同条件索引重采样两边结果，以估计差值的波动。这里的 bootstrap 是统计重采样，不是 TD 中估计尾值的自举。配对关系应贯穿整个计算。",
+        "example": {
+          "title": "重抽一次条件，必须同时带走两种方法的结果",
+          "afterParagraph": 1,
+          "steps": [
+            "三个共同条件上，A=(0,1,0)、B=(1,1,0)，逐条件差 B−A=(1,0,0)，平均提升为 1/3。",
+            "一轮有放回抽样抽到索引 (0,0,2)。两边都取这些行，得到 A*=(0,0,0)、B*=(1,1,0)，平均差为 2/3。",
+            "重复许多轮后得到平均差的重采样分布，再按所选区间方法汇总。每轮都保留同一条件下的配对关系。"
+          ],
+          "conclusion": "重复抽到一个索引是 bootstrap 的预期行为；两边分别抽不同索引则丢失了共同条件结构。"
+        }
       },
       {
         "title": "消融设计隔离哪个变化",
@@ -18119,7 +18300,8 @@
             "使用 \\(\\mu=2,\\ \\sigma=4\\)，标准化 \\(z=(8-2)/4=1.5\\)。",
             "正确恢复为 \\(10+4\\times1.5+2=18\\)；先算 \\(z+q\\) 再反归一化会得到 48。"
           ],
-          "conclusion": "每一步都标明数值空间，逆序恢复比仅检查最终维度更重要。"
+          "conclusion": "每一步都标明数值空间，逆序恢复比仅检查最终维度更重要。",
+          "afterParagraph": 1
         },
         "focus": {
           "kind": "易错",
@@ -18144,7 +18326,8 @@
             "将 oracle \\(\\epsilon\\) 代入 \\(\\frac{x-\\sqrt{1-\\bar\\alpha}\\,\\epsilon}{\\sqrt{\\bar\\alpha}}\\)，可恢复 \\(z=2\\)，再按保存统计量解码。",
             "故意把 \\(\\epsilon\\) 直接当 z，形状仍然正确，却会得到另一个原始动作。"
           ],
-          "conclusion": "oracle 检查证明变换链自洽；网络是否能给出可靠估计仍需真实预测测试。"
+          "conclusion": "oracle 检查证明变换链自洽；网络是否能给出可靠估计仍需真实预测测试。",
+          "afterParagraph": 1
         },
         "id": "4",
         "code": "import hashlib\nimport json\nimport torch\n\ntorch.manual_seed(7)\n\n# STEP 1: 统计量和变换模式也有内容身份\nmean=torch.tensor([1.,-2.])\nstd=torch.tensor([0.5,2.])\ndef normalizer_id(mean,std):\n    payload={'mode':'mean_std','mean':mean.tolist(),'std':std.tolist()}\n    return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()\n\nsaved={'actions':('x','y'),'unit':'m','mode':'delta_base',\n       'normalizer':normalizer_id(mean,std),'prediction':'epsilon','dt':0.1}\nruntime=dict(saved)\n\n# STEP 2: 对真正影响语义的字段逐项检查，不能仅比较维度\ndef check_contract(expected,actual):\n    mismatches=[key for key in expected if key not in actual or actual[key]!=expected[key]]\n    if mismatches:\n        raise ValueError('contract mismatch: '+','.join(mismatches))\n\ncheck_contract(saved,runtime)\nbroken=dict(runtime,unit='cm')\ntry:\n    check_contract(saved,broken)\n    raise AssertionError('单位错误未被发现')\nexcept ValueError as error:\n    print('detected:',error)\n\n# STEP 3: 用已知噪声作测试夹具，核对 epsilon 到原始动作的恢复\nraw_action=torch.tensor([[[1.1,-1.8]]])\nclean=(raw_action-mean)/std\nnoise=torch.tensor([[[0.4,-0.2]]])\nalpha_bar=torch.tensor(0.6)\nnoisy=alpha_bar.sqrt()*clean+(1-alpha_bar).sqrt()*noise\nrecovered_clean=(noisy-(1-alpha_bar).sqrt()*noise)/alpha_bar.sqrt()\nrecovered_action=recovered_clean*std+mean\ntorch.testing.assert_close(recovered_action,raw_action)\nwrong_action=noise*std+mean  # 误把 epsilon 当干净动作；形状仍然正确\nassert wrong_action.shape==raw_action.shape\nassert not torch.allclose(wrong_action,raw_action)\n\n# STEP 4: 配置与数据边界一起保存，且由真实代码检查支持\ntrain_groups={'train-a','train-b'}\nevaluation_groups={'heldout-c'}\nassert train_groups.isdisjoint(evaluation_groups)\nassert normalizer_id(mean,std)!=normalizer_id(mean,std*10)\nprint('round trip:',recovered_action.tolist())\nprint('same-shape wrong decoding:',wrong_action.tolist())\nprint('contract, normalization fingerprint and group-isolation checks passed')\n",

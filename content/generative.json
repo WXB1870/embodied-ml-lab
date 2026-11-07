@@ -129,7 +129,17 @@
           "完整代码使用只含二次项的线性高斯模型，以 \\(\\epsilon\\in\\{-1,+1\\}\\) 两个等权点准确匹配零均值和单位二阶矩，核对 Autograd 与解析期望的梯度。这是该二次函数的确定性矩检验，不是宣称两个点能精确积分任意非线性 VAE。"
         ],
         "formula": "\\begin{aligned}Z&=\\mu_\\phi(a)+\\exp(\\ell_\\phi(a)/2)\\odot\\epsilon,\\qquad\\epsilon\\sim\\mathcal N(0,I)\\\\ \\nabla_\\phi\\mathbb E[h_\\theta(Z)]&=\\mathbb E_\\epsilon\\!\\left[\\left(\\frac{\\partial Z}{\\partial\\phi}\\right)^{\\!\\top}\\nabla_Zh_\\theta(Z)\\right].\\end{aligned}",
-        "lead": "重参数化是把参数相关分布的采样改写为固定噪声经过可微变换的办法。这样参数变化仍能通过样本值影响目标，梯度便可沿变换回传。下面用高斯均值与尺度展示它解决的求导问题。"
+        "lead": "重参数化是把参数相关分布的采样改写为固定噪声经过可微变换的办法。这样参数变化仍能通过样本值影响目标，梯度便可沿变换回传。下面用高斯均值与尺度展示它解决的求导问题。",
+        "example": {
+          "title": "沿前面的高斯后验，让一份噪声穿过参数",
+          "afterParagraph": 1,
+          "steps": [
+            "继续使用前面 \\(q=\\mathcal N(1,1/2)\\) 的例子。均值 μ=1，标准差 \\(\\sigma=\\sqrt{1/2}\\)。取一次固定噪声 ε=1，样本为 \\(z=1+\\sqrt{1/2}\\approx1.7071\\)。",
+            "固定同一份 ε，只把 μ 增加 0.1，z 也增加 0.1；因此该采样变换对 μ 的导数为 1。随机噪声的存在，并没有使这条参数依赖消失。",
+            "若网络输出 \\(\\ell=\\log\\sigma^2=\\log(1/2)\\)，则 \\(\\partial z/\\partial\\ell=\\tfrac12e^{\\ell/2}\\epsilon\\approx0.3536\\)。这里要对标准差而非方差求采样变换的导数。"
+          ],
+          "conclusion": "一次采样中固定基础噪声，仍能沿均值与尺度的可微变换回传。它是期望梯度的一份样本估计，不等于用一份噪声精确计算了整个期望。"
+        }
       },
       {
         "id": "posterior-collapse",
@@ -376,8 +386,9 @@
         "id": "forward-sde",
         "title": "SDE 和 Fokker–Planck：样本噪声怎样改变密度",
         "body": [
-          "考虑 Itô SDE：\\(dX_t=f(X_t,t)\\,dt+g(t)\\,dW_t\\)，其中 \\(f\\in\\mathbb R^D\\) 是漂移，\\(g(t)\\ge0\\) 是只依赖时间的标量扩散系数，\\(W_t\\) 为 \\(D\\) 维标准 Brownian motion。一个长度 \\(h>0\\) 的独立 Brownian 增量具有协方差 \\(hI\\)，因此 Euler–Maruyama 更新中的噪声项是 \\(g\\sqrt h\\,\\xi\\)，而不是 \\(gh\\,\\xi\\)；后者的噪声方差会错误地变成 \\(h^2\\) 量级。",
+          "考虑 Itô SDE：\\(dX_t=f(X_t,t)\\,dt+g(t)\\,dW_t\\)，其中 \\(f\\in\\mathbb R^D\\) 是漂移，\\(g(t)\\ge0\\) 是只依赖时间的标量扩散系数，\\(W_t\\) 为 \\(D\\) 维标准 Brownian motion。标准布朗运动从零出发，路径连续，互不重叠时间段的增量相互独立，长度为 h 的增量服从 \\(\\mathcal N(0,hI)\\)。因此，对长度 h>0 的一步， Euler–Maruyama 更新中的噪声项是 \\(g\\sqrt h\\,\\xi\\)，而不是 \\(gh\\,\\xi\\)；后者的噪声方差会错误地变成 \\(h^2\\) 量级。",
           "先冻结当前 \\(x,t\\)，把一个小步近似写成 \\(\\Delta X=f(x,t)h+g(t)\\sqrt h\\,\\xi\\)，其中 \\(\\mathbb E\\xi=0\\)、\\(\\mathbb E[\\xi\\xi^\\top]=I\\)。其均值是 \\(fh\\)，二阶矩是 \\(g^2hI+ff^\\top h^2\\)。对足够光滑的测试函数作二阶展开：\\(\\varphi(x+\\Delta X)-\\varphi(x)=\\nabla\\varphi(x)^\\top\\Delta X+\\frac12\\Delta X^\\top H_\\varphi(x)\\Delta X+R\\)，其中 \\(H_\\varphi\\) 是 Hessian。",
+          "记号也要先固定：对标量函数 φ，\\(\\Delta\\varphi=\\sum_i\\partial^2\\varphi/\\partial x_i^2\\) 是 Laplace 算子；对向量场 j，\\(\\nabla\\cdot j=\\sum_i\\partial j_i/\\partial x_i\\) 是散度。前者将二阶变化相加，后者在概率通量中表示局部净流出。它们都对状态坐标求导，而非对网络参数求导。",
           "取条件期望并除以 \\(h\\)，一阶项给出 \\(f\\cdot\\nabla\\varphi\\)，二阶项中的 \\(g^2hI\\) 给出 \\(\\frac12g^2\\operatorname{tr}(H_\\varphi)=\\frac12g^2\\Delta\\varphi\\)，\\(ff^\\top h^2\\) 对应项则随 \\(h\\to0\\) 消失。若局部矩与导数满足使余项满足 \\(\\mathbb E[R]/h\\to0\\) 的条件，便得到下面的生成元；Itô 公式对连续过程给出相同的期望恒等式。这说明随机增量虽只有零均值，仍通过二阶项改变密度。",
           "\\[\\frac d{dt}\\mathbb E[\\varphi(X_t)]=\\mathbb E[\\nabla\\varphi\\cdot f+\\frac{g^2}{2}\\Delta\\varphi]\\]",
           "再把对 \\(X_t\\) 的期望写成密度积分。在测试函数紧支撑，或边界衰减足以消去边界项的条件下，\\(\\int p f\\cdot\\nabla\\varphi=-\\int\\varphi\\nabla\\cdot(fp)\\)；扩散项分部积分两次，\\(\\int p\\Delta\\varphi=\\int\\varphi\\Delta p\\)。把导数移到 \\(p_t\\) 后，才能从所有测试函数的恒等式得到密度方程。",
@@ -411,11 +422,20 @@
           "将它与漂移通量合并，得到连续性方程 \\(\\partial_t p=-\\nabla\\!\\cdot(pu_t)\\)，其中 \\(u_t=f-\\frac{g^2}{2}s_t\\)。满足适当的解存在性、唯一性与边界条件时，ODE \\(\\frac{dX}{dt}=u_t\\) 与原 SDE 具有相同的各时刻边际密度。",
           "这里的“一样”只针对边际分布 \\(p_t\\)，不表示样本路径、给定两端点的条件过程或多时刻联合分布相同。SDE 持续注入随机增量，ODE 在给定初始点后是确定的。逆向生成时，把这个 ODE 从 \\(T\\) 积分到 0，或使用 \\(\\tau\\) 时钟下的 \\(-f+\\frac{g^2}{2}s_t\\)。",
           "反向 SDE 的 score 系数是 \\(g^2\\)，概率流 ODE 的系数是 \\(g^2/2\\)。因子不同来自它们密度方程中是否还含随机扩散项。不能删除反向 SDE 的随机项但保留原漂移，声称得到了概率流 ODE。",
-          "一个诊断例是平稳标准高斯下的 VP 过程：\\(s=-x\\)，\\(f=-\\beta x/2\\)，\\(g^2=\\beta\\)。概率流 ODE 的速度为零；正反向 SDE 都仍然可以是保持单位高斯边际的 Ornstein–Uhlenbeck 过程。这个例子直接显示，相同边际分布并不要求相同样本运动。",
           "完整代码在一个二维高斯混合密度上，用 Autograd 分别计算时间导数、Fokker–Planck 右端和 ODE 连续性方程右端，逐点核对恒等式。这是公式层面的验证；学习到的 score 只有近似准确时，实际生成边际也只能近似遵循上述关系。"
         ],
         "formula": "\\begin{aligned}\\partial_tp_t&=-\\nabla\\cdot(f p_t)+\\tfrac12g^2\\nabla\\cdot(p_ts_t)\\\\&=-\\nabla\\cdot\\!\\left[p_t\\left(f-\\tfrac12g^2s_t\\right)\\right],\\\\u_t(x)&=f(x,t)-\\tfrac12g(t)^2s_t(x).\\end{aligned}",
-        "lead": "概率流 ODE 是与给定扩散过程具有相同边际密度演化的确定性微分方程。它用一个速度场替代随机扰动所产生的概率通量，但样本轨迹分布并不相同。下面从本章的密度方程推导这个速度。"
+        "lead": "概率流 ODE 是与给定扩散过程具有相同边际密度演化的确定性微分方程。它用一个速度场替代随机扰动所产生的概率通量，但样本轨迹分布并不相同。下面从本章的密度方程推导这个速度。",
+        "example": {
+          "title": "同样保持标准高斯，样本可以运动，也可以静止",
+          "afterParagraph": 3,
+          "steps": [
+            "考虑平稳单位高斯上的 VP 过程。取 β=2，在 x=1 处，Score 为 −1，前向漂移 \\(f=-\\beta x/2=-1\\)，扩散强度 \\(g=\\sqrt2\\) 不为零。",
+            "概率流 ODE 的速度为 \\(f-(g^2/2)s=-1-(2/2)(-1)=0\\)，所以它的每个初始样本在这个平稳例子中保持原位。",
+            "SDE 仍有漂移和随机增量，单个样本继续运动，但群体的标准高斯边际不变。对反向时钟，反向 SDE 在这里也仍有非零随机项；这不是“把反向 SDE 的噪声删掉”得到的 ODE。"
+          ],
+          "conclusion": "相同边际分布描述各时刻的样本群体，不要求相同的单条轨迹或多时刻联合分布。连续方程的这一关系也不意味着任意有限步离散器都精确保持边际。"
+        }
       },
       {
         "id": "parameterization-bridge",

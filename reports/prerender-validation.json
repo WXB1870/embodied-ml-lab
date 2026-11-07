@@ -1,6 +1,6 @@
 {
   "pages": 153,
-  "formulasRendered": 3670,
+  "formulasRendered": 3692,
   "entries": [
     {
       "path": "/",
@@ -10,7 +10,7 @@
     {
       "path": "/learn/tensor/",
       "title": "张量与广播",
-      "bytes": 42476
+      "bytes": 42485
     },
     {
       "path": "/learn/tensor/code/",
@@ -25,7 +25,7 @@
     {
       "path": "/learn/matrix-grad/",
       "title": "线性代数与矩阵求导",
-      "bytes": 270305
+      "bytes": 270376
     },
     {
       "path": "/learn/matrix-grad/code/",
@@ -40,7 +40,7 @@
     {
       "path": "/learn/probability/",
       "title": "概率、统计与训练目标",
-      "bytes": 334762
+      "bytes": 334109
     },
     {
       "path": "/learn/probability/code/",
@@ -130,7 +130,7 @@
     {
       "path": "/learn/mlp/",
       "title": "MLP：表达、梯度与优化",
-      "bytes": 435091
+      "bytes": 430645
     },
     {
       "path": "/learn/mlp/code/",
@@ -145,7 +145,7 @@
     {
       "path": "/learn/activation-init/",
       "title": "激活与初始化",
-      "bytes": 175824
+      "bytes": 183652
     },
     {
       "path": "/learn/activation-init/code/",
@@ -160,7 +160,7 @@
     {
       "path": "/learn/normalization/",
       "title": "归一化：统计轴、梯度与不变性",
-      "bytes": 248540
+      "bytes": 257336
     },
     {
       "path": "/learn/normalization/code/",
@@ -190,7 +190,7 @@
     {
       "path": "/learn/cnn-receptive-field/",
       "title": "CNN：卷积、采样与空间表示",
-      "bytes": 490158
+      "bytes": 491335
     },
     {
       "path": "/learn/cnn-receptive-field/code/",
@@ -220,7 +220,7 @@
     {
       "path": "/learn/embeddings/",
       "title": "Embedding 与位置编码",
-      "bytes": 81091
+      "bytes": 90243
     },
     {
       "path": "/learn/embeddings/code/",
@@ -235,7 +235,7 @@
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 638494
+      "bytes": 638637
     },
     {
       "path": "/learn/transformer/code/",
@@ -310,7 +310,7 @@
     {
       "path": "/learn/conditioning-fusion/",
       "title": "条件注入：拼接、FiLM 与 AdaLN",
-      "bytes": 97720
+      "bytes": 97827
     },
     {
       "path": "/learn/conditioning-fusion/code/",
@@ -340,7 +340,7 @@
     {
       "path": "/learn/latent-variable-models/",
       "title": "生成建模、潜变量与 VAE",
-      "bytes": 360045
+      "bytes": 371541
     },
     {
       "path": "/learn/latent-variable-models/code/",
@@ -355,7 +355,7 @@
     {
       "path": "/learn/diffusion/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM",
-      "bytes": 602228
+      "bytes": 602698
     },
     {
       "path": "/learn/diffusion/code/",
@@ -370,7 +370,7 @@
     {
       "path": "/learn/score-sde/",
       "title": "Score、SDE 与概率流 ODE",
-      "bytes": 516308
+      "bytes": 526129
     },
     {
       "path": "/learn/score-sde/code/",
@@ -385,7 +385,7 @@
     {
       "path": "/learn/flow-matching/",
       "title": "Flow Matching",
-      "bytes": 682000
+      "bytes": 685294
     },
     {
       "path": "/learn/flow-matching/code/",
@@ -415,7 +415,7 @@
     {
       "path": "/learn/action-representation/",
       "title": "状态与动作表示",
-      "bytes": 168671
+      "bytes": 176315
     },
     {
       "path": "/learn/action-representation/code/",
@@ -445,7 +445,7 @@
     {
       "path": "/learn/partial-observability/",
       "title": "部分观测与记忆",
-      "bytes": 99388
+      "bytes": 99460
     },
     {
       "path": "/learn/partial-observability/code/",
@@ -460,7 +460,7 @@
     {
       "path": "/learn/generative-policy/",
       "title": "生成式动作策略：ACT、Diffusion 与 Flow",
-      "bytes": 342018
+      "bytes": 347254
     },
     {
       "path": "/learn/generative-policy/code/",
@@ -490,7 +490,7 @@
     {
       "path": "/learn/finetuning/",
       "title": "微调与 LoRA",
-      "bytes": 302107
+      "bytes": 304898
     },
     {
       "path": "/learn/finetuning/code/",
@@ -505,7 +505,7 @@
     {
       "path": "/learn/returns-bellman/",
       "title": "回报与 Bellman 方程",
-      "bytes": 197046
+      "bytes": 213703
     },
     {
       "path": "/learn/returns-bellman/code/",
@@ -520,7 +520,7 @@
     {
       "path": "/learn/policy-gradient/",
       "title": "策略梯度",
-      "bytes": 224011
+      "bytes": 227119
     },
     {
       "path": "/learn/policy-gradient/code/",
@@ -565,7 +565,7 @@
     {
       "path": "/learn/training-loop/",
       "title": "训练循环与指标归约",
-      "bytes": 58833
+      "bytes": 59239
     },
     {
       "path": "/learn/training-loop/code/",
@@ -595,7 +595,7 @@
     {
       "path": "/learn/data-quality/",
       "title": "示教数据与采样",
-      "bytes": 95394
+      "bytes": 93711
     },
     {
       "path": "/learn/data-quality/code/",
@@ -655,12 +655,12 @@
     {
       "path": "/learn/distributed-training/",
       "title": "DDP 与全局统计",
-      "bytes": 58143
+      "bytes": 58201
     },
     {
       "path": "/learn/distributed-training/code/",
       "title": "DDP 与全局统计 · 代码",
-      "bytes": 16413
+      "bytes": 16367
     },
     {
       "path": "/learn/distributed-training/exercise/",
@@ -670,7 +670,7 @@
     {
       "path": "/learn/training-diagnostics/",
       "title": "训练诊断",
-      "bytes": 46117
+      "bytes": 45844
     },
     {
       "path": "/learn/training-diagnostics/code/",
@@ -700,7 +700,7 @@
     {
       "path": "/learn/distribution-shift/",
       "title": "分布偏移与 DAgger",
-      "bytes": 86947
+      "bytes": 85442
     },
     {
       "path": "/learn/distribution-shift/code/",
@@ -715,7 +715,7 @@
     {
       "path": "/learn/execution-latency/",
       "title": "动作执行与延迟",
-      "bytes": 69973
+      "bytes": 69544
     },
     {
       "path": "/learn/execution-latency/code/",
@@ -730,7 +730,7 @@
     {
       "path": "/learn/evaluation/",
       "title": "闭环评估与统计",
-      "bytes": 78047
+      "bytes": 78754
     },
     {
       "path": "/learn/evaluation/code/",

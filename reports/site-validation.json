@@ -1,7 +1,7 @@
 {
   "html_pages": 158,
   "lessons": 50,
-  "internal_targets_checked": 6611,
+  "internal_targets_checked": 6613,
   "errors": [],
   "archives": [
     {
@@ -263,7 +263,7 @@
     {
       "path": "/learn/diffusion/",
       "ids": 21,
-      "links": 82,
+      "links": 84,
       "assets": 11
     },
     {

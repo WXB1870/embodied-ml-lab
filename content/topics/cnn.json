@@ -2,7 +2,7 @@
   "id": "cnn",
   "title": "CNN：卷积、采样与空间表示",
   "subtitle": "局部连接与权重共享，如何决定表达能力、平移响应和空间信息。",
-  "lead": "卷积神经网络（CNN）是一类通过局部连接和参数共享处理空间数据的神经网络。同一卷积核在不同位置提取局部特征，多层卷积与非线性逐步组合这些特征，读出模块再形成分类或空间预测。它把图像的局部结构写进了网络连接。本章沿同一个 SmallCNN 追踪图像到输出，再解释窗口几何、感受野、采样与信息保留。",
+  "lead": "卷积神经网络（CNN）是一类通过局部连接和参数共享处理空间数据的神经网络。同一卷积核在不同位置提取局部特征，多层卷积与非线性逐步组合这些特征，读出模块再形成分类或空间预测。它把图像的局部结构写进了网络连接。本章的 SmallCNN 接收 12×12 RGB 图像，经两次“卷积＋ReLU”，再由全局平均池化和线性层给出两类输出。后续沿同一网络解释窗口、感受野、采样与信息保留。",
   "minutes": 200,
   "prerequisites": [
     "tensor",
@@ -281,7 +281,8 @@
           "groups=4时，每组仅连接2个输入通道，每个输出核权重形状为[2,3,3]；总参数为\\(16\\times2\\times9+16=304\\)。",
           "若先使用8通道depthwise，再用1×1投影到16通道，两层均有bias，则参数为\\((8\\times9+8)+(16\\times8+16)=224\\)。它属于不同结构，不能仅凭输出形状就认为与任意普通卷积等价。"
         ],
-        "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。"
+        "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。",
+        "afterParagraph": 3
       },
       "lead": "分组卷积只允许对应的通道组相互连接；深度可分离卷积则通常先逐通道做空间滤波，再用逐点卷积混合通道。这些结构通过限制连接降低成本，也限制了可表示的变换。下面先看连接，再分析秩。"
     },
@@ -308,7 +309,8 @@
           "第二层k=3、s=1、d=2，它在上一层上跨2个格点取样，因此 \\(R=3+(3-1)\\times2\\times2=11\\)，J仍为2。",
           "若第二层dilation改回1，\\(R=3+2\\times1\\times2=7\\)。常说“两层3×3得到5×5”只适用于两层stride与dilation均为1的对应设置。"
         ],
-        "conclusion": "递推时先用上一层J增加感受野，再更新J；把顺序颠倒会得到错误范围。"
+        "conclusion": "递推时先用上一层J增加感受野，再更新J；把顺序颠倒会得到错误范围。",
+        "afterParagraph": 2
       },
       "focus": {
         "kind": "易错",
@@ -323,26 +325,35 @@
     },
     {
       "id": "activation-pooling",
-      "title": "激活、归一化与池化",
+      "title": "激活与池化：先看主模型，再比较归一化",
       "body": [
         "把一层卷积展成线性算子 \\(C\\)，带偏置的输出为 \\(z=Cx+b\\)。只串联这类操作仍得到仿射函数；逐元素激活得到 \\(h_i=\\phi(z_i)\\)，其局部 Jacobian 为 \\(J=\\operatorname{diag}(\\phi^{\\prime}(z))C\\)。对 ReLU，正预激活的导数为一、负预激活为零，所以不同输入会启用不同局部映射。零点不可导，PyTorch 选择零导数作为实现约定；这不意味着所有框架必须采用同一种折点约定。",
         "若上游梯度为 \\(g=\\nabla_hL\\)，传回预激活的梯度就是 \\(g\\odot\\mathbf1\\{z>0\\}\\)。负位置的这条路径会被关闭，但同一权重仍可通过其他样本或其他空间位置获得更新；有残差时还可能存在旁路。多层卷积与激活由此形成输入相关的分段仿射结构。滤波器的实际含义由训练决定，不能把每一层机械指定为边缘、纹理或物体检测器。",
-        "BatchNorm2d 保持 `[B,C,H,W]` 形状，对每个通道分别在样本、高和宽三个轴上统计。固定通道 \\(c\\)，令 \\(N=BHW\\)，将该通道的元素编号为 \\(x_{c,1},\\ldots,x_{c,N}\\)。训练前向为 \\[\\mu_c=\\frac1N\\sum_nx_{c,n},\\quad v_c=\\frac1N\\sum_n(x_{c,n}-\\mu_c)^2,\\quad z_{c,n}=\\frac{x_{c,n}-\\mu_c}{r_c},\\quad y_{c,n}=\\gamma_cz_{c,n}+\\beta_c,\\quad r_c=\\sqrt{v_c+\\epsilon}.\\]均值和尺度都由当前输入计算，\\(\\gamma_c,\\beta_c\\) 则是每个通道共享的可学习参数。",
-        "BN 的反向不能只把上游梯度除以标准差。记 \\(g_{c,n}=\\partial L/\\partial y_{c,n}\\)、\\(q_{c,n}=\\gamma_cg_{c,n}\\)，沿相同统计集合取平均，有 \\[\\frac{\\partial L}{\\partial x_{c,n}}=\\frac{q_{c,n}-\\operatorname{mean}(q_c)-z_{c,n}\\operatorname{mean}(q_c\\odot z_c)}{r_c}.\\]第一项来自输入直接变化，第二项修正均值的变化，第三项修正方差的变化；完整微分见[归一化的 Jacobian](#/learn/normalization?tab=theory&section=2)。因此某个像素的梯度会依赖同通道其他位置甚至其他样本，BN 不是逐像素的固定缩放。",
-        "训练时使用当前批次的总体式方差，并更新运行统计；默认评估时用保存的运行均值和方差，此时它们对当前输入是常数。PyTorch 更新 `running_var` 使用对应的无偏批次方差，不能把它和训练前向的分母混为一谈。小批次、相关视频帧或分布变化会影响统计估计；冻结 \\(\\gamma,\\beta\\) 并不会停止训练模式下的 Buffer 更新。需要固定视觉编码器时，应分别决定参数冻结、Norm 模式与梯度路径，而不是把 `requires_grad=False` 当作全部冻结。",
         "池化在每个通道内对窗口集合 \\(\\Omega_u\\) 汇聚，其中 \\(u\\) 是输出位置。无填充且窗口包含 \\(K\\) 个元素时，平均池化为 \\(y_u=K^{-1}\\sum_{j\\in\\Omega_u}x_j\\)，最大池化为 \\(y_u=\\max_{j\\in\\Omega_u}x_j\\)。前者是固定线性组合，后者是由输入选择分支的分段线性函数。两者的步幅都决定输出窗口如何移动，因此需要继续沿用前面感受野与采样间距的分析。",
         "平均池化满足 \\(\\partial y_u/\\partial x_j=1/K\\)（\\(j\\in\\Omega_u\\)），唯一最大值位于 \\(j_u^*\\) 时，最大池化满足 \\(\\partial y_u/\\partial x_j=\\mathbf1\\{j=j_u^*\\}\\)。如果输入位置被多个窗口覆盖，它的梯度还要将各个窗口贡献相加。并列最大值处不可导，实现会选取一种梯度分配，不能声称平均分给所有并列位置是最大池化的必然行为。",
-        "例如窗口 \\([1,4;3,2]\\) 的平均值为 2.5，输出梯度为一时四个输入各收到 0.25；最大值为 4，梯度全部到达右上位置。对一维输入 \\([1,3,2]\\) 使用大小二、步幅一的重叠窗口，并对两个输出求和，平均池化梯度为 \\([0.5,1,0.5]\\)，最大池化梯度为 \\([0,2,0]\\)。中间位置接收两条路径的贡献，不能只按某一个窗口写回梯度。",
         "当池化步幅大于一时，还发生空间下采样。平均池化等价于先用方框核做局部平均再取样，能够衰减部分高频，但这个有限滤波器并非理想带限滤波，不能保证完全消除混叠。最大池化是非线性选择，也不自动满足下采样所需的频率条件。改变输入采样相位后，即使边界使用周期约定，池化结果也可能变化；下一节将用频率和奇偶相位进一步解释。",
         "全局平均池化（GAP）将整个空间轴变成一个窗口：\\(\\bar F_{b,c}=(HW)^{-1}\\sum_{i,j}F_{b,c,i,j}\\)。特征图 \\([4,0;0,0]\\) 与 \\([0,0;0,4]\\) 的响应位置不同，GAP 却都为一；任何只读取该单通道均值的后续函数都无法区分二者。其反向把同一输出梯度除以 \\(HW\\) 分配给每个位置。这个反例针对当前特征图到均值的映射：若上游已把空间关系写进其他通道，GAP 仍可能保留任务需要的信息，不能仅凭最后一个平均算子判断整网空间能力。",
         "边界约定也会改变池化的函数。`AvgPool2d` 的 `count_include_pad` 决定补零是否进入平均分母；`MaxPool2d` 的隐式填充值是负无穷，不是普通卷积的零。用全负输入或边界窗口核对这些差异，再根据任务选择保持空间 token、多尺度特征或全局汇聚。代码页的[激活、批次统计与池化的梯度对照](#/learn/cnn-receptive-field?tab=code&anchor=demo-activation-pooling-gradients)将上述公式与 Autograd 逐项比较。",
+        "BatchNorm2d 保持 `[B,C,H,W]` 形状，对每个通道分别在样本、高和宽三个轴上统计。固定通道 \\(c\\)，令 \\(N=BHW\\)，将该通道的元素编号为 \\(x_{c,1},\\ldots,x_{c,N}\\)。训练前向为 \\[\\mu_c=\\frac1N\\sum_nx_{c,n},\\quad v_c=\\frac1N\\sum_n(x_{c,n}-\\mu_c)^2,\\quad z_{c,n}=\\frac{x_{c,n}-\\mu_c}{r_c},\\quad y_{c,n}=\\gamma_cz_{c,n}+\\beta_c,\\quad r_c=\\sqrt{v_c+\\epsilon}.\\]均值和尺度都由当前输入计算，\\(\\gamma_c,\\beta_c\\) 则是每个通道共享的可学习参数。",
+        "BN 的反向不能只把上游梯度除以标准差。记 \\(g_{c,n}=\\partial L/\\partial y_{c,n}\\)、\\(q_{c,n}=\\gamma_cg_{c,n}\\)，沿相同统计集合取平均，有 \\[\\frac{\\partial L}{\\partial x_{c,n}}=\\frac{q_{c,n}-\\operatorname{mean}(q_c)-z_{c,n}\\operatorname{mean}(q_c\\odot z_c)}{r_c}.\\]第一项来自输入直接变化，第二项修正均值的变化，第三项修正方差的变化；完整微分见[归一化的 Jacobian](#/learn/normalization?tab=theory&section=2)。因此某个像素的梯度会依赖同通道其他位置甚至其他样本，BN 不是逐像素的固定缩放。",
+        "训练时使用当前批次的总体式方差，并更新运行统计；默认评估时用保存的运行均值和方差，此时它们对当前输入是常数。PyTorch 更新 `running_var` 使用对应的无偏批次方差，不能把它和训练前向的分母混为一谈。小批次、相关视频帧或分布变化会影响统计估计；冻结 \\(\\gamma,\\beta\\) 并不会停止训练模式下的 Buffer 更新。需要固定视觉编码器时，应分别决定参数冻结、Norm 模式与梯度路径，而不是把 `requires_grad=False` 当作全部冻结。",
         "贯穿 SmallCNN 没有 BatchNorm，便于直接观察卷积、ReLU 和 GAP 的局部路径。对 logits 的交叉熵梯度先乘分类器权重，得到 `[B,12]` 的汇聚特征梯度；GAP 再将每个通道的该梯度以 \\(1/144\\) 分给 12×12 个位置。代码逐元素验证这一式子，然后观察 ReLU 将哪些位置置零。若加入训练态 BN，样本和空间之间又增加统计依赖，此时不能继续套用“一个局部输出只依赖局部输入”的纯卷积结论。"
       ],
       "formula": "\\begin{aligned}\\frac{\\partial L}{\\partial x_j}&=\\sum_{u:j\\in\\Omega_u}g_u\\frac{\\partial y_u}{\\partial x_j},\\\\\\frac{\\partial y_u^{\\rm avg}}{\\partial x_j}&=\\frac1K\\quad(j\\in\\Omega_u),\\\\\\frac{\\partial y_u^{\\rm max}}{\\partial x_j}&=\\mathbf1\\{j=j_u^*\\}\\quad\\text{（唯一最大值）}.\\end{aligned}",
       "code": "import torch\nimport torch.nn.functional as F\n\ndtype = torch.float64\nx = torch.tensor([[[[1., 4.], [3., 2.]]]], dtype=dtype,\n                 requires_grad=True)\navg = F.avg_pool2d(x, 2)\nmaximum = F.max_pool2d(x, 2)\ng_avg, = torch.autograd.grad(avg.sum(), x)\ng_max, = torch.autograd.grad(maximum.sum(), x)\ntorch.testing.assert_close(g_avg, torch.full_like(x, 0.25))\ntorch.testing.assert_close(g_max, torch.tensor(\n    [[[[0., 1.], [0., 0.]]]], dtype=dtype))\n\n# Same channel mean, different spatial locations.\nmaps = torch.tensor([[[[4., 0.], [0., 0.]]],\n                     [[[0., 0.], [0., 4.]]]], dtype=dtype)\npooled = F.adaptive_avg_pool2d(maps, 1)\nassert not torch.equal(maps[0], maps[1])\ntorch.testing.assert_close(pooled, torch.ones_like(pooled))\nprint(\"平均/最大池化的梯度和 GAP 空间反例均通过。\")\n",
       "codeExplanation": "先用唯一最大值窗口隔离两种梯度分配，再用两个响应位置不同、均值相同的特征图验证 GAP 的不可区分性。这里没有训练随机模型，断言检验的是明确算子的性质。完整实现进一步检查重叠窗口、BN 反向和运行统计。",
-      "lead": "激活使卷积特征发生非线性变化，归一化调整指定集合的统计尺度，池化汇总一个局部区域以改变分辨率或读出信息。它们是 CNN 中承担不同职责的模块，不能统称为“提取特征”。下面沿前向与反向分别分析。",
-      "codeKind": "runnable"
+      "lead": "激活使卷积特征发生非线性变化，池化汇总空间响应，归一化则调整指定集合的统计尺度。主案例使用 ReLU 和全局平均池化，不包含 BatchNorm。先认识这条实际路径，再用归一化作结构对照，分别追踪前向与反向。",
+      "codeKind": "runnable",
+      "example": {
+        "title": "同一个窗口，平均池化与最大池化怎样前传和回传",
+        "afterParagraph": 4,
+        "steps": [
+          "窗口为 \\(\\begin{bmatrix}1&4\\\\3&2\\end{bmatrix}\\)，平均池化得到 \\((1+4+3+2)/4=2.5\\)，最大池化得到 4。输出形状相同，保留的信息不同。",
+          "若该输出的上游梯度为 1，平均池化给四个位置各传回 1/4；最大池化在唯一最大值的右上位置传回 1，其余为零。",
+          "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
+        ],
+        "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
+      }
     },
     {
       "id": "equivariance",
