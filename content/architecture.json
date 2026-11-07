@@ -405,9 +405,9 @@
         },
         "figures": [
           {
-            "src": "/assets/figures/residual-definition.svg",
-            "alt": "左侧展示输入经直接路径和变换分支相加；右侧对照经典 ResNet basic block 的加法后 ReLU。",
-            "caption": "先沿蓝色旁路看输入如何直接抵达加法，再沿变换分支看修正量从哪里来。左图对应本文的加法核心，右图保留经典 ResNet 的加法后 ReLU。依据 [He et al., Figure 2](https://arxiv.org/abs/1512.03385) 独立绘制。",
+            "src": "/assets/figures/residual-d2l-classic.svg",
+            "alt": "《动手学深度学习》的普通块与残差块对照：左侧直接学习映射，右侧学习修正量并通过旁路与输入相加。",
+            "caption": "先比较左右两图：左侧直接学习 f(x)，右侧学习 g(x)=f(x)−x，再由旁路把 x 加回来。本文把图中的 g 记作 F，y=x+F(x) 表示加法核心；图顶端的激活另计。原图：[《动手学深度学习》图 8.6.2](https://d2l.ai/chapter_convolutional-modern/resnet.html#residual-blocks)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
             "afterParagraph": 0
           }
         ]

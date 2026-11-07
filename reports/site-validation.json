@@ -1,16 +1,16 @@
 {
   "html_pages": 158,
   "lessons": 50,
-  "internal_targets_checked": 6613,
+  "internal_targets_checked": 6618,
   "errors": [],
   "archives": [
     {
       "name": "embodied-ml-study-pack.zip",
-      "files": 389
+      "files": 395
     },
     {
       "name": "embodied-ml-topics.zip",
-      "files": 81
+      "files": 87
     }
   ],
   "pages": [
@@ -749,7 +749,7 @@
     {
       "path": "/learn/residual/",
       "ids": 17,
-      "links": 53,
+      "links": 54,
       "assets": 11
     },
     {
@@ -893,7 +893,7 @@
     {
       "path": "/learn/transformer/",
       "ids": 28,
-      "links": 113,
+      "links": 117,
       "assets": 16
     },
     {

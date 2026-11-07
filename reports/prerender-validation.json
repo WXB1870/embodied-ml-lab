@@ -175,7 +175,7 @@
     {
       "path": "/learn/residual/",
       "title": "残差连接与深层优化",
-      "bytes": 256598
+      "bytes": 256817
     },
     {
       "path": "/learn/residual/code/",
@@ -235,7 +235,7 @@
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 638637
+      "bytes": 639202
     },
     {
       "path": "/learn/transformer/code/",

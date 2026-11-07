@@ -1,0 +1,8 @@
+Asset: transformer-vaswani-figure1.png
+Title: The Transformer — model architecture (Figure 1)
+Authors: Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, Illia Polosukhin.
+Paper: Attention Is All You Need (2017), arXiv:1706.03762v7.
+Source: https://arxiv.org/html/1706.03762v7/Figures/ModalNet-21.png
+Paper and permission statement: https://arxiv.org/html/1706.03762v7
+Permission basis: The paper's opening statement grants reproduction of its figures and tables in journalistic or scholarly works with proper attribution.
+Reuse: Original figure reproduced unchanged in an educational discussion of the original Transformer architecture. Attribution and Chinese reading notes appear beside the figure. This is a figure-specific permission, not a license for the whole paper.

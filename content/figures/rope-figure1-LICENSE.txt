@@ -1,0 +1,9 @@
+Asset: rope-roformer-figure1.svg
+Title: Rotary position embedding illustration (Figure 1)
+Authors: Jianlin Su, Yu Lu, Shengfeng Pan, Ahmed Murtadha, Bo Wen, Yunfeng Liu.
+Paper: RoFormer: Enhanced Transformer with Rotary Position Embedding, arXiv:2104.09864v5.
+Paper: https://arxiv.org/abs/2104.09864v5
+Original asset: https://arxiv.org/html/2104.09864v5/roformer_RoPE_v2.svg
+License: Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0), as linked on the paper's arXiv abstract page.
+License terms: https://creativecommons.org/licenses/by-nc-nd/4.0/
+Reuse: Original SVG reproduced without modification for noncommercial educational explanation. Only the webpage display size changes. Chinese reading notes are separate from the original image; they are not a translated or altered version of it.

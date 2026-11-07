@@ -127,16 +127,21 @@ for route, page in pages.items():
             errors.append([route, 'missing target anchor', value, anchor])
 
 archive_records = []
-authored_figures={f['src'].lstrip('/') for lesson in lessons for s in lesson['sections']
-                  for f in s.get('figures',[s['figure']] if s.get('figure') else [])}
+figure_alts={}
+for lesson in lessons:
+    for section in lesson['sections']:
+        for figure in section.get('figures',[section['figure']] if section.get('figure') else []):
+            figure_alts.setdefault(figure['src'].lstrip('/'),[]).append(figure.get('alt','').strip())
+authored_figures=set(figure_alts)
 for asset in authored_figures:
     file=dist/asset
     if file.suffix=='.svg' and file.exists():
         try:
             svg=ET.parse(file).getroot()
             if not svg.get('viewBox'):errors.append([asset,'SVG missing viewBox'])
-            if asset.startswith('assets/figures/') and svg.find('{http://www.w3.org/2000/svg}title') is None:
-                errors.append([asset,'SVG missing accessible title'])
+            # Unmodified source figures can use the embedding image's alt text.
+            if asset.startswith('assets/figures/') and svg.find('{http://www.w3.org/2000/svg}title') is None and not all(figure_alts[asset]):
+                errors.append([asset,'SVG missing accessible title or complete embedding alt text'])
         except ET.ParseError as error:errors.append([asset,'invalid SVG XML',str(error)])
 for filename in ['embodied-ml-study-pack.zip', 'embodied-ml-topics.zip']:
     with zipfile.ZipFile(dist / 'downloads' / filename) as archive:

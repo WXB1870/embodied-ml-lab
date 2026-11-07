@@ -274,10 +274,10 @@
       "codeExplanation": "这段确定性二维算例与图中的角度相同，验证范数、相对点积和共同平移。完整模型的 `apply_rope` 把相同计算向量化到 `[2,2,4,4]`，采用标准基数 10000；代码页还验证全序列与多种缓存分块的输出和所有参数梯度。",
       "figures": [
         {
-          "src": "/assets/figures/transformer-rope-pairs.svg",
-          "title": "RoPE 的二维旋转与相对位置",
-          "alt": "固定 q=k=(1,0)，在 30° 与 90° 旋转后点积为 1/2；两个位置共同平移后角度为 90° 与 150°，相对夹角仍为 60°。",
-          "caption": "本章原创数值示意，机制参照 [RoFormer §3.2](https://arxiv.org/abs/2104.09864)。π/6 是便于手算的单频率，完整模型采用 1、0.01 两组频率；图不表示任意上下文或长距离点积具有单调不变性质。",
+          "src": "/assets/figures/rope-roformer-figure1.svg",
+          "title": "RoFormer 原论文 Figure 1：成对通道旋转",
+          "alt": "RoFormer 原图：上部展示二维 Query/Key 随位置旋转，下部将通道配对并为不同位置施加不同旋转角。",
+          "caption": "先看上部二维情形：位置 m 决定旋转角；再看下部，不同颜色表示不同通道对，每对使用自己的频率，并在每个位置重复同一旋转规则。旋转用于 Q/K 匹配，不是在输入上另加一个位置向量。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)，按 [CC BY-NC-ND 4.0](/assets/figures/rope-figure1-LICENSE.txt) 原样复用；[放大查看](/assets/figures/rope-roformer-figure1.svg)。本节数值算例仍用于手算相对角差。",
           "afterParagraph": 3
         }
       ]
@@ -467,10 +467,10 @@
       "lead": "Encoder 将已知输入编码成表示，Decoder 根据可用上下文产生目标输出；自回归则规定输出按前缀逐项分解。三者分属结构与概率组织两个层次。下面据此比较 BERT、GPT-2、T5 与本章小模型。",
       "figures": [
         {
-          "src": "/assets/figures/transformer-original-encoder-decoder.svg",
-          "title": "原论文 Encoder–Decoder：Post-LN",
-          "alt": "源侧双向编码、目标侧 masked 自注意力、源到目标交叉注意力和 FFN；每个子层先残差相加再 LayerNorm，源表示供每层交叉注意力的 K/V。",
-          "caption": "依据 [Vaswani et al. §3.1–3.5](https://arxiv.org/abs/1706.03762) 原创重绘。图采用原论文 Post-LN、正弦位置相加与两组六层堆叠；与本章两层 Pre-LN/RoPE 的 decoder-only 实例分开。为突出结构省略 Dropout 和具体 FFN 宽度。",
+          "src": "/assets/figures/transformer-vaswani-figure1.png",
+          "title": "Transformer 原论文 Figure 1：Encoder–Decoder",
+          "alt": "Attention Is All You Need 原论文结构图：左侧 Encoder，右侧带因果自注意力和交叉注意力的 Decoder，每个子层后执行 Add & Norm。",
+          "caption": "从底部向上读：左侧把源序列编码，右侧接收移位后的目标序列，先作因果自注意力，再通过中间的交叉注意力读取左侧表示。Add & Norm 是先残差相加、再 LayerNorm，即原论文的 Post-LN；它与本章 Pre-LN/RoPE 的 decoder-only 主案例不同。原图：[Vaswani et al., Figure 1](https://arxiv.org/html/1706.03762v7#S3.F1)；[放大查看](/assets/figures/transformer-vaswani-figure1.png) · [出处与复用说明](/assets/figures/attention-figure1-LICENSE.txt)。",
           "afterParagraph": 3
         }
       ]
