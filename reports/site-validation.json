@@ -1,7 +1,7 @@
 {
   "html_pages": 158,
   "lessons": 50,
-  "internal_targets_checked": 6679,
+  "internal_targets_checked": 6682,
   "errors": [],
   "archives": [
     {
@@ -173,7 +173,7 @@
     {
       "path": "/learn/cnn-receptive-field/",
       "ids": 30,
-      "links": 90,
+      "links": 92,
       "assets": 16
     },
     {
@@ -191,7 +191,7 @@
     {
       "path": "/learn/conditioning-fusion/",
       "ids": 23,
-      "links": 52,
+      "links": 54,
       "assets": 11
     },
     {
@@ -263,7 +263,7 @@
     {
       "path": "/learn/diffusion/",
       "ids": 21,
-      "links": 84,
+      "links": 85,
       "assets": 11
     },
     {

@@ -1,6 +1,6 @@
 {
   "pages": 153,
-  "formulasRendered": 3704,
+  "formulasRendered": 3736,
   "entries": [
     {
       "path": "/",
@@ -10,7 +10,7 @@
     {
       "path": "/learn/tensor/",
       "title": "张量与广播",
-      "bytes": 42497
+      "bytes": 42537
     },
     {
       "path": "/learn/tensor/code/",
@@ -40,7 +40,7 @@
     {
       "path": "/learn/probability/",
       "title": "概率、统计与训练目标",
-      "bytes": 334121
+      "bytes": 334064
     },
     {
       "path": "/learn/probability/code/",
@@ -100,7 +100,7 @@
     {
       "path": "/learn/numerical/",
       "title": "数值精度与标准化",
-      "bytes": 85676
+      "bytes": 85510
     },
     {
       "path": "/learn/numerical/code/",
@@ -130,7 +130,7 @@
     {
       "path": "/learn/mlp/",
       "title": "MLP：表达、梯度与优化",
-      "bytes": 432861
+      "bytes": 433307
     },
     {
       "path": "/learn/mlp/code/",
@@ -145,7 +145,7 @@
     {
       "path": "/learn/activation-init/",
       "title": "激活与初始化",
-      "bytes": 189951
+      "bytes": 189686
     },
     {
       "path": "/learn/activation-init/code/",
@@ -175,7 +175,7 @@
     {
       "path": "/learn/residual/",
       "title": "残差连接与深层优化",
-      "bytes": 257038
+      "bytes": 256969
     },
     {
       "path": "/learn/residual/code/",
@@ -190,7 +190,7 @@
     {
       "path": "/learn/cnn-receptive-field/",
       "title": "CNN：卷积、采样与空间表示",
-      "bytes": 495081
+      "bytes": 500407
     },
     {
       "path": "/learn/cnn-receptive-field/code/",
@@ -205,7 +205,7 @@
     {
       "path": "/learn/attention/",
       "title": "注意力：匹配、聚合与梯度",
-      "bytes": 185788
+      "bytes": 194349
     },
     {
       "path": "/learn/attention/code/",
@@ -235,7 +235,7 @@
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 638734
+      "bytes": 638611
     },
     {
       "path": "/learn/transformer/code/",
@@ -265,7 +265,7 @@
     {
       "path": "/learn/multimodal/",
       "title": "视觉编码器与多模态融合",
-      "bytes": 94793
+      "bytes": 94980
     },
     {
       "path": "/learn/multimodal/code/",
@@ -280,7 +280,7 @@
     {
       "path": "/learn/contrastive-pretraining/",
       "title": "视觉与图文预训练：DINO、CLIP 与 SigLIP",
-      "bytes": 128285
+      "bytes": 128445
     },
     {
       "path": "/learn/contrastive-pretraining/code/",
@@ -310,7 +310,7 @@
     {
       "path": "/learn/conditioning-fusion/",
       "title": "条件注入：拼接、FiLM 与 AdaLN",
-      "bytes": 99915
+      "bytes": 115426
     },
     {
       "path": "/learn/conditioning-fusion/code/",
@@ -355,7 +355,7 @@
     {
       "path": "/learn/diffusion/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM",
-      "bytes": 603078
+      "bytes": 605602
     },
     {
       "path": "/learn/diffusion/code/",
@@ -430,7 +430,7 @@
     {
       "path": "/learn/action-chunk/",
       "title": "时间对齐与动作块",
-      "bytes": 48500
+      "bytes": 50136
     },
     {
       "path": "/learn/action-chunk/code/",
@@ -490,7 +490,7 @@
     {
       "path": "/learn/finetuning/",
       "title": "微调与 LoRA",
-      "bytes": 306708
+      "bytes": 306531
     },
     {
       "path": "/learn/finetuning/code/",
@@ -550,7 +550,7 @@
     {
       "path": "/learn/dataloader/",
       "title": "数据采样与批处理",
-      "bytes": 62648
+      "bytes": 63389
     },
     {
       "path": "/learn/dataloader/code/",
@@ -610,7 +610,7 @@
     {
       "path": "/learn/gradient-accumulation/",
       "title": "梯度累积",
-      "bytes": 70025
+      "bytes": 71197
     },
     {
       "path": "/learn/gradient-accumulation/code/",
@@ -625,7 +625,7 @@
     {
       "path": "/learn/mixed-precision/",
       "title": "混合精度训练",
-      "bytes": 39908
+      "bytes": 39910
     },
     {
       "path": "/learn/mixed-precision/code/",
@@ -640,7 +640,7 @@
     {
       "path": "/learn/memory-checkpointing/",
       "title": "训练显存与重计算",
-      "bytes": 30561
+      "bytes": 30453
     },
     {
       "path": "/learn/memory-checkpointing/code/",
@@ -655,7 +655,7 @@
     {
       "path": "/learn/distributed-training/",
       "title": "DDP 与全局统计",
-      "bytes": 59118
+      "bytes": 60269
     },
     {
       "path": "/learn/distributed-training/code/",
@@ -745,7 +745,7 @@
     {
       "path": "/learn/train-infer-contract/",
       "title": "训练与推理一致性",
-      "bytes": 70111
+      "bytes": 76797
     },
     {
       "path": "/learn/train-infer-contract/code/",
