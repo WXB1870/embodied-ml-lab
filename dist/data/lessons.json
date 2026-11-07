@@ -3486,7 +3486,15 @@
           "check": "固定一个 token，仅修改另一条样本。标准 LayerNorm(D) 的当前输出应不变；再修改该 token 的一个通道，观察整行怎样变化。"
         },
         "id": "0",
-        "lead": "统计轴是一次归一化共同计算均值或尺度的那些维度，统计集合则是这些轴覆盖的元素。它决定一个输出是否依赖其他样本或时间位置。认识归一化时，应先圈出这组元素，再讨论具体公式。"
+        "lead": "统计轴是一次归一化共同计算均值或尺度的那些维度，统计集合则是这些轴覆盖的元素。它决定一个输出是否依赖其他样本或时间位置。认识归一化时，应先圈出这组元素，再讨论具体公式。",
+        "figures": [
+          {
+            "src": "/assets/figures/normalization-definition.svg",
+            "alt": "对同一个 B×T×D 张量，LayerNorm 按每个 token 的 D 个通道归一化；训练态 BatchNorm 按每个通道的 B×T 个位置归一化。",
+            "caption": "每个高亮区域表示一次共同计算统计量的集合：左图横着取同一 token 的通道，右图竖着取同一通道的样本与位置。右图对应转置为 [B,D,T] 后的训练态 BatchNorm1d。借鉴 [Wu & He, Figure 2](https://arxiv.org/abs/1803.08494) 的分组表达方式，按本文序列张量独立绘制。",
+            "afterParagraph": 0
+          }
+        ]
       },
       {
         "title": "LayerNorm 的均值、方差与仿射参数",
@@ -3832,7 +3840,15 @@
             "下一层读取更新后的 (0.9,2.3)，再计算自己的修正。多个这样的块就形成沿深度反复更新的残差流。"
           ],
           "conclusion": "先把残差连接理解成“直接传递＋分支修正”，再用公式分析它怎样改变前向函数和反向梯度。"
-        }
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/residual-definition.svg",
+            "alt": "左侧展示输入经直接路径和变换分支相加；右侧对照经典 ResNet basic block 的加法后 ReLU。",
+            "caption": "先沿蓝色旁路看输入如何直接抵达加法，再沿变换分支看修正量从哪里来。左图对应本文的加法核心，右图保留经典 ResNet 的加法后 ReLU。依据 [He et al., Figure 2](https://arxiv.org/abs/1512.03385) 独立绘制。",
+            "afterParagraph": 0
+          }
+        ]
       },
       {
         "title": "从微分到输入梯度与参数梯度",
@@ -4310,7 +4326,15 @@
           ],
           "conclusion": "卷积的可学习之处是核里的数；相同核在各空间位置重复使用，多个输入通道的结果还要相加。"
         },
-        "lead": "卷积层用同一组小型权重在输入不同位置执行局部加权求和，形成输出特征图。一个输出通道通常同时汇总空间窗口和输入通道，核的空间位置并不是输出通道。先看一个输出怎样得到，再扩大到整张图。"
+        "lead": "卷积层用同一组小型权重在输入不同位置执行局部加权求和，形成输出特征图。一个输出通道通常同时汇总空间窗口和输入通道，核的空间位置并不是输出通道。先看一个输出怎样得到，再扩大到整张图。",
+        "figures": [
+          {
+            "src": "/assets/figures/conv-arithmetic-window.gif",
+            "alt": "一个 3×3 卷积核在 4×4 单通道输入上以步幅 1、无填充滑动，生成 2×2 输出。",
+            "caption": "观察下方蓝色输入上的深色 3×3 窗口：它每移动一格，就计算上方一个输出位置。这是单通道、无 Padding、Stride=1 的 4×4 → 2×2 例子；多输入通道时还要汇总各通道的乘积。原动图：Dumoulin & Visin，[Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)、[论文](https://arxiv.org/abs/1603.07285)，按 [MIT 许可](/assets/figures/conv-arithmetic-LICENSE.txt) 原样复用。",
+            "afterParagraph": 0
+          }
+        ]
       },
       {
         "id": "spatial-shape",
@@ -4994,7 +5018,15 @@
           "对一个固定查询，令 \\(s_j=q^\\top k_j/\\sqrt{d_k}\\)，再令 \\(a_j=\\exp(s_j)/\\sum_r\\exp(s_r)\\)。权重非负且总和为一，于是 \\(o=\\sum_j a_jv_j\\) 是当前 Value 集合的凸组合。它可看作在候选索引上的离散分布下读取 Value 的期望；概率分布描述这次读取，不代表候选的真实世界概率。Mask 会先限制这个候选集合，输出投影和残差则发生在这一读出之后。"
         ],
         "id": "0",
-        "lead": "Query 是发起读取的查询表示，Key 是候选位置参与匹配的表示，Value 是候选位置提供的内容。一次注意力先匹配 Query 与各 Key，再按权重汇总对应 Value。先把这三个计算角色分清，后面的投影和矩阵形式才有明确含义。"
+        "lead": "Query 是发起读取的查询表示，Key 是候选位置参与匹配的表示，Value 是候选位置提供的内容。一次注意力先匹配 Query 与各 Key，再按权重汇总对应 Value。先把这三个计算角色分清，后面的投影和矩阵形式才有明确含义。",
+        "figures": [
+          {
+            "src": "/assets/figures/attention-vaswani-figure2.png",
+            "alt": "Transformer 原论文 Figure 2：左为缩放点积注意力，Q 与 K 打分、缩放、可选掩码、Softmax 后汇总 V；右为多头注意力。",
+            "caption": "先自下而上读左图：Q 与 K 先打分，Scale 对应除以匹配维度的平方根，SoftMax 将分数变成权重，最后用权重汇总 V。Mask 是可选步骤。右图把这一过程并行执行多次，再合并各头。原图：[Vaswani et al., 2017, Figure 2](https://arxiv.org/abs/1706.03762)；依论文首页的学术图表复用许可使用，[出处与许可说明](/assets/figures/attention-figure2-LICENSE.txt)。",
+            "afterParagraph": 1
+          }
+        ]
       },
       {
         "title": "点积方差与缩放因子",
@@ -5781,8 +5813,8 @@
             "src": "/assets/figures/transformer-attention-flow.svg",
             "title": "Attention 投影、头轴与读出形状",
             "alt": "QKV 从 [2,4,24] 拆分并转为 [2,2,4,4]，Q/K 旋转后计算 Mask 和 Softmax，再读取 V、合头并投影回 [2,4,8]。",
-            "caption": "本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
-            "afterParagraph": 6
+            "caption": "先沿箭头识别 Q/K/V 三条路径与最终读出，图中的具体拆头形状在下文逐步展开。本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
+            "afterParagraph": 1
           }
         ]
       },
@@ -8614,7 +8646,15 @@
           "完整代码刻意使用这一可解析模型，使真实证据与后验都可检查。高维非线性 VAE 通常没有这些解析量，不能仅凭训练 loss 降低就宣布后验近似已经准确。"
         ],
         "formula": "\\begin{aligned}p_\\theta(a)&=\\int p_\\theta(a\\mid z)p(z)\\,dz,&p_\\theta(z\\mid a)&=\\frac{p_\\theta(a\\mid z)p(z)}{p_\\theta(a)}\\\\ z\\mid a&\\sim\\mathcal N\\!\\left(\\frac{a}{1+\\tau^2},\\,\\frac{\\tau^2}{1+\\tau^2}\\right)&&\\text{for }a=z+\\tau\\epsilon\\end{aligned}",
-        "lead": "潜变量是模型中未直接观测、用于组织生成过程的随机变量。先验规定生成前它怎样分布，解码器规定给定它如何产生数据，后验则反过来描述观测数据后它可能取什么值。下面用这条双向关系解释边缘积分的困难。"
+        "lead": "潜变量是模型中未直接观测、用于组织生成过程的随机变量。先验规定生成前它怎样分布，解码器规定给定它如何产生数据，后验则反过来描述观测数据后它可能取什么值。下面用这条双向关系解释边缘积分的困难。",
+        "figures": [
+          {
+            "src": "/assets/figures/vae-definition.svg",
+            "alt": "VAE 训练从观测数据经编码器、近似后验和重参数化到解码器；生成从先验采样后直接使用同一个解码器。",
+            "caption": "先区分两个方向：生成模型从潜变量走向数据；训练时的编码器从观测数据近似推断潜变量。上排采用对角高斯近似后验，重建项与 KL 项稍后展开；下排生成新样本时从先验出发。依据 [Kingma & Welling §2](https://arxiv.org/abs/1312.6114) 独立绘制。",
+            "afterParagraph": 1
+          }
+        ]
       },
       {
         "id": "elbo-derivation",
@@ -8874,7 +8914,15 @@
           "check": "列出 \\(k=0\\)、k=1、k=K−1 对应的 \\(\\alpha\\)、\\(\\bar\\alpha\\)、前一 \\(\\bar\\alpha\\)，并说明干净端如何表示。"
         },
         "id": "0",
-        "lead": "前向加噪是一个预先规定的过程，将干净样本逐步衰减并加入已知随机噪声。噪声等级标记数据被破坏的阶段，而不是机器人执行时刻。先定义这个过程、终端先验和索引，再讨论反向生成。"
+        "lead": "前向加噪是一个预先规定的过程，将干净样本逐步衰减并加入已知随机噪声。噪声等级标记数据被破坏的阶段，而不是机器人执行时刻。先定义这个过程、终端先验和索引，再讨论反向生成。",
+        "figures": [
+          {
+            "src": "/assets/figures/diffusion-definition.svg",
+            "alt": "扩散模型固定的前向链从干净样本 a 走向带噪状态，学习的反向链从高斯先验逐步生成数据。",
+            "caption": "先分清方向：上排前向链固定，下排反向链需要学习。训练可以直接抽取一个噪声等级，生成则从高噪声状态出发。依据 [Ho et al., Figure 2](https://arxiv.org/abs/2006.11239) 独立绘制；本文用 a 表示干净样本，x[0] 已经过第一次加噪，与原论文用 x₀ 表示干净样本的记号不同。",
+            "afterParagraph": 1
+          }
+        ]
       },
       {
         "title": "为什么可以一步构造任意噪声等级",
@@ -12787,7 +12835,15 @@
           "conclusion": "LoRA 参数节省是相对于大矩阵与较小秩而言，不能对任意尺寸默认成立。"
         },
         "id": "1",
-        "lead": "LoRA 是在冻结的线性权重旁增加两个小矩阵，其乘积构成低秩权重增量的方法。它用较少可训练参数限制增量的表达方式。下面先定义两因子形状，再计算前向和参数量。"
+        "lead": "LoRA 是在冻结的线性权重旁增加两个小矩阵，其乘积构成低秩权重增量的方法。它用较少可训练参数限制增量的表达方式。下面先定义两因子形状，再计算前向和参数量。",
+        "figures": [
+          {
+            "src": "/assets/figures/lora-definition.svg",
+            "alt": "LoRA 输入并行通过冻结的基座权重 W0 与可训练的 A、B 低秩分支，缩放后逐元素相加。",
+            "caption": "先看两路相加：蓝色基座权重保持冻结，橙色 A、B 学习低秩增量。图中按本文 PyTorch 行向量约定标出转置，参数形状与源码一致。依据 [Hu et al., Figure 1 与 §4.1](https://arxiv.org/abs/2106.09685) 独立绘制。",
+            "afterParagraph": 0
+          }
+        ]
       },
       {
         "title": "为什么常见初始化只让一个因子为零",

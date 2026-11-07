@@ -40,7 +40,7 @@ GPU/CUDA 版本请按 https://pytorch.org/get-started/locally/ 选择安装命�
 - `topics/validation.json`：四个详细专题的实际运行验证结果。
 - `curriculum/curriculum.json`：研究补齐依据、开源可视化与进阶边界。
 - `assets/experiments/`：Flow Matching 多峰实验的实际数据与图形。
-- `assets/figures/`：可编辑的原创结构图、张量流向图与数学示意图。
+- `assets/figures/`：原创结构图、张量流向图、经典论文图与动图，以及所复用图片的出处和许可说明。
 - `demos/课程ID/`：由相关课程共同引用的完整训练或原理验证案例。
 - `experiments/`：读取已记录数据重新绘图的脚本；绘图额外依赖 NumPy 与 Matplotlib。
 

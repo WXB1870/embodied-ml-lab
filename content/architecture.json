@@ -37,7 +37,15 @@
           "check": "固定一个 token，仅修改另一条样本。标准 LayerNorm(D) 的当前输出应不变；再修改该 token 的一个通道，观察整行怎样变化。"
         },
         "id": "0",
-        "lead": "统计轴是一次归一化共同计算均值或尺度的那些维度，统计集合则是这些轴覆盖的元素。它决定一个输出是否依赖其他样本或时间位置。认识归一化时，应先圈出这组元素，再讨论具体公式。"
+        "lead": "统计轴是一次归一化共同计算均值或尺度的那些维度，统计集合则是这些轴覆盖的元素。它决定一个输出是否依赖其他样本或时间位置。认识归一化时，应先圈出这组元素，再讨论具体公式。",
+        "figures": [
+          {
+            "src": "/assets/figures/normalization-definition.svg",
+            "alt": "对同一个 B×T×D 张量，LayerNorm 按每个 token 的 D 个通道归一化；训练态 BatchNorm 按每个通道的 B×T 个位置归一化。",
+            "caption": "每个高亮区域表示一次共同计算统计量的集合：左图横着取同一 token 的通道，右图竖着取同一通道的样本与位置。右图对应转置为 [B,D,T] 后的训练态 BatchNorm1d。借鉴 [Wu & He, Figure 2](https://arxiv.org/abs/1803.08494) 的分组表达方式，按本文序列张量独立绘制。",
+            "afterParagraph": 0
+          }
+        ]
       },
       {
         "title": "LayerNorm 的均值、方差与仿射参数",
@@ -383,7 +391,15 @@
             "下一层读取更新后的 (0.9,2.3)，再计算自己的修正。多个这样的块就形成沿深度反复更新的残差流。"
           ],
           "conclusion": "先把残差连接理解成“直接传递＋分支修正”，再用公式分析它怎样改变前向函数和反向梯度。"
-        }
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/residual-definition.svg",
+            "alt": "左侧展示输入经直接路径和变换分支相加；右侧对照经典 ResNet basic block 的加法后 ReLU。",
+            "caption": "先沿蓝色旁路看输入如何直接抵达加法，再沿变换分支看修正量从哪里来。左图对应本文的加法核心，右图保留经典 ResNet 的加法后 ReLU。依据 [He et al., Figure 2](https://arxiv.org/abs/1512.03385) 独立绘制。",
+            "afterParagraph": 0
+          }
+        ]
       },
       {
         "title": "从微分到输入梯度与参数梯度",
@@ -716,7 +732,15 @@
           "对一个固定查询，令 \\(s_j=q^\\top k_j/\\sqrt{d_k}\\)，再令 \\(a_j=\\exp(s_j)/\\sum_r\\exp(s_r)\\)。权重非负且总和为一，于是 \\(o=\\sum_j a_jv_j\\) 是当前 Value 集合的凸组合。它可看作在候选索引上的离散分布下读取 Value 的期望；概率分布描述这次读取，不代表候选的真实世界概率。Mask 会先限制这个候选集合，输出投影和残差则发生在这一读出之后。"
         ],
         "id": "0",
-        "lead": "Query 是发起读取的查询表示，Key 是候选位置参与匹配的表示，Value 是候选位置提供的内容。一次注意力先匹配 Query 与各 Key，再按权重汇总对应 Value。先把这三个计算角色分清，后面的投影和矩阵形式才有明确含义。"
+        "lead": "Query 是发起读取的查询表示，Key 是候选位置参与匹配的表示，Value 是候选位置提供的内容。一次注意力先匹配 Query 与各 Key，再按权重汇总对应 Value。先把这三个计算角色分清，后面的投影和矩阵形式才有明确含义。",
+        "figures": [
+          {
+            "src": "/assets/figures/attention-vaswani-figure2.png",
+            "alt": "Transformer 原论文 Figure 2：左为缩放点积注意力，Q 与 K 打分、缩放、可选掩码、Softmax 后汇总 V；右为多头注意力。",
+            "caption": "先自下而上读左图：Q 与 K 先打分，Scale 对应除以匹配维度的平方根，SoftMax 将分数变成权重，最后用权重汇总 V。Mask 是可选步骤。右图把这一过程并行执行多次，再合并各头。原图：[Vaswani et al., 2017, Figure 2](https://arxiv.org/abs/1706.03762)；依论文首页的学术图表复用许可使用，[出处与许可说明](/assets/figures/attention-figure2-LICENSE.txt)。",
+            "afterParagraph": 1
+          }
+        ]
       },
       {
         "title": "点积方差与缩放因子",

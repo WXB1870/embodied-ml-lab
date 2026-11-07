@@ -807,7 +807,15 @@
           ],
           "conclusion": "卷积的可学习之处是核里的数；相同核在各空间位置重复使用，多个输入通道的结果还要相加。"
         },
-        "lead": "卷积层用同一组小型权重在输入不同位置执行局部加权求和，形成输出特征图。一个输出通道通常同时汇总空间窗口和输入通道，核的空间位置并不是输出通道。先看一个输出怎样得到，再扩大到整张图。"
+        "lead": "卷积层用同一组小型权重在输入不同位置执行局部加权求和，形成输出特征图。一个输出通道通常同时汇总空间窗口和输入通道，核的空间位置并不是输出通道。先看一个输出怎样得到，再扩大到整张图。",
+        "figures": [
+          {
+            "src": "/assets/figures/conv-arithmetic-window.gif",
+            "alt": "一个 3×3 卷积核在 4×4 单通道输入上以步幅 1、无填充滑动，生成 2×2 输出。",
+            "caption": "观察下方蓝色输入上的深色 3×3 窗口：它每移动一格，就计算上方一个输出位置。这是单通道、无 Padding、Stride=1 的 4×4 → 2×2 例子；多输入通道时还要汇总各通道的乘积。原动图：Dumoulin & Visin，[Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)、[论文](https://arxiv.org/abs/1603.07285)，按 [MIT 许可](/assets/figures/conv-arithmetic-LICENSE.txt) 原样复用。",
+            "afterParagraph": 0
+          }
+        ]
       },
       {
         "id": "spatial-shape",
@@ -1638,8 +1646,8 @@
             "src": "/assets/figures/transformer-attention-flow.svg",
             "title": "Attention 投影、头轴与读出形状",
             "alt": "QKV 从 [2,4,24] 拆分并转为 [2,2,4,4]，Q/K 旋转后计算 Mask 和 Softmax，再读取 V、合头并投影回 [2,4,8]。",
-            "caption": "本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
-            "afterParagraph": 6
+            "caption": "先沿箭头识别 Q/K/V 三条路径与最终读出，图中的具体拆头形状在下文逐步展开。本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
+            "afterParagraph": 1
           }
         ]
       },

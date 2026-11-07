@@ -54,7 +54,15 @@
           "完整代码刻意使用这一可解析模型，使真实证据与后验都可检查。高维非线性 VAE 通常没有这些解析量，不能仅凭训练 loss 降低就宣布后验近似已经准确。"
         ],
         "formula": "\\begin{aligned}p_\\theta(a)&=\\int p_\\theta(a\\mid z)p(z)\\,dz,&p_\\theta(z\\mid a)&=\\frac{p_\\theta(a\\mid z)p(z)}{p_\\theta(a)}\\\\ z\\mid a&\\sim\\mathcal N\\!\\left(\\frac{a}{1+\\tau^2},\\,\\frac{\\tau^2}{1+\\tau^2}\\right)&&\\text{for }a=z+\\tau\\epsilon\\end{aligned}",
-        "lead": "潜变量是模型中未直接观测、用于组织生成过程的随机变量。先验规定生成前它怎样分布，解码器规定给定它如何产生数据，后验则反过来描述观测数据后它可能取什么值。下面用这条双向关系解释边缘积分的困难。"
+        "lead": "潜变量是模型中未直接观测、用于组织生成过程的随机变量。先验规定生成前它怎样分布，解码器规定给定它如何产生数据，后验则反过来描述观测数据后它可能取什么值。下面用这条双向关系解释边缘积分的困难。",
+        "figures": [
+          {
+            "src": "/assets/figures/vae-definition.svg",
+            "alt": "VAE 训练从观测数据经编码器、近似后验和重参数化到解码器；生成从先验采样后直接使用同一个解码器。",
+            "caption": "先区分两个方向：生成模型从潜变量走向数据；训练时的编码器从观测数据近似推断潜变量。上排采用对角高斯近似后验，重建项与 KL 项稍后展开；下排生成新样本时从先验出发。依据 [Kingma & Welling §2](https://arxiv.org/abs/1312.6114) 独立绘制。",
+            "afterParagraph": 1
+          }
+        ]
       },
       {
         "id": "elbo-derivation",

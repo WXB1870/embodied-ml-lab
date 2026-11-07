@@ -151,8 +151,8 @@
           "src": "/assets/figures/transformer-attention-flow.svg",
           "title": "Attention 投影、头轴与读出形状",
           "alt": "QKV 从 [2,4,24] 拆分并转为 [2,2,4,4]，Q/K 旋转后计算 Mask 和 Softmax，再读取 V、合头并投影回 [2,4,8]。",
-          "caption": "本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
-          "afterParagraph": 6
+          "caption": "先沿箭头识别 Q/K/V 三条路径与最终读出，图中的具体拆头形状在下文逐步展开。本章原创数据流图，按 [Attention Is All You Need §3.2](https://arxiv.org/abs/1706.03762) 的核心计算绘制，并标出本案例新增的 RoPE。图为完整前向；缓存时 Query 长度与 Key 长度需分别代入。",
+          "afterParagraph": 1
         }
       ]
     },

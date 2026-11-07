@@ -1,0 +1,5 @@
+Attention Is All You Need — Figure 2
+Authors: Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, Illia Polosukhin (2017).
+Source PDF: https://arxiv.org/pdf/1706.03762 (page 4, Figure 2).
+Reproduced in this educational learning site with attribution under the figure/table reproduction permission stated by Google on page 1 of the paper. That permission is limited to journalistic or scholarly works and requires proper attribution; this file does not grant any broader license.
+Preparation: the two Figure 2 panels were cropped from page 4 and rasterized together; no labels or diagram elements were changed. The surrounding caption is independently written in Chinese.

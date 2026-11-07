@@ -160,7 +160,7 @@
     {
       "path": "/learn/normalization/",
       "title": "归一化：统计轴、梯度与不变性",
-      "bytes": 246055
+      "bytes": 247128
     },
     {
       "path": "/learn/normalization/code/",
@@ -175,7 +175,7 @@
     {
       "path": "/learn/residual/",
       "title": "残差连接与深层优化",
-      "bytes": 254338
+      "bytes": 255258
     },
     {
       "path": "/learn/residual/code/",
@@ -190,7 +190,7 @@
     {
       "path": "/learn/cnn-receptive-field/",
       "title": "CNN：卷积、采样与空间表示",
-      "bytes": 487647
+      "bytes": 488780
     },
     {
       "path": "/learn/cnn-receptive-field/code/",
@@ -205,7 +205,7 @@
     {
       "path": "/learn/attention/",
       "title": "注意力：匹配、聚合与梯度",
-      "bytes": 182585
+      "bytes": 183791
     },
     {
       "path": "/learn/attention/code/",
@@ -235,7 +235,7 @@
     {
       "path": "/learn/transformer/",
       "title": "Transformer：注意力、残差与序列建模",
-      "bytes": 629986
+      "bytes": 630092
     },
     {
       "path": "/learn/transformer/code/",
@@ -340,7 +340,7 @@
     {
       "path": "/learn/latent-variable-models/",
       "title": "生成建模、潜变量与 VAE",
-      "bytes": 335190
+      "bytes": 336209
     },
     {
       "path": "/learn/latent-variable-models/code/",
@@ -355,7 +355,7 @@
     {
       "path": "/learn/diffusion/",
       "title": "Diffusion：DDPM、目标参数化与 DDIM",
-      "bytes": 599777
+      "bytes": 600809
     },
     {
       "path": "/learn/diffusion/code/",
@@ -490,7 +490,7 @@
     {
       "path": "/learn/finetuning/",
       "title": "微调与 LoRA",
-      "bytes": 299848
+      "bytes": 300755
     },
     {
       "path": "/learn/finetuning/code/",

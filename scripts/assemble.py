@@ -131,7 +131,7 @@ GPU/CUDA 版本请按 https://pytorch.org/get-started/locally/ 选择安装命�
 - `topics/validation.json`：四个详细专题的实际运行验证结果。
 - `curriculum/curriculum.json`：研究补齐依据、开源可视化与进阶边界。
 - `assets/experiments/`：Flow Matching 多峰实验的实际数据与图形。
-- `assets/figures/`：可编辑的原创结构图、张量流向图与数学示意图。
+- `assets/figures/`：原创结构图、张量流向图、经典论文图与动图，以及所复用图片的出处和许可说明。
 - `demos/课程ID/`：由相关课程共同引用的完整训练或原理验证案例。
 - `experiments/`：读取已记录数据重新绘图的脚本；绘图额外依赖 NumPy 与 Matplotlib。
 
@@ -196,6 +196,8 @@ if report.exists():
         summary['checked_at']=max(summary['checked_at'],tr['checked_at'])
         for k in ['total','passed','failed']:summary[k]+=tr[k]
     (data/'validation-summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2)+'\n')
+figure_files=sorted(path for path in (root/'content/figures').iterdir()
+                    if path.suffix in ('.svg','.png','.gif') or path.name.endswith('-LICENSE.txt'))
 def write_experiment_files(archive, include_full_curriculum=False):
     plotting_scripts={'plot_fm_mixture.py'}
     if include_full_curriculum:plotting_scripts.add('plot_generative_paths.py')
@@ -207,14 +209,14 @@ def write_experiment_files(archive, include_full_curriculum=False):
         if path.suffix=='.py' and path.name not in plotting_scripts:continue
         folder='experiments' if path.suffix=='.py' else 'assets/experiments'
         archive.write(path,folder+'/'+path.name)
-    for path in sorted((root/'content/figures').glob('*.svg')):
+    for path in figure_files:
         archive.write(path,'assets/figures/'+path.name)
 
 assets=root/'dist/assets/experiments';assets.mkdir(parents=True,exist_ok=True)
 for path in (root/'content/experiments').glob('*'):
     if path.suffix in ('.json','.svg'):shutil.copyfile(path,assets/path.name)
 figures=root/'dist/assets/figures';figures.mkdir(parents=True,exist_ok=True)
-for path in (root/'content/figures').glob('*.svg'):shutil.copyfile(path,figures/path.name)
+for path in figure_files:shutil.copyfile(path,figures/path.name)
 
 with zipfile.ZipFile(downloads/'embodied-ml-study-pack.zip','w',zipfile.ZIP_DEFLATED) as z:
     write_topic_files(z,topics,topic_report)

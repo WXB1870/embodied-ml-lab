@@ -1,16 +1,16 @@
 {
   "html_pages": 158,
   "lessons": 50,
-  "internal_targets_checked": 6377,
+  "internal_targets_checked": 6393,
   "errors": [],
   "archives": [
     {
       "name": "embodied-ml-study-pack.zip",
-      "files": 380
+      "files": 389
     },
     {
       "name": "embodied-ml-topics.zip",
-      "files": 72
+      "files": 81
     }
   ],
   "pages": [
@@ -101,8 +101,8 @@
     {
       "path": "/learn/attention/",
       "ids": 18,
-      "links": 44,
-      "assets": 10
+      "links": 47,
+      "assets": 11
     },
     {
       "path": "/learn/autograd/code/",
@@ -173,8 +173,8 @@
     {
       "path": "/learn/cnn-receptive-field/",
       "ids": 29,
-      "links": 75,
-      "assets": 11
+      "links": 79,
+      "assets": 12
     },
     {
       "path": "/learn/conditioning-fusion/code/",
@@ -263,8 +263,8 @@
     {
       "path": "/learn/diffusion/",
       "ids": 20,
-      "links": 76,
-      "assets": 10
+      "links": 78,
+      "assets": 11
     },
     {
       "path": "/learn/distributed-training/code/",
@@ -371,8 +371,8 @@
     {
       "path": "/learn/finetuning/",
       "ids": 18,
-      "links": 63,
-      "assets": 10
+      "links": 65,
+      "assets": 11
     },
     {
       "path": "/learn/flow-matching/code/",
@@ -479,8 +479,8 @@
     {
       "path": "/learn/latent-variable-models/",
       "ids": 15,
-      "links": 45,
-      "assets": 10
+      "links": 47,
+      "assets": 11
     },
     {
       "path": "/learn/losses/code/",
@@ -641,8 +641,8 @@
     {
       "path": "/learn/normalization/",
       "ids": 15,
-      "links": 44,
-      "assets": 10
+      "links": 46,
+      "assets": 11
     },
     {
       "path": "/learn/numerical/code/",
@@ -749,8 +749,8 @@
     {
       "path": "/learn/residual/",
       "ids": 16,
-      "links": 47,
-      "assets": 10
+      "links": 49,
+      "assets": 11
     },
     {
       "path": "/learn/returns-bellman/code/",
