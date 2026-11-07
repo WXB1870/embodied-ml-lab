@@ -28,6 +28,41 @@ Additional original figures reproduced unchanged:
 
 These figures have the same Dive into Deep Learning attribution and CC BY-SA 4.0 license stated above. Separate Chinese reading prompts and examples are provided by Embodied ML Lab. Display sizing and HTML image dimensions do not alter the original SVG content.
 
+More original textbook figures reproduced unchanged:
+
+- mlp-network-d2l.svg
+  Chapter: https://d2l.ai/chapter_multilayer-perceptrons/mlp.html
+  Original: https://d2l.ai/_images/mlp.svg
+- tanh-d2l.svg
+  Chapter: https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#tanh-function
+  Original: https://d2l.ai/_images/output_mlp_76f463_78_0.svg
+- computational-graph-d2l.svg
+  Chapter: https://d2l.ai/chapter_multilayer-perceptrons/backprop.html
+  Original: https://d2l.ai/_images/forward.svg
+- dropout-d2l.svg
+  Chapter: https://d2l.ai/chapter_multilayer-perceptrons/dropout.html
+  Original: https://d2l.ai/_images/dropout2.svg
+- conv-padding-d2l.svg
+  Chapter: https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html
+  Original: https://d2l.ai/_images/conv-pad.svg
+- conv-stride-d2l.svg
+  Chapter: https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html
+  Original: https://d2l.ai/_images/conv-stride.svg
+- pooling-d2l.svg
+  Chapter: https://d2l.ai/chapter_convolutional-neural-networks/pooling.html
+  Original: https://d2l.ai/_images/pooling.svg
+- vision-transformer-d2l.svg
+  Chapter: https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html
+  Original: https://d2l.ai/_images/vit.svg
+- rnn-memory-d2l.svg
+  Chapter: https://d2l.ai/chapter_recurrent-neural-networks/rnn.html
+  Original: https://d2l.ai/_images/rnn.svg
+- data-parallel-d2l.svg
+  Chapter: https://d2l.ai/chapter_computational-performance/multiple-gpus.html
+  Original: https://d2l.ai/_images/data-parallel.svg
+
+These figures retain the same Dive into Deep Learning attribution and CC BY-SA 4.0 license above. Chinese reading notes are separate from the original images.
+
 Full license text follows:
 
 Creative Commons Attribution-ShareAlike 4.0 International Public License

@@ -171,7 +171,25 @@
         ]
       },
       "lead": "步幅是相邻窗口在输入上移动的间隔，填充是在边界补入数值，空洞率是核采样点之间的间隔。它们分别改变窗口位置、边界范围与覆盖跨度。输出尺寸由这些几何规则共同决定。",
-      "codeKind": "runnable"
+      "codeKind": "runnable",
+      "figures": [
+        {
+          "src": "/assets/figures/conv-padding-d2l.svg",
+          "alt": "三乘三输入外围补一圈零，再与二乘二卷积核做互相关，得到四乘四输出，蓝色标出首个窗口。",
+          "afterParagraph": 1,
+          "caption": "虚线外围是补零，蓝色是首个 2×2 窗口；补边让边界外也能放下窗口，输出增至 4×4。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#padding) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+          "width": 379,
+          "height": 160
+        },
+        {
+          "src": "/assets/figures/conv-stride-d2l.svg",
+          "alt": "带补零的二维互相关，窗口在高方向每次移动三格，在宽方向每次移动两格，得到二乘二输出。",
+          "afterParagraph": 2,
+          "caption": "窗口每次向下移动 3 格、向右移动 2 格，因此只留下 2×2 个输出位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#stride) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+          "width": 331,
+          "height": 159
+        }
+      ]
     },
     {
       "id": "sharing-cost",
@@ -355,7 +373,17 @@
           "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
         ],
         "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
-      }
+      },
+      "figures": [
+        {
+          "src": "/assets/figures/pooling-d2l.svg",
+          "alt": "三乘三输入经过窗口二乘二、步幅一的最大池化，得到四、五、七、八组成的二乘二输出。",
+          "afterParagraph": 3,
+          "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+          "width": 248,
+          "height": 108
+        }
+      ]
     },
     {
       "id": "equivariance",

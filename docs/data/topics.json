@@ -89,7 +89,17 @@
         "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
         "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。",
         "lead": "仿射层用权重混合输入并加偏置，激活函数对所得响应作非线性变换。将两者交替组合才构成这里讨论的 MLP；只有仿射层的堆叠仍然是一个仿射映射。先认识这两个单元，再追踪完整网络。",
-        "codeKind": "runnable"
+        "codeKind": "runnable",
+        "figures": [
+          {
+            "src": "/assets/figures/mlp-network-d2l.svg",
+            "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
+            "afterParagraph": 1,
+            "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 372,
+            "height": 187
+          }
+        ]
       },
       {
         "id": "shapes-parameters",
@@ -258,7 +268,17 @@
         ],
         "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
         "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
-        "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。"
+        "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。",
+        "figures": [
+          {
+            "src": "/assets/figures/gelu-relu-commons.svg",
+            "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
+            "afterParagraph": 2,
+            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "width": 246,
+            "height": 205
+          }
+        ]
       },
       {
         "id": "constructive-approximation",
@@ -884,7 +904,25 @@
           ]
         },
         "lead": "步幅是相邻窗口在输入上移动的间隔，填充是在边界补入数值，空洞率是核采样点之间的间隔。它们分别改变窗口位置、边界范围与覆盖跨度。输出尺寸由这些几何规则共同决定。",
-        "codeKind": "runnable"
+        "codeKind": "runnable",
+        "figures": [
+          {
+            "src": "/assets/figures/conv-padding-d2l.svg",
+            "alt": "三乘三输入外围补一圈零，再与二乘二卷积核做互相关，得到四乘四输出，蓝色标出首个窗口。",
+            "afterParagraph": 1,
+            "caption": "虚线外围是补零，蓝色是首个 2×2 窗口；补边让边界外也能放下窗口，输出增至 4×4。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#padding) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 379,
+            "height": 160
+          },
+          {
+            "src": "/assets/figures/conv-stride-d2l.svg",
+            "alt": "带补零的二维互相关，窗口在高方向每次移动三格，在宽方向每次移动两格，得到二乘二输出。",
+            "afterParagraph": 2,
+            "caption": "窗口每次向下移动 3 格、向右移动 2 格，因此只留下 2×2 个输出位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#stride) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 331,
+            "height": 159
+          }
+        ]
       },
       {
         "id": "sharing-cost",
@@ -1068,7 +1106,17 @@
             "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
           ],
           "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
-        }
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/pooling-d2l.svg",
+            "alt": "三乘三输入经过窗口二乘二、步幅一的最大池化，得到四、五、七、八组成的二乘二输出。",
+            "afterParagraph": 3,
+            "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 248,
+            "height": 108
+          }
+        ]
       },
       {
         "id": "equivariance",

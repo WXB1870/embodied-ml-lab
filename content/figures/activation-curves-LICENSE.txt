@@ -1,0 +1,22 @@
+Assets: gelu-relu-commons.svg, silu-commons.svg
+
+1. gelu-relu-commons.svg
+Title: ReLU and GELU.svg
+Creator: Ringdongdang
+Source: https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg
+Original asset: https://upload.wikimedia.org/wikipedia/commons/4/42/ReLU_and_GELU.svg
+Date: 2020-11-08
+License: Creative Commons Attribution-ShareAlike 4.0 International.
+
+2. silu-commons.svg
+Title: Swish.svg
+Creator: Romain Mondon-Cancel (Skasch)
+Source: https://commons.wikimedia.org/wiki/File:Swish.svg
+Original asset: https://upload.wikimedia.org/wikipedia/commons/1/12/Swish.svg
+Date: 2020-05-05
+License: Creative Commons Attribution-ShareAlike 4.0 International.
+
+License URI: https://creativecommons.org/licenses/by-sa/4.0/
+Full legal code: https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+Reuse: Both original SVG files are reproduced byte-for-byte without changes. Display size and separate Chinese reading notes are supplied by Embodied ML Lab. No endorsement is implied.

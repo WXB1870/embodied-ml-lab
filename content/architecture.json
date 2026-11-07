@@ -1536,7 +1536,17 @@
           "conclusion": "改变图像尺寸既改变信息分辨率，也改变序列与计算成本。"
         },
         "id": "1",
-        "lead": "Patch Token 是把一个图像区域编码为特征向量后形成的序列位置。Patch 投影负责初始局部映射，后续视觉网络才进一步组合区域信息。先追踪一个小块怎样变成向量，再讨论整个网格的组织。"
+        "lead": "Patch Token 是把一个图像区域编码为特征向量后形成的序列位置。Patch 投影负责初始局部映射，后续视觉网络才进一步组合区域信息。先追踪一个小块怎样变成向量，再讨论整个网格的组织。",
+        "figures": [
+          {
+            "src": "/assets/figures/vision-transformer-d2l.svg",
+            "alt": "ViT 将图像切为九个 Patch，投影后加位置编码和分类 Token，通过多层 Transformer 编码器输出分类结果。",
+            "afterParagraph": 1,
+            "caption": "从下往上读：图像切成 9 个 Patch，每块编码成一个 Token，与 <cls> 和位置编码一起进入 Encoder。 图源：[《动手学深度学习》](https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 621,
+            "height": 589
+          }
+        ]
       },
       {
         "title": "位置、视角与来源身份",

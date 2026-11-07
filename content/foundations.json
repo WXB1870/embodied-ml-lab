@@ -1130,8 +1130,16 @@
             "src": "/assets/figures/sigmoid-d2l.svg",
             "alt": "Sigmoid曲线在零附近较陡，输入绝对值较大时趋于水平并接近0或1。",
             "afterParagraph": 0,
-            "caption": "观察同样一小段横向移动：零附近的输出变化较大，两端则很小。曲线斜率就是局部导数，这把“饱和”与反向传播中较小的乘数联系起来。原图：[《动手学深度学习》§5.1.2.2](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#sigmoid-function)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "Sigmoid 将输入压到 0 与 1 之间；零处斜率为 1/4，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#sigmoid-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
             "width": 440,
+            "height": 244
+          },
+          {
+            "src": "/assets/figures/tanh-d2l.svg",
+            "alt": "tanh 激活曲线穿过原点，在输入绝对值较大时分别接近负一与正一。",
+            "afterParagraph": 1,
+            "caption": "tanh 以原点为中心，零附近的斜率为 1，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#tanh-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 451,
             "height": 244
           }
         ]
@@ -1155,7 +1163,7 @@
             "src": "/assets/figures/relu-d2l.svg",
             "alt": "ReLU在负半轴输出零，正半轴保持输入值，在零处形成折点。",
             "afterParagraph": 0,
-            "caption": "先在负半轴选两个点，输出差为零；再在正半轴选两个点，输出差等于输入差。因此两侧斜率分别为 0 和 1，零点的导数需另作约定。单次输出零并不表示一个单元长期失活。原图：[《动手学深度学习》§5.1.2.1](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#relu-function)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "ReLU 在负半轴为零、正半轴为直线，两侧斜率分别为 0 和 1。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#relu-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
             "width": 427,
             "height": 244
           }
@@ -1179,7 +1187,25 @@
           "conclusion": "前向数值与反向敏感度必须分别检查。"
         },
         "id": "3",
-        "lead": "GELU 和 SiLU 是用依赖输入的平滑系数调节输入幅度的激活函数。前者使用标准正态累积分布函数，后者使用 Sigmoid；它们不像 ReLU 那样直接截掉负区间。下面对“输入乘门控系数”完整求导，说明两条反向路径。"
+        "lead": "GELU 和 SiLU 是用依赖输入的平滑系数调节输入幅度的激活函数。前者使用标准正态累积分布函数，后者使用 Sigmoid；它们不像 ReLU 那样直接截掉负区间。下面对“输入乘门控系数”完整求导，说明两条反向路径。",
+        "figures": [
+          {
+            "src": "/assets/figures/gelu-relu-commons.svg",
+            "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
+            "afterParagraph": 0,
+            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "width": 246,
+            "height": 205
+          },
+          {
+            "src": "/assets/figures/silu-commons.svg",
+            "alt": "SiLU 曲线在负半轴先下探再返回原点，正半轴逐渐接近恒等映射。",
+            "afterParagraph": 1,
+            "caption": "横轴是输入 z，纵轴是 SiLU(z)=zσ(z)；负区间保留平滑响应，正区间逐渐贴近 y=z。 图源：[Romain Mondon-Cancel](https://commons.wikimedia.org/wiki/File:Swish.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "width": 1000,
+            "height": 600
+          }
+        ]
       },
       {
         "title": "初始化为何要随 fan-in 缩放",
@@ -1426,7 +1452,17 @@
           "训练时通常每次重新前向产生一张新图，反向结束后不再需要的中间保存量可释放。Python 变量还引用着输出，不等于整张反向图中的所有缓存都可再次使用。重复对同一前向图 backward 需要明确理由；通常应重新前向，而不是把 retain_graph=True 添加到所有训练步。保留图会增加内存生命周期，也不能修复已经 detach 的依赖关系。"
         ],
         "id": "0",
-        "lead": "计算图记录张量运算之间的依赖，反向求导沿这些依赖计算梯度，优化器更新则使用梯度改变参数。这三者分别管理函数、导数和参数状态。先把它们连成一次训练步，再检查某个参数为何参与或没有参与学习。"
+        "lead": "计算图记录张量运算之间的依赖，反向求导沿这些依赖计算梯度，优化器更新则使用梯度改变参数。这三者分别管理函数、导数和参数状态。先把它们连成一次训练步，再检查某个参数为何参与或没有参与学习。",
+        "figures": [
+          {
+            "src": "/assets/figures/computational-graph-d2l.svg",
+            "alt": "带正则项的网络计算图：输入与权重形成预测和数据损失，权重同时形成正则项，两条支路合成总目标。",
+            "afterParagraph": 0,
+            "caption": "方框表示数值量，圆圈表示运算；数据损失 L 与正则项 s 合成总目标 J，反向从 J 沿依赖逆行。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 412,
+            "height": 133
+          }
+        ]
       },
       {
         "title": "叶子、非叶子与梯度累积",
@@ -2699,7 +2735,17 @@
           "验证过程中忘记切换模式，可能让分数依赖 Batch 组成、随机 Mask 或统计量更新；之后忘记恢复 train，又可能影响后续训练。用固定输入重复评估，能够发现不期望的随机性，但算法自身的采样策略仍可能需要多次运行。对生成策略，固定噪声适合做模型版本对照，改变噪声则用于估计真实运行波动，二者回答不同问题。"
         ],
         "id": "5",
-        "lead": "Dropout 是训练时随机屏蔽部分响应的正则化机制，BatchNorm 则以指定集合的统计量变换激活。二者都有训练与评估行为差异，因此验证既要选择正确模式，也要明确是否需要记录梯度。"
+        "lead": "Dropout 是训练时随机屏蔽部分响应的正则化机制，BatchNorm 则以指定集合的统计量变换激活。二者都有训练与评估行为差异，因此验证既要选择正确模式，也要明确是否需要记录梯度。",
+        "figures": [
+          {
+            "src": "/assets/figures/dropout-d2l.svg",
+            "alt": "同一个多层感知机在 Dropout 前后的对比，右图隐藏单元 h2 与 h5 及其连接被屏蔽。",
+            "afterParagraph": 1,
+            "caption": "右图在本次前向中屏蔽 h₂、h₅ 及对应连接；下次前向会重新采样屏蔽位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/dropout.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 537,
+            "height": 223
+          }
+        ]
       },
       {
         "title": "指标要按部署目标和独立试验单位汇总",

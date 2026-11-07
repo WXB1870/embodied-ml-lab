@@ -88,7 +88,17 @@
       "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
       "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。",
       "lead": "仿射层用权重混合输入并加偏置，激活函数对所得响应作非线性变换。将两者交替组合才构成这里讨论的 MLP；只有仿射层的堆叠仍然是一个仿射映射。先认识这两个单元，再追踪完整网络。",
-      "codeKind": "runnable"
+      "codeKind": "runnable",
+      "figures": [
+        {
+          "src": "/assets/figures/mlp-network-d2l.svg",
+          "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
+          "afterParagraph": 1,
+          "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+          "width": 372,
+          "height": 187
+        }
+      ]
     },
     {
       "id": "shapes-parameters",
@@ -257,7 +267,17 @@
       ],
       "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
       "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
-      "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。"
+      "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。",
+      "figures": [
+        {
+          "src": "/assets/figures/gelu-relu-commons.svg",
+          "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
+          "afterParagraph": 2,
+          "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+          "width": 246,
+          "height": 205
+        }
+      ]
     },
     {
       "id": "constructive-approximation",

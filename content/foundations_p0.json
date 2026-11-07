@@ -1166,7 +1166,17 @@
           "不同 rank 必须构造相容的模型和参数注册顺序，并从协调的初始状态开始。同步梯度之后，各进程执行相同的优化器更新，才能保持副本一致。只让 rank 0 调 optimizer.step、其余 rank 不更新，会破坏这种基本流程。"
         ],
         "id": "0",
-        "lead": "数据并行把模型复制到多个协作进程，各自读取不同数据，再组合梯度以保持一致更新。rank 是进程身份，world_size 是参与进程数。先认识这一计算结构，再讨论设备和输入怎样分工。"
+        "lead": "数据并行把模型复制到多个协作进程，各自读取不同数据，再组合梯度以保持一致更新。rank 是进程身份，world_size 是参与进程数。先认识这一计算结构，再讨论设备和输入怎样分工。",
+        "figures": [
+          {
+            "src": "/assets/figures/data-parallel-d2l.svg",
+            "alt": "两张 GPU 复制相同模型，分别读取一个小批次的不同子集，产生的局部梯度汇聚为小批次梯度。",
+            "afterParagraph": 1,
+            "caption": "两张卡复制同一模型、拆分一个批次，再汇聚各自的局部梯度。 图源：[《动手学深度学习》](https://d2l.ai/chapter_computational-performance/multiple-gpus.html#data-parallelism) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 524,
+            "height": 236
+          }
+        ]
       },
       {
         "title": "从梯度平均推导全局目标",

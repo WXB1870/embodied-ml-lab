@@ -1303,7 +1303,17 @@
           "训练时通常每次重新前向产生一张新图，反向结束后不再需要的中间保存量可释放。Python 变量还引用着输出，不等于整张反向图中的所有缓存都可再次使用。重复对同一前向图 backward 需要明确理由；通常应重新前向，而不是把 retain_graph=True 添加到所有训练步。保留图会增加内存生命周期，也不能修复已经 detach 的依赖关系。"
         ],
         "id": "0",
-        "lead": "计算图记录张量运算之间的依赖，反向求导沿这些依赖计算梯度，优化器更新则使用梯度改变参数。这三者分别管理函数、导数和参数状态。先把它们连成一次训练步，再检查某个参数为何参与或没有参与学习。"
+        "lead": "计算图记录张量运算之间的依赖，反向求导沿这些依赖计算梯度，优化器更新则使用梯度改变参数。这三者分别管理函数、导数和参数状态。先把它们连成一次训练步，再检查某个参数为何参与或没有参与学习。",
+        "figures": [
+          {
+            "src": "/assets/figures/computational-graph-d2l.svg",
+            "alt": "带正则项的网络计算图：输入与权重形成预测和数据损失，权重同时形成正则项，两条支路合成总目标。",
+            "afterParagraph": 0,
+            "caption": "方框表示数值量，圆圈表示运算；数据损失 L 与正则项 s 合成总目标 J，反向从 J 沿依赖逆行。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 412,
+            "height": 133
+          }
+        ]
       },
       {
         "title": "叶子、非叶子与梯度累积",
@@ -2272,7 +2282,17 @@
           "验证过程中忘记切换模式，可能让分数依赖 Batch 组成、随机 Mask 或统计量更新；之后忘记恢复 train，又可能影响后续训练。用固定输入重复评估，能够发现不期望的随机性，但算法自身的采样策略仍可能需要多次运行。对生成策略，固定噪声适合做模型版本对照，改变噪声则用于估计真实运行波动，二者回答不同问题。"
         ],
         "id": "5",
-        "lead": "Dropout 是训练时随机屏蔽部分响应的正则化机制，BatchNorm 则以指定集合的统计量变换激活。二者都有训练与评估行为差异，因此验证既要选择正确模式，也要明确是否需要记录梯度。"
+        "lead": "Dropout 是训练时随机屏蔽部分响应的正则化机制，BatchNorm 则以指定集合的统计量变换激活。二者都有训练与评估行为差异，因此验证既要选择正确模式，也要明确是否需要记录梯度。",
+        "figures": [
+          {
+            "src": "/assets/figures/dropout-d2l.svg",
+            "alt": "同一个多层感知机在 Dropout 前后的对比，右图隐藏单元 h2 与 h5 及其连接被屏蔽。",
+            "afterParagraph": 1,
+            "caption": "右图在本次前向中屏蔽 h₂、h₅ 及对应连接；下次前向会重新采样屏蔽位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/dropout.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 537,
+            "height": 223
+          }
+        ]
       },
       {
         "title": "指标要按部署目标和独立试验单位汇总",
@@ -2587,7 +2607,17 @@
         "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
         "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。",
         "lead": "仿射层用权重混合输入并加偏置，激活函数对所得响应作非线性变换。将两者交替组合才构成这里讨论的 MLP；只有仿射层的堆叠仍然是一个仿射映射。先认识这两个单元，再追踪完整网络。",
-        "codeKind": "runnable"
+        "codeKind": "runnable",
+        "figures": [
+          {
+            "src": "/assets/figures/mlp-network-d2l.svg",
+            "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
+            "afterParagraph": 1,
+            "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 372,
+            "height": 187
+          }
+        ]
       },
       {
         "id": "shapes-parameters",
@@ -2756,7 +2786,17 @@
         ],
         "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
         "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
-        "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。"
+        "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。",
+        "figures": [
+          {
+            "src": "/assets/figures/gelu-relu-commons.svg",
+            "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
+            "afterParagraph": 2,
+            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "width": 246,
+            "height": 205
+          }
+        ]
       },
       {
         "id": "constructive-approximation",
@@ -3247,8 +3287,16 @@
             "src": "/assets/figures/sigmoid-d2l.svg",
             "alt": "Sigmoid曲线在零附近较陡，输入绝对值较大时趋于水平并接近0或1。",
             "afterParagraph": 0,
-            "caption": "观察同样一小段横向移动：零附近的输出变化较大，两端则很小。曲线斜率就是局部导数，这把“饱和”与反向传播中较小的乘数联系起来。原图：[《动手学深度学习》§5.1.2.2](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#sigmoid-function)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "Sigmoid 将输入压到 0 与 1 之间；零处斜率为 1/4，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#sigmoid-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
             "width": 440,
+            "height": 244
+          },
+          {
+            "src": "/assets/figures/tanh-d2l.svg",
+            "alt": "tanh 激活曲线穿过原点，在输入绝对值较大时分别接近负一与正一。",
+            "afterParagraph": 1,
+            "caption": "tanh 以原点为中心，零附近的斜率为 1，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#tanh-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 451,
             "height": 244
           }
         ]
@@ -3272,7 +3320,7 @@
             "src": "/assets/figures/relu-d2l.svg",
             "alt": "ReLU在负半轴输出零，正半轴保持输入值，在零处形成折点。",
             "afterParagraph": 0,
-            "caption": "先在负半轴选两个点，输出差为零；再在正半轴选两个点，输出差等于输入差。因此两侧斜率分别为 0 和 1，零点的导数需另作约定。单次输出零并不表示一个单元长期失活。原图：[《动手学深度学习》§5.1.2.1](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#relu-function)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "ReLU 在负半轴为零、正半轴为直线，两侧斜率分别为 0 和 1。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#relu-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
             "width": 427,
             "height": 244
           }
@@ -3296,7 +3344,25 @@
           "conclusion": "前向数值与反向敏感度必须分别检查。"
         },
         "id": "3",
-        "lead": "GELU 和 SiLU 是用依赖输入的平滑系数调节输入幅度的激活函数。前者使用标准正态累积分布函数，后者使用 Sigmoid；它们不像 ReLU 那样直接截掉负区间。下面对“输入乘门控系数”完整求导，说明两条反向路径。"
+        "lead": "GELU 和 SiLU 是用依赖输入的平滑系数调节输入幅度的激活函数。前者使用标准正态累积分布函数，后者使用 Sigmoid；它们不像 ReLU 那样直接截掉负区间。下面对“输入乘门控系数”完整求导，说明两条反向路径。",
+        "figures": [
+          {
+            "src": "/assets/figures/gelu-relu-commons.svg",
+            "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
+            "afterParagraph": 0,
+            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "width": 246,
+            "height": 205
+          },
+          {
+            "src": "/assets/figures/silu-commons.svg",
+            "alt": "SiLU 曲线在负半轴先下探再返回原点，正半轴逐渐接近恒等映射。",
+            "afterParagraph": 1,
+            "caption": "横轴是输入 z，纵轴是 SiLU(z)=zσ(z)；负区间保留平滑响应，正区间逐渐贴近 y=z。 图源：[Romain Mondon-Cancel](https://commons.wikimedia.org/wiki/File:Swish.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "width": 1000,
+            "height": 600
+          }
+        ]
       },
       {
         "title": "初始化为何要随 fan-in 缩放",
@@ -4482,7 +4548,25 @@
           ]
         },
         "lead": "步幅是相邻窗口在输入上移动的间隔，填充是在边界补入数值，空洞率是核采样点之间的间隔。它们分别改变窗口位置、边界范围与覆盖跨度。输出尺寸由这些几何规则共同决定。",
-        "codeKind": "runnable"
+        "codeKind": "runnable",
+        "figures": [
+          {
+            "src": "/assets/figures/conv-padding-d2l.svg",
+            "alt": "三乘三输入外围补一圈零，再与二乘二卷积核做互相关，得到四乘四输出，蓝色标出首个窗口。",
+            "afterParagraph": 1,
+            "caption": "虚线外围是补零，蓝色是首个 2×2 窗口；补边让边界外也能放下窗口，输出增至 4×4。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#padding) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 379,
+            "height": 160
+          },
+          {
+            "src": "/assets/figures/conv-stride-d2l.svg",
+            "alt": "带补零的二维互相关，窗口在高方向每次移动三格，在宽方向每次移动两格，得到二乘二输出。",
+            "afterParagraph": 2,
+            "caption": "窗口每次向下移动 3 格、向右移动 2 格，因此只留下 2×2 个输出位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#stride) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 331,
+            "height": 159
+          }
+        ]
       },
       {
         "id": "sharing-cost",
@@ -4666,7 +4750,17 @@
             "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
           ],
           "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
-        }
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/pooling-d2l.svg",
+            "alt": "三乘三输入经过窗口二乘二、步幅一的最大池化，得到四、五、七、八组成的二乘二输出。",
+            "afterParagraph": 3,
+            "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 248,
+            "height": 108
+          }
+        ]
       },
       {
         "id": "equivariance",
@@ -7141,7 +7235,17 @@
           "conclusion": "改变图像尺寸既改变信息分辨率，也改变序列与计算成本。"
         },
         "id": "1",
-        "lead": "Patch Token 是把一个图像区域编码为特征向量后形成的序列位置。Patch 投影负责初始局部映射，后续视觉网络才进一步组合区域信息。先追踪一个小块怎样变成向量，再讨论整个网格的组织。"
+        "lead": "Patch Token 是把一个图像区域编码为特征向量后形成的序列位置。Patch 投影负责初始局部映射，后续视觉网络才进一步组合区域信息。先追踪一个小块怎样变成向量，再讨论整个网格的组织。",
+        "figures": [
+          {
+            "src": "/assets/figures/vision-transformer-d2l.svg",
+            "alt": "ViT 将图像切为九个 Patch，投影后加位置编码和分类 Token，通过多层 Transformer 编码器输出分类结果。",
+            "afterParagraph": 1,
+            "caption": "从下往上读：图像切成 9 个 Patch，每块编码成一个 Token，与 <cls> 和位置编码一起进入 Encoder。 图源：[《动手学深度学习》](https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 621,
+            "height": 589
+          }
+        ]
       },
       {
         "title": "位置、视角与来源身份",
@@ -11916,7 +12020,17 @@
         "id": "4",
         "lead": "门控循环单元（GRU）是用当前输入与上一隐藏状态产生新隐藏状态的循环网络模块。更新门和重置门调节历史信息与候选状态的组合，因此提供可学习的记忆摘要。下面再对应递推式与张量轴。",
         "code": "import torch\nimport torch.nn.functional as F\n\ntorch.manual_seed(7)\ncell = torch.nn.GRUCell(3, 4).double()\nx = torch.randn(2, 3, dtype=torch.float64, requires_grad=True)\nh = torch.randn(2, 4, dtype=torch.float64, requires_grad=True)\nir, iz, inn = F.linear(x, cell.weight_ih, cell.bias_ih).chunk(3, -1)\nhr, hz, hn = F.linear(h, cell.weight_hh, cell.bias_hh).chunk(3, -1)\nr = torch.sigmoid(ir + hr)\nz = torch.sigmoid(iz + hz)\nn = torch.tanh(inn + r * hn)\nmanual = (1 - z) * n + z * h\nofficial = cell(x, h)\ntorch.testing.assert_close(manual, official, rtol=1e-12, atol=1e-12)\nprobe = torch.randn_like(manual)\ninputs = (x, h, *tuple(cell.parameters()))\ngm = torch.autograd.grad((manual * probe).sum(), inputs)\ngo = torch.autograd.grad((official * probe).sum(), inputs)\nfor a, b in zip(gm, go):\n    torch.testing.assert_close(a, b, rtol=1e-11, atol=1e-12)\nprint(\"通过：GRU 单步前向与输入、历史、参数梯度一致。\")\n",
-        "codeExplanation": "权重沿输出轴依次打包 reset、update、new 三组。非零随机偏置可以检出候选分支中把门控放错位置的实现；非均匀 probe 避免只对输出求和掩盖部分梯度错误。这里只验证一个确定的单步算子，回合边界仍由后续 reset 协议处理。"
+        "codeExplanation": "权重沿输出轴依次打包 reset、update、new 三组。非零随机偏置可以检出候选分支中把门控放错位置的实现；非均匀 probe 避免只对输出求和掩盖部分梯度错误。这里只验证一个确定的单步算子，回合边界仍由后续 reset 协议处理。",
+        "figures": [
+          {
+            "src": "/assets/figures/rnn-memory-d2l.svg",
+            "alt": "沿时间展开的循环神经网络，当前输入和前一时刻隐藏状态共同进入同一循环单元，生成新隐藏状态和输出。",
+            "afterParagraph": 1,
+            "caption": "循环网络沿时间复用同一单元；当前输入 Xₜ 与历史 Hₜ₋₁ 一起生成新状态 Hₜ，再用于输出。 图源：[《动手学深度学习》](https://d2l.ai/chapter_recurrent-neural-networks/rnn.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 540,
+            "height": 233
+          }
+        ]
       },
       {
         "title": "detach 与 reset 分别切断什么",
@@ -16633,7 +16747,17 @@
           "不同 rank 必须构造相容的模型和参数注册顺序，并从协调的初始状态开始。同步梯度之后，各进程执行相同的优化器更新，才能保持副本一致。只让 rank 0 调 optimizer.step、其余 rank 不更新，会破坏这种基本流程。"
         ],
         "id": "0",
-        "lead": "数据并行把模型复制到多个协作进程，各自读取不同数据，再组合梯度以保持一致更新。rank 是进程身份，world_size 是参与进程数。先认识这一计算结构，再讨论设备和输入怎样分工。"
+        "lead": "数据并行把模型复制到多个协作进程，各自读取不同数据，再组合梯度以保持一致更新。rank 是进程身份，world_size 是参与进程数。先认识这一计算结构，再讨论设备和输入怎样分工。",
+        "figures": [
+          {
+            "src": "/assets/figures/data-parallel-d2l.svg",
+            "alt": "两张 GPU 复制相同模型，分别读取一个小批次的不同子集，产生的局部梯度汇聚为小批次梯度。",
+            "afterParagraph": 1,
+            "caption": "两张卡复制同一模型、拆分一个批次，再汇聚各自的局部梯度。 图源：[《动手学深度学习》](https://d2l.ai/chapter_computational-performance/multiple-gpus.html#data-parallelism) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "width": 524,
+            "height": 236
+          }
+        ]
       },
       {
         "title": "从梯度平均推导全局目标",
