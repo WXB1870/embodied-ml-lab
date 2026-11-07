@@ -1,0 +1,16 @@
+Asset: film-overview-distill.svg
+Title: A FiLM generator conditions the computation of a target network.
+Creators: Vincent Dumoulin, Ethan Perez, Nathan Schucher, Florian Strub, Harm de Vries, Aaron Courville, Yoshua Bengio.
+Source: https://distill.pub/2018/feature-wise-transformations/
+Citation: Dumoulin et al., Feature-wise transformations, Distill, 2018. DOI: 10.23915/distill.00011.
+Original: The inline SVG network overview following the introduction of feature-wise linear modulation.
+License: Creative Commons Attribution 4.0 International (CC BY 4.0).
+License URI: https://creativecommons.org/licenses/by/4.0/
+Legal code: https://creativecommons.org/licenses/by/4.0/legalcode
+Reuse policy: The source article's Reuse section explicitly licenses its diagrams and text under CC BY 4.0 unless a figure credits another source. This diagram is an original diagram of the article.
+
+Adaptations for a standalone educational image:
+- Exported the original SVG and embedded its source figure styles; retained network shapes, arrows, labels and colors.
+- Removed two narrative English headnotes and their vertical separator. A separate short Chinese reading caption is supplied by Embodied ML Lab.
+- Adjusted the canvas to include the full input-to-output path.
+- Raised the opacity of the background sub-networks for legibility.

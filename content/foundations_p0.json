@@ -1172,7 +1172,7 @@
             "src": "/assets/figures/data-parallel-d2l.svg",
             "alt": "两张 GPU 复制相同模型，分别读取一个小批次的不同子集，产生的局部梯度汇聚为小批次梯度。",
             "afterParagraph": 1,
-            "caption": "两张卡复制同一模型、拆分一个批次，再汇聚各自的局部梯度。 图源：[《动手学深度学习》](https://d2l.ai/chapter_computational-performance/multiple-gpus.html#data-parallelism) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "两张卡复制同一模型、拆分一个批次，再汇聚各自的局部梯度。 图源：[《动手学深度学习》](https://d2l.ai/chapter_computational-performance/multiple-gpus.html#data-parallelism)。",
             "width": 524,
             "height": 236
           }

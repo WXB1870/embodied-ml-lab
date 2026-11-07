@@ -94,7 +94,7 @@
           "src": "/assets/figures/mlp-network-d2l.svg",
           "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
           "afterParagraph": 1,
-          "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+          "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers)。",
           "width": 372,
           "height": 187
         }
@@ -263,7 +263,8 @@
         "GELU 用 xΦ(x) 平滑调制输入，SiLU 使用 x·sigmoid(x)。它们不像 ReLU 那样把整个负半轴精确截成零，但也不意味着梯度永远足够大或训练一定更好。Sigmoid 与 tanh 在输入绝对值很大时会饱和，导数接近零；这在输出范围约束中可能有意义，在深层隐藏网络里则需要关注尺度。不同激活的值域和导数会影响初始化与优化，不能只把名称换掉。",
         "在一个不跨越 ReLU 零点的局部区域，激活开关可以写成对角矩阵 \\(D(x)\\)，按列向量约定，输入 Jacobian 为 \\(W_2D(x)W_1\\)，其秩受输入维度、输出维度和有效隐藏单元数共同限制。输入跨过边界时 \\(D(x)\\) 改变，网络换成另一段仿射映射。局部低秩与全局只能线性表达不是一回事；非线性能力来自这些区域的组合。",
         "输出层通常由目标语义决定。实数回归常使用线性输出；分类输出 logits，概率变换交给稳定的损失函数；若动作确实受已声明的固定上下界约束，可以使用缩放后的 tanh，但接近边界时梯度会变小。对所有输出使用 ReLU 会禁止负数预测，在最后一层使用 Softmax 会引入各维和为一的约束，这些都改变了问题定义。",
-        "在贯穿例中，第一条样本的第二个隐藏单元关闭，而其他样本仍能更新它。可在 manual-backprop 中只修改 b1[1]，重新记录 z 的符号和 Δ₁；统计初始化对批量开关分布的影响见[激活与初始化](#/learn/activation-init)。原有手写梯度练习仍使用不同尺寸测试，检验是否理解一般链式法则，而非仅记住这组数字。"
+        "在贯穿例中，第一条样本的第二个隐藏单元关闭，而其他样本仍能更新它。可在 manual-backprop 中只修改 b1[1]，重新记录 z 的符号和 Δ₁；统计初始化对批量开关分布的影响见[激活与初始化](#/learn/activation-init)。原有手写梯度练习仍使用不同尺寸测试，检验是否理解一般链式法则，而非仅记住这组数字。",
+        "本章从零构造的小 MLP 选用 ReLU，便于同时观察分段响应、手算梯度与初始化。接入已有 Transformer 或视觉骨干时，沿用其 GELU、SiLU 或门控结构，再按任务比较适配；需要概率或有界动作时，则在输出接口上按监督语义单独选择。各函数的典型场景见[激活与初始化的选用表](#/learn/activation-init?section=0)。"
       ],
       "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
       "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
@@ -273,7 +274,7 @@
           "src": "/assets/figures/gelu-relu-commons.svg",
           "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
           "afterParagraph": 2,
-          "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+          "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg)。",
           "width": 246,
           "height": 205
         }

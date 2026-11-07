@@ -47,7 +47,32 @@
             "width": 1120,
             "height": 540
           }
-        ]
+        ],
+        "comparison": {
+          "title": "统计集合决定了常见使用场景",
+          "columns": [
+            "方法",
+            "典型场景",
+            "选择理由"
+          ],
+          "rows": [
+            [
+              "BatchNorm",
+              "卷积特征的批次统计较稳定，且训练与评估统计能够管理",
+              "对同一通道汇总样本和空间位置，复用运行统计完成评估。"
+            ],
+            [
+              "LayerNorm",
+              "序列模型、变长批次或希望每个 Token 独立归一化",
+              "按当前位置的特征通道计算，不依赖同批其他样本。"
+            ],
+            [
+              "RMSNorm",
+              "按 RMSNorm 设计的 Transformer 骨干，或只需要控制均方根尺度",
+              "缩放而不去均值；适配现有模型时沿用其统计与参数约定。"
+            ]
+          ]
+        }
       },
       {
         "title": "LayerNorm 的均值、方差与仿射参数",
@@ -384,7 +409,8 @@
         "body": [
           "残差块写作 \\(y=x+F(x;\\theta)\\)。其中，可训练分支 F 表示对已有表示的更新，并不需要预先给出每一层的正确输出。若当前层没有必要改变输入，只要 F 接近零就能接近恒等映射；普通串联层需要整套参数共同学出恒等关系。这改变了优化问题的参数化，而不是保证每一层都会提升性能，也不意味着 F 的数值一定很小。",
           "以下先采用列向量约定：第 \\(\\ell\\) 层表示 \\(x_\\ell\\in\\mathbb R^D\\)，分支 \\(F_\\ell:\\mathbb R^D\\to\\mathbb R^D\\)，参数 \\(\\theta_\\ell\\in\\mathbb R^p\\)。所有层暂时保持同一宽度 D，且加法之后没有额外激活或归一化；若还有这些操作，必须把它们的 Jacobian 继续乘入。Batch 或 token 情形可以逐位置理解，涉及跨位置运算时则把全部相关元素展平成同一个向量。",
-          "残差流 x 可以理解为沿深度传递的当前表示，每个模块读它并写回更新。对于 Transformer，Attention 产生跨位置更新，FFN 产生逐位置非线性更新，二者都通过加法保留上一阶段的表示。加法要求两路的元素语义对齐，不能仅检查元素个数。若把 token 顺序打乱后再加回原输入，即使 shape 完全相同，也已经把不同位置的表示混在一起。"
+          "残差流 x 可以理解为沿深度传递的当前表示，每个模块读它并写回更新。对于 Transformer，Attention 产生跨位置更新，FFN 产生逐位置非线性更新，二者都通过加法保留上一阶段的表示。加法要求两路的元素语义对齐，不能仅检查元素个数。若把 token 顺序打乱后再加回原输入，即使 shape 完全相同，也已经把不同位置的表示混在一起。",
+          "典型场景是深层 CNN、Transformer 或在已有表示上追加适配模块：每层学习一份更新，同时为原表示保留直接通路。相同宽度时可用恒等旁路；需要改变通道数或空间尺寸时，先用投影建立可相加的表示，再进行残差合并。"
         ],
         "formula": "y=x+F(x;\\theta)",
         "focus": {
@@ -409,7 +435,7 @@
           {
             "src": "/assets/figures/residual-d2l-classic.svg",
             "alt": "《动手学深度学习》的普通块与残差块对照：左侧直接学习映射，右侧学习修正量并通过旁路与输入相加。",
-            "caption": "先比较左右两图：左侧直接学习 f(x)，右侧学习 g(x)=f(x)−x，再由旁路把 x 加回来。本文把图中的 g 记作 F，y=x+F(x) 表示加法核心；图顶端的激活另计。原图：[《动手学深度学习》图 8.6.2](https://d2l.ai/chapter_convolutional-modern/resnet.html#residual-blocks)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "先比较左右两图：左侧直接学习 f(x)，右侧学习 g(x)=f(x)−x，再由旁路把 x 加回来。本文把图中的 g 记作 F，y=x+F(x) 表示加法核心；图顶端的激活另计。原图：[《动手学深度学习》图 8.6.2](https://d2l.ai/chapter_convolutional-modern/resnet.html#residual-blocks)。",
             "afterParagraph": 0,
             "width": 373,
             "height": 296
@@ -754,7 +780,7 @@
           {
             "src": "/assets/figures/attention-vaswani-figure2.png",
             "alt": "Transformer 原论文 Figure 2：左为缩放点积注意力，Q 与 K 打分、缩放、可选掩码、Softmax 后汇总 V；右为多头注意力。",
-            "caption": "先自下而上读左图：Q 与 K 先打分，Scale 对应除以匹配维度的平方根，SoftMax 将分数变成权重，最后用权重汇总 V。Mask 是可选步骤。右图把这一过程并行执行多次，再合并各头。原图：[Vaswani et al., 2017, Figure 2](https://arxiv.org/abs/1706.03762)；依论文首页的学术图表复用许可使用，[出处与许可说明](/assets/figures/attention-figure2-LICENSE.txt)。",
+            "caption": "先自下而上读左图：Q 与 K 先打分，Scale 对应除以匹配维度的平方根，SoftMax 将分数变成权重，最后用权重汇总 V。Mask 是可选步骤。右图把这一过程并行执行多次，再合并各头。原图：[Vaswani et al., 2017, Figure 2](https://arxiv.org/abs/1706.03762)。",
             "afterParagraph": 1
           }
         ],
@@ -859,7 +885,32 @@
           "对于自回归位置 i，允许读取不晚于自己的 Key，可写 \\(j\\le i\\)。存在历史缓存 P、当前块长 L 时，当前第 i 个 Query 的全局位置是 P+i，因此应允许 \\(j\\le P+i\\)。直接构造 \\(L\\times(P+L)\\) 的普通左上角下三角矩阵，可能把历史缓存遮掉。信息规则应在全局位置上定义，再转换成当前矩阵；小尺寸手画比盲信 is_causal 标志更可靠。"
         ],
         "id": "6",
-        "lead": "Self-Attention 使用同一组位置产生 Q、K、V，Cross-Attention 则让一组位置的 Q 读取另一组位置的 K/V。因果性描述允许读取的时间范围，与这两种来源关系不同。先分清来源与可见性，再组合具体结构。"
+        "lead": "Self-Attention 使用同一组位置产生 Q、K、V，Cross-Attention 则让一组位置的 Q 读取另一组位置的 K/V。因果性描述允许读取的时间范围，与这两种来源关系不同。先分清来源与可见性，再组合具体结构。",
+        "comparison": {
+          "title": "按信息来源和预测协议选择注意力",
+          "columns": [
+            "需要的交互",
+            "常用结构",
+            "可见性由什么决定"
+          ],
+          "rows": [
+            [
+              "一组已知 Token 互相交换上下文",
+              "双向 Self-Attention",
+              "编码任务中本次计算允许使用的全部输入。"
+            ],
+            [
+              "预测下一个尚未观测的 Token",
+              "因果 Self-Attention",
+              "每个位置只能读取其预测时已可获得的前缀。"
+            ],
+            [
+              "动作、文本等查询读取另一组条件",
+              "Cross-Attention",
+              "Q 定义输出位置；K/V 定义候选条件，并按任务设置有效位和时间限制。"
+            ]
+          ]
+        }
       },
       {
         "title": "高效实现与数值等价",
@@ -1174,7 +1225,37 @@
           "check": "对固定文本打印 token 字符串和 ID，再检查加载的 tokenizer 是否与预训练权重匹配。"
         },
         "id": "0",
-        "lead": "Embedding 查表为每个离散 ID 取出一行可学习参数，得到供神经网络处理的连续特征。学习对象是表中的向量，ID 只是地址而非具有距离意义的数值。下面从查表建立形状与求导关系。"
+        "lead": "Embedding 查表为每个离散 ID 取出一行可学习参数，得到供神经网络处理的连续特征。学习对象是表中的向量，ID 只是地址而非具有距离意义的数值。下面从查表建立形状与求导关系。",
+        "comparison": {
+          "title": "先分清要编码的对象",
+          "columns": [
+            "对象",
+            "常用接口",
+            "用于表达什么"
+          ],
+          "rows": [
+            [
+              "词、类别或离散动作 ID",
+              "可学习 Embedding 查表",
+              "为离散符号学习连续特征。"
+            ],
+            [
+              "序列的绝对位置",
+              "位置查表或固定正弦编码",
+              "告诉模型当前是第几个位置。"
+            ],
+            [
+              "注意力中的相对位置信息",
+              "RoPE 作用于 Q/K",
+              "让匹配分数含有位置差的结构。"
+            ],
+            [
+              "连续生成时间或噪声等级",
+              "正弦 / Fourier 特征再接 MLP 等时间网络",
+              "让预测依赖当前生成阶段，保持它与动作位置的区分。"
+            ]
+          ]
+        }
       },
       {
         "title": "重复索引梯度与 Padding 行",
@@ -1222,7 +1303,7 @@
             "src": "/assets/figures/position-waves-d2l.svg",
             "alt": "宽度为32的正弦位置编码中，第6至9通道随60个位置变化的曲线，相邻通道成对且不同通道对的变化速度不同。",
             "afterParagraph": 1,
-            "caption": "先沿横轴读位置 0…59，再比较 Col 6/7 与 Col 8/9：同一对是一条正弦和一条余弦，后一对变化更慢。纵轴是编码值，整条曲线由公式确定。原图：[《动手学深度学习》§11.6.3](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html#positional-encoding)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "先沿横轴读位置 0…59，再比较 Col 6/7 与 Col 8/9：同一对是一条正弦和一条余弦，后一对变化更慢。纵轴是编码值，整条曲线由公式确定。原图：[《动手学深度学习》§11.6.3](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html#positional-encoding)。",
             "width": 507,
             "height": 244
           },
@@ -1230,7 +1311,7 @@
             "src": "/assets/figures/position-matrix-d2l.svg",
             "alt": "60个位置、32个编码通道组成的正弦位置编码矩阵，纵轴是位置，横轴是通道，蓝色深浅表示编码值。",
             "afterParagraph": 2,
-            "caption": "竖着看一列，追踪同一通道随位置怎样变化；横着看一行，读出该位置的完整向量。再比较左右两侧的通道对，观察频率差异。图中使用 D=32；位置 0 的正弦列为 0、余弦列为 1，所以第一行并不全零。原图：[《动手学深度学习》§11.6.3.1](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html#absolute-positional-information)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "竖着看一列，追踪同一通道随位置怎样变化；横着看一行，读出该位置的完整向量。再比较左右两侧的通道对，观察频率差异。图中使用 D=32；位置 0 的正弦列为 0、余弦列为 1，所以第一行并不全零。原图：[《动手学深度学习》§11.6.3.1](https://d2l.ai/chapter_attention-mechanisms-and-transformers/self-attention-and-positional-encoding.html#absolute-positional-information)。",
             "width": 285,
             "height": 358
           }
@@ -1271,7 +1352,7 @@
             "src": "/assets/figures/rope-roformer-figure1.svg",
             "alt": "RoFormer 原图：二维Query和Key按位置旋转，下部展示多个通道对及其不同频率。",
             "afterParagraph": 0,
-            "caption": "上部先看一对通道，位置 m 通过角度 mθ 决定旋转；下部把同一规则推广到多对通道。读图后再用正文的二维向量算例核对相对夹角。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)，按 [CC BY-NC-ND 4.0](/assets/figures/rope-figure1-LICENSE.txt) 原样复用。",
+            "caption": "上部先看一对通道，位置 m 通过角度 mθ 决定旋转；下部把同一规则推广到多对通道。读图后再用正文的二维向量算例核对相对夹角。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)。",
             "width": 1083,
             "height": 605
           }
@@ -1542,7 +1623,7 @@
             "src": "/assets/figures/vision-transformer-d2l.svg",
             "alt": "ViT 将图像切为九个 Patch，投影后加位置编码和分类 Token，通过多层 Transformer 编码器输出分类结果。",
             "afterParagraph": 1,
-            "caption": "从下往上读：图像切成 9 个 Patch，每块编码成一个 Token，与 <cls> 和位置编码一起进入 Encoder。 图源：[《动手学深度学习》](https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "从下往上读：图像切成 9 个 Patch，每块编码成一个 Token，与 <cls> 和位置编码一起进入 Encoder。 图源：[《动手学深度学习》](https://d2l.ai/chapter_attention-mechanisms-and-transformers/vision-transformer.html)。",
             "width": 621,
             "height": 589
           }
@@ -1570,7 +1651,8 @@
           "在“文本 Query 读取视觉 Key/Value”的结构中，输出长度跟随文本 Query；若交换 Q 与 K/V，输出就变成按视觉位置排列，是不同接口。早期融合、后期融合和多次交叉读取各有成本与信息瓶颈。想知道一个分类或生成输出能否随文本改变，应沿计算图反向追踪语言路径，而不是只看模型名字里是否含 VLM，或最后一层是不是足够大。",
           "一个可手算的融合例子是两个视觉 Key/Value 均为 \\([1,0]\\)、\\([0,1]\\)，并暂用未缩放的点积分数。文本 Query 为 \\([1,0]\\) 时，权重为 \\([e/(e+1),1/(e+1)]\\)；换成 \\([0,1]\\) 后两项交换，读出也随之改变。这里改变的是匹配路径，而视觉内容保持不变。真实模型使用投影和相应缩放，但仍可按同样方式固定图像、替换文本，检验条件从何处进入输出。",
           "[原始 LLaVA（2023）](https://arxiv.org/abs/2304.08485v2)给出了逐 token 投影的具体实例：CLIP ViT-L/14 提取空间特征，线性层将其宽度映射到语言模型的嵌入维度，再与文本一起进入语言模型。[LLaVA-1.5](https://arxiv.org/abs/2310.03744v2) 使用两层 MLP 连接器，并采用 CLIP ViT-L/14 的 336 像素版本。这里的 MLP 主要变换每个视觉 token 的通道；真正的跨模态交互还依赖后续语言模型的注意力和训练。不能把 1.5 的连接器当作最初版本，也不能把它当成所有 VLM 的共同结构。",
-          "[BLIP-2（2023）](https://arxiv.org/abs/2301.12597v3)展示了另一种选择：Q-Former 用可学习查询通过 Cross-Attention 读取冻结图像特征，先学习图文相关表示，再把查询输出投影为冻结语言模型的视觉前缀。论文配置使用 32 个查询；它们是模型参数，不是 32 个预先指定的图像区域。因而逐 token 投影通常保留原 token 数，Q-Former 则可将变长视觉输入压缩为固定数量的输出。它引入的是可学习的信息选择与瓶颈；是否适合细粒度空间任务仍须验证。"
+          "[BLIP-2（2023）](https://arxiv.org/abs/2301.12597v3)展示了另一种选择：Q-Former 用可学习查询通过 Cross-Attention 读取冻结图像特征，先学习图文相关表示，再把查询输出投影为冻结语言模型的视觉前缀。论文配置使用 32 个查询；它们是模型参数，不是 32 个预先指定的图像区域。因而逐 token 投影通常保留原 token 数，Q-Former 则可将变长视觉输入压缩为固定数量的输出。它引入的是可学习的信息选择与瓶颈；是否适合细粒度空间任务仍须验证。",
+          "按接口需求选择时，先用 Projector 对齐视觉与语言的特征宽度；希望两组 Token 在统一序列中互相更新，可采用 Token 拼接与明确的 Mask；希望保留一组视觉候选供较少查询读取，可采用 Cross-Attention。若任务需要精确位置或对象关系，应优先保留相应 Patch 信息，再决定如何压缩成全局表示。"
         ],
         "example": {
           "title": "图文条件分类的形状追踪",
@@ -1590,6 +1672,7 @@
         "body": [
           "先分清两个层次：ResNet、ConvNeXt、ViT、Swin 描述特征如何计算，CLIP、SigLIP、DINOv2、MAE 则主要描述怎样学习这些特征及相应的预训练权重。ResNet/ConvNeXt 通过卷积构成分层空间特征，标准 ViT 保持 Patch 网格并用全局注意力交互，Swin 用移动窗口和分层合并构造多尺度表示。架构影响空间分辨率与计算成本，不能单凭名称推断语义能力。卷积结构的详细比较见 [CNN 网络设计](#/learn/cnn-receptive-field?section=architecture-design)。",
           "图文对比预训练通常鼓励匹配图像与文本的全局表示接近；图像描述生成训练鼓励根据视觉条件预测语言；掩码重建、检测或其他目标又强调不同信息。这些训练可产生可迁移表示，但不能推断每个中间 token 都编码了下游需要的全部状态。全局语义匹配好，不代表细粒度计数、空间关系、动作时序或物理可行性已经被充分解决。",
+          "DINOv2 的空间 Patch 特征提供一个直观例子：将高维特征的前三个主成分映射到 RGB，就能观察不同图像中局部表示的相似性。下图对每组相关图像共同计算 PCA，颜色展示的是特征坐标的变化；真正输出分割、深度或动作，还需接上相应的读出或预测模块。",
           "提取“视觉特征”时要记录来自哪一层、是否已与语言交互、是否经过归一化与池化。纯视觉 backbone token 与已经融合文本的 VLM hidden state 可能形状相同，却包含不同条件。冻结某个骨干后，下游训练只改变可训练部分；它能选择和变换已有表征，但不能据此宣称骨干学到了新知识。下游能力应由独立验证、条件干预和闭环任务证据支持。",
           "下面按训练信号比较少数代表工作。需要图文检索或用文本定义类别时，可以从图文对齐的表示入手；需要对每个空间位置进行预测时，应保留 Patch 或特征图，再训练、评估相应读出。用于机器人策略时，还应固定数据、动作头和训练预算比较闭环表现；图文匹配或图像分类的优势不能直接推出几何精度或任务成功率的优势。CLIP 与 SigLIP 的损失及梯度差异在 [图文对比学习](#/learn/contrastive-pretraining) 中推导。"
         ],
@@ -1624,7 +1707,17 @@
               "图像编码器给出空间特征；结合点、框或掩码提示可生成分割掩码，用于交互分割与标注。它不是直接完成开放词汇图文检索的双编码器。"
             ]
           ]
-        }
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/dino-v2-patch-pca.svg",
+            "alt": "DINOv2 原论文的 Patch 特征 PCA 可视化，四组相关图像与彩色空间特征并排，相似物体部位常呈相近颜色。",
+            "caption": "每组左侧为图像，右侧为 Patch 特征的 PCA 颜色；同组相似部位常呈相近颜色，便于观察空间表示的对应关系。图源：[DINOv2 论文图 1](https://arxiv.org/html/2304.07193v2#S1.F1)。",
+            "afterParagraph": 3,
+            "width": 2925,
+            "height": 1214
+          }
+        ]
       },
       {
         "id": "visual-feature-interfaces",
@@ -1634,7 +1727,9 @@
           "设 Batch 大小为 \\(B\\)，视觉通道宽度为 \\(D_v\\)，Patch 网格为 \\(H_g\\times W_g\\)，则空间 token 是 \\([B,H_gW_g,D_v]\\)，特征图是 \\([B,D_v,H_g,W_g]\\)。在已知网格顺序时，两者只是重排；全局向量 \\([B,D_v]\\) 则经过聚合。CLS 是随网络更新的特殊 token，不等同于 Patch 均值；经过全局注意力的一个 Patch 也可能包含远处信息，不能把它理解成只描述原始小窗口。",
           "记完整序列为 \\(Z\\)，Register 数为 \\(R\\)。DINOv2 的官方实现区分 `x_norm_clstoken`、`x_norm_regtokens` 与 `x_norm_patchtokens`。其带 Register 的版本在 CLS 之后加入额外 token，提供不占据图像网格位置的计算空间；这些 token 不应当被当作像素位置重排。以 \\(224\\times224\\) 输入、Patch 大小 14 为例，空间 token 数为 \\(16\\times16=256\\)；带 4 个 Register 的版本总数为 \\(1+4+256=261\\)。必须依据具体模型配置切片，不能普遍写成“去掉第一个 token 后全部 reshape”。",
           "还要区分归一化与投影：DINOv2 的上述 `x_norm_*` 表示经过末端 LayerNorm，并不表示向量的 \\(L_2\\) 范数已为 1。CLIP 的匹配路径则使用投影到共同空间并做 \\(L_2\\) 归一化的图文向量。框架中的 `pooler_output`、`last_hidden_state`、`image_embeds` 等名称没有跨模型统一的数学含义；核对所用实现的池化方式、选取层、投影矩阵与归一化位置，再决定是否能接入现有头。",
-          "实践中应先用一张图确认预处理后尺寸、空间 token 数、特殊 token 数和输出通道，再检查位置顺序与梯度路径。下面代码页的 [token 布局实验](#/learn/multimodal?tab=code&anchor=demo-visual-token-contract) 使用合成张量验证这些约定，不下载预训练权重。它能发现把 Register 混入网格或误用网格尺寸的问题；它不能证明某组权重具备任务所需的视觉能力。"
+          "实践中应先用一张图确认预处理后尺寸、空间 token 数、特殊 token 数和输出通道，再检查位置顺序与梯度路径。下面代码页的 [token 布局实验](#/learn/multimodal?tab=code&anchor=demo-visual-token-contract) 使用合成张量验证这些约定，不下载预训练权重。它能发现把 Register 混入网格或误用网格尺寸的问题；它不能证明某组权重具备任务所需的视觉能力。",
+          "**延伸应用：DINO-WM。** 世界模型学习“给定观测表征和动作，未来表征怎样变化”。DINO-WM 冻结 DINOv2 提取空间 Patch 特征，再用含观测、动作和后继观测的离线轨迹训练动作条件预测器：编码器提供视觉表示，预测器学习时间变化。",
+          "运行时，把当前图与目标图编码到同一空间，展开候选动作序列，比较预测终点与目标特征，再用模型预测控制选择动作、执行一部分并重新观察。它适合用来研究“由目标图定义任务、从离线轨迹学习动力学、在执行时优化动作”的路线；BC／ACT 则训练策略直接预测动作。这里将 DINO-WM 作为空间视觉特征的一种应用，动力学建模与规划是编码器之上的独立模块。"
         ],
         "formula": "N_{\\mathrm{all}}=1+R+H_gW_g,\\qquad Z_{\\mathrm{patch}}=Z[:,\\,1+R:\\,,\\,:]",
         "example": {
@@ -1644,7 +1739,17 @@
             "第一代 SAM 在论文的 1024×1024 输入配置下，经编码器和通道变换输出 256 通道、64×64 的图像特征。该特征仍需与提示结合并通过 Mask 解码器才成为分割结果。"
           ],
           "conclusion": "记录实际输入尺寸、所取层和输出接口，而不是只记录“用了 ViT”。上式仅描述本节指定的 CLS→Register→Patch 排列；其他模型须按其实现处理。"
-        }
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/dino-wm-planning.png",
+            "alt": "DINO-WM 规划流程：历史观测经 DINOv2 编码，动作条件预测器展开未来特征；目标图像编码为目标特征，规划损失用于在测试时优化动作序列。",
+            "caption": "左侧观测形成 Patch 特征，动作条件预测器向前展开；右侧目标图提供特征目标，橙线表示规划时优化的动作。图源：[DINO-WM 官方项目](https://dino-wm.github.io/)。",
+            "afterParagraph": 5,
+            "width": 3506,
+            "height": 1097
+          }
+        ]
       },
       {
         "title": "压缩后的信息能否由后层恢复",
@@ -1845,6 +1950,18 @@
       {
         "title": "BLIP-2（2023，v3）：Q-Former 与两阶段预训练",
         "url": "https://arxiv.org/abs/2301.12597v3"
+      },
+      {
+        "title": "DINO：Emerging Properties in Self-Supervised Vision Transformers（2021）",
+        "url": "https://arxiv.org/abs/2104.14294"
+      },
+      {
+        "title": "DINO-WM：World Models on Pre-trained Visual Features enable Zero-shot Planning（2024）",
+        "url": "https://arxiv.org/abs/2411.04983"
+      },
+      {
+        "title": "DINO-WM 官方项目：特征预测与测试时规划",
+        "url": "https://dino-wm.github.io/"
       }
     ],
     "level": "P0",

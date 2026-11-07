@@ -63,6 +63,16 @@ More original textbook figures reproduced unchanged:
 
 These figures retain the same Dive into Deep Learning attribution and CC BY-SA 4.0 license above. Chinese reading notes are separate from the original images.
 
+- lenet-overview-d2l.svg: Complete LeNet architecture, reproduced unchanged.
+  Chapter: https://d2l.ai/chapter_convolutional-neural-networks/lenet.html
+  Original: https://d2l.ai/_images/lenet.svg
+  Attribution and CC BY-SA 4.0 license: as above.
+
+- finetuning-overview-d2l.svg: Source-to-target fine-tuning with a new task head, reproduced unchanged.
+  Chapter: https://d2l.ai/chapter_computer-vision/fine-tuning.html
+  Original: https://d2l.ai/_images/finetune.svg
+  Attribution and CC BY-SA 4.0 license: as above.
+
 Full license text follows:
 
 Creative Commons Attribution-ShareAlike 4.0 International Public License

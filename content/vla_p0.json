@@ -79,6 +79,41 @@
             "后验为 \\((0.504/0.592,0.088/0.592)\\)。动作影响传播模型，观测影响似然，二者按时间顺序承担不同作用。"
           ],
           "conclusion": "一个观测更支持某状态，会提高其后验权重；这与直接把最新观测当作真实状态不同。"
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/rnn-memory-d2l.svg",
+            "alt": "沿时间展开的循环神经网络，当前输入和前一时刻隐藏状态共同进入同一循环单元，生成新隐藏状态和输出。",
+            "afterParagraph": 2,
+            "caption": "循环网络提供一种可学习的历史摘要：横向箭头传递隐藏状态 Hₜ，每一步把当前输入 Xₜ 与此前记忆组合，再产生输出。图源：[《动手学深度学习》](https://d2l.ai/chapter_recurrent-neural-networks/rnn.html)。",
+            "width": 540,
+            "height": 233
+          }
+        ],
+        "comparison": {
+          "title": "何时增加历史，以及怎样保存",
+          "columns": [
+            "观察到的信息需求",
+            "可以比较的起点",
+            "主要取舍"
+          ],
+          "rows": [
+            [
+              "当前观测已能区分任务所需状态",
+              "单帧或当前状态策略",
+              "接口与计算较简单，可作为记忆模型的对照。"
+            ],
+            [
+              "短时间变化已足以辨别速度或接触阶段",
+              "固定历史窗口",
+              "显式保留最近输入，窗口长度决定可见范围。"
+            ],
+            [
+              "需要逐步综合历史，并以固定大小状态在线运行",
+              "GRU 等循环摘要",
+              "每步更新隐藏状态，适合递推处理；训练时覆盖相应历史和重置协议。"
+            ]
+          ]
         }
       },
       {
@@ -109,17 +144,7 @@
         "id": "4",
         "lead": "门控循环单元（GRU）是用当前输入与上一隐藏状态产生新隐藏状态的循环网络模块。更新门和重置门调节历史信息与候选状态的组合，因此提供可学习的记忆摘要。下面再对应递推式与张量轴。",
         "code": "import torch\nimport torch.nn.functional as F\n\ntorch.manual_seed(7)\ncell = torch.nn.GRUCell(3, 4).double()\nx = torch.randn(2, 3, dtype=torch.float64, requires_grad=True)\nh = torch.randn(2, 4, dtype=torch.float64, requires_grad=True)\nir, iz, inn = F.linear(x, cell.weight_ih, cell.bias_ih).chunk(3, -1)\nhr, hz, hn = F.linear(h, cell.weight_hh, cell.bias_hh).chunk(3, -1)\nr = torch.sigmoid(ir + hr)\nz = torch.sigmoid(iz + hz)\nn = torch.tanh(inn + r * hn)\nmanual = (1 - z) * n + z * h\nofficial = cell(x, h)\ntorch.testing.assert_close(manual, official, rtol=1e-12, atol=1e-12)\nprobe = torch.randn_like(manual)\ninputs = (x, h, *tuple(cell.parameters()))\ngm = torch.autograd.grad((manual * probe).sum(), inputs)\ngo = torch.autograd.grad((official * probe).sum(), inputs)\nfor a, b in zip(gm, go):\n    torch.testing.assert_close(a, b, rtol=1e-11, atol=1e-12)\nprint(\"通过：GRU 单步前向与输入、历史、参数梯度一致。\")\n",
-        "codeExplanation": "权重沿输出轴依次打包 reset、update、new 三组。非零随机偏置可以检出候选分支中把门控放错位置的实现；非均匀 probe 避免只对输出求和掩盖部分梯度错误。这里只验证一个确定的单步算子，回合边界仍由后续 reset 协议处理。",
-        "figures": [
-          {
-            "src": "/assets/figures/rnn-memory-d2l.svg",
-            "alt": "沿时间展开的循环神经网络，当前输入和前一时刻隐藏状态共同进入同一循环单元，生成新隐藏状态和输出。",
-            "afterParagraph": 1,
-            "caption": "循环网络沿时间复用同一单元；当前输入 Xₜ 与历史 Hₜ₋₁ 一起生成新状态 Hₜ，再用于输出。 图源：[《动手学深度学习》](https://d2l.ai/chapter_recurrent-neural-networks/rnn.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
-            "width": 540,
-            "height": 233
-          }
-        ]
+        "codeExplanation": "权重沿输出轴依次打包 reset、update、new 三组。非零随机偏置可以检出候选分支中把门控放错位置的实现；非均匀 probe 避免只对输出求和掩盖部分梯度错误。这里只验证一个确定的单步算子，回合边界仍由后续 reset 协议处理。"
       },
       {
         "title": "detach 与 reset 分别切断什么",

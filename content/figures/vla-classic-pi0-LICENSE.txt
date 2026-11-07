@@ -1,0 +1,10 @@
+Asset: vla-classic-pi0-overview.png
+Title: Overview of the pi-zero framework (Figure 3).
+Creators: Physical Intelligence; Kevin Black, Noah Brown, Danny Driess, Adnan Esmail, Michael Equi, Chelsea Finn, Niccolo Fusai, Lachy Groom, Karol Hausman, Brian Ichter, Szymon Jakubczak, Tim Jones, Liyiming Ke, Sergey Levine, Adrian Li-Bell, Mohith Mothukuri, Suraj Nair, Karl Pertsch, Lucy Xiaoyang Shi, James Tanner, Quan Vuong, Anna Walling, Haohuan Wang, Ury Zhilinsky.
+Paper: pi_0: A Vision-Language-Action Flow Model for General Robot Control. arXiv:2410.24164v4.
+Source: https://arxiv.org/html/2410.24164v4
+Original asset: https://arxiv.org/html/2410.24164v4/overview.png
+Official project: https://www.pi.website/blog/pi0
+Retrieved: 2026-11-07
+Reuse: Original image reproduced byte-for-byte, without crop, recoloring, or redraw, as one attributed figure for personal educational study. Separate Chinese reading notes are supplied by Embodied ML Lab.
+Rights record: Copyright remains with the authors. The arXiv record lists its perpetual, non-exclusive distribution license to arXiv (https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html); this is not a Creative Commons or general public reuse grant. No broader permission is asserted by this notice.

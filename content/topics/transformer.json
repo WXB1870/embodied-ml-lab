@@ -281,7 +281,7 @@
           "src": "/assets/figures/rope-roformer-figure1.svg",
           "title": "RoFormer 原论文 Figure 1：成对通道旋转",
           "alt": "RoFormer 原图：上部展示二维 Query/Key 随位置旋转，下部将通道配对并为不同位置施加不同旋转角。",
-          "caption": "先看上部二维情形：位置 m 决定旋转角；再看下部，不同颜色表示不同通道对，每对使用自己的频率，并在每个位置重复同一旋转规则。旋转用于 Q/K 匹配，不是在输入上另加一个位置向量。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)，按 [CC BY-NC-ND 4.0](/assets/figures/rope-figure1-LICENSE.txt) 原样复用；[放大查看](/assets/figures/rope-roformer-figure1.svg)。本节数值算例仍用于手算相对角差。",
+          "caption": "先看上部二维情形：位置 m 决定旋转角；再看下部，不同颜色表示不同通道对，每对使用自己的频率，并在每个位置重复同一旋转规则。旋转用于 Q/K 匹配，不是在输入上另加一个位置向量。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)；[放大查看](/assets/figures/rope-roformer-figure1.svg)。本节数值算例仍用于手算相对角差。",
           "afterParagraph": 3,
           "width": 1083,
           "height": 605

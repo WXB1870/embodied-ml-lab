@@ -93,6 +93,10 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
 /* Keep compact curves at reading size; detailed architecture remains scrollable. */
 .research-figure img[src$="gelu-relu-commons.svg"],.research-figure img[src$="silu-commons.svg"]{max-width:520px;margin-inline:auto}
 .research-figure img[src$="vision-transformer-d2l.svg"]{max-width:640px;margin-inline:auto}
+.research-figure img[src$="film-overview-distill.svg"]{max-width:704px;margin-inline:auto}
+.research-figure img[src$="dino-self-distillation.svg"]{max-width:520px;margin-inline:auto}
 @media(max-width:760px){.research-figure img[src$="residual-d2l-classic.svg"],.research-figure img[src$="transformer-vaswani-figure1.png"],.research-figure img[src$="-d2l.svg"],.research-figure img[src$="-commons.svg"]{min-width:0;max-width:100%}}
 @media(max-width:760px){.research-figure img[src$="vision-transformer-d2l.svg"]{min-width:620px;max-width:none}}
+@media(max-width:760px){.research-figure img[src$="vla-classic-pi0-overview.png"],.research-figure img[src$="act-classic-overview.png"],.research-figure img[src$="bc-classic-berkeley-overview.png"],.research-figure img[src$="fm-classic-guide-overview.png"],.research-figure img[src$="clip-overview-original.png"]{min-width:0;max-width:100%}}
+@media(max-width:760px){.research-figure img[src$="dino-self-distillation.svg"]{min-width:0;max-width:min(100%,520px)}}
 @media print{.research-figure>a{overflow:visible}.research-figure img{min-width:0;max-width:100%}.research-figure>.figure-reading-hint{display:none}}

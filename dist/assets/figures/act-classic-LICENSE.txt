@@ -1,0 +1,10 @@
+Asset: act-classic-overview.png
+Title: Action Chunking with Transformers (ACT): encoder and action policy architecture.
+Creators: Tony Z. Zhao, Vikash Kumar, Sergey Levine, Chelsea Finn.
+Publication: Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware, RSS 2023; arXiv:2304.13705.
+Official source: https://tonyzhaozh.github.io/aloha/
+Original asset: https://tonyzhaozh.github.io/aloha/resources/algo.png
+Paper: https://arxiv.org/abs/2304.13705
+Retrieved: 2026-11-07
+Reuse: The author's project-page image is reproduced byte-for-byte, without crop, recoloring, or redraw, as one attributed figure for personal educational study. Separate Chinese reading notes are supplied by Embodied ML Lab.
+Rights record: Copyright remains with the authors. The arXiv record lists its perpetual, non-exclusive distribution license to arXiv (https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html); no Creative Commons or other general reuse grant was identified for this project-page image. No broader permission is asserted by this notice.

@@ -69,7 +69,7 @@ GPU/CUDA 版本请按 https://pytorch.org/get-started/locally/ 选择安装命�
 - 16 Transformer：注意力、残差与序列建模 (`transformer`)
 - 17 视觉预处理与坐标变换 (`vision-preprocessing`)
 - 18 视觉编码器与多模态融合 (`multimodal`)
-- 19 图文预训练：CLIP 与 SigLIP (`contrastive-pretraining`)
+- 19 视觉与图文预训练：DINO、CLIP 与 SigLIP (`contrastive-pretraining`)
 - 20 分词、自回归与标签对齐 (`tokenizer-autoregressive`)
 - 21 条件注入：拼接、FiLM 与 AdaLN (`conditioning-fusion`)
 - 22 KV Cache 与增量计算 (`kv-cache-inference`)

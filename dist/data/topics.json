@@ -95,7 +95,7 @@
             "src": "/assets/figures/mlp-network-d2l.svg",
             "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
             "afterParagraph": 1,
-            "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers)。",
             "width": 372,
             "height": 187
           }
@@ -264,7 +264,8 @@
           "GELU 用 xΦ(x) 平滑调制输入，SiLU 使用 x·sigmoid(x)。它们不像 ReLU 那样把整个负半轴精确截成零，但也不意味着梯度永远足够大或训练一定更好。Sigmoid 与 tanh 在输入绝对值很大时会饱和，导数接近零；这在输出范围约束中可能有意义，在深层隐藏网络里则需要关注尺度。不同激活的值域和导数会影响初始化与优化，不能只把名称换掉。",
           "在一个不跨越 ReLU 零点的局部区域，激活开关可以写成对角矩阵 \\(D(x)\\)，按列向量约定，输入 Jacobian 为 \\(W_2D(x)W_1\\)，其秩受输入维度、输出维度和有效隐藏单元数共同限制。输入跨过边界时 \\(D(x)\\) 改变，网络换成另一段仿射映射。局部低秩与全局只能线性表达不是一回事；非线性能力来自这些区域的组合。",
           "输出层通常由目标语义决定。实数回归常使用线性输出；分类输出 logits，概率变换交给稳定的损失函数；若动作确实受已声明的固定上下界约束，可以使用缩放后的 tanh，但接近边界时梯度会变小。对所有输出使用 ReLU 会禁止负数预测，在最后一层使用 Softmax 会引入各维和为一的约束，这些都改变了问题定义。",
-          "在贯穿例中，第一条样本的第二个隐藏单元关闭，而其他样本仍能更新它。可在 manual-backprop 中只修改 b1[1]，重新记录 z 的符号和 Δ₁；统计初始化对批量开关分布的影响见[激活与初始化](#/learn/activation-init)。原有手写梯度练习仍使用不同尺寸测试，检验是否理解一般链式法则，而非仅记住这组数字。"
+          "在贯穿例中，第一条样本的第二个隐藏单元关闭，而其他样本仍能更新它。可在 manual-backprop 中只修改 b1[1]，重新记录 z 的符号和 Δ₁；统计初始化对批量开关分布的影响见[激活与初始化](#/learn/activation-init)。原有手写梯度练习仍使用不同尺寸测试，检验是否理解一般链式法则，而非仅记住这组数字。",
+          "本章从零构造的小 MLP 选用 ReLU，便于同时观察分段响应、手算梯度与初始化。接入已有 Transformer 或视觉骨干时，沿用其 GELU、SiLU 或门控结构，再按任务比较适配；需要概率或有界动作时，则在输出接口上按监督语义单独选择。各函数的典型场景见[激活与初始化的选用表](#/learn/activation-init?section=0)。"
         ],
         "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
         "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
@@ -274,7 +275,7 @@
             "src": "/assets/figures/gelu-relu-commons.svg",
             "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
             "afterParagraph": 2,
-            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg)。",
             "width": 246,
             "height": 205
           }
@@ -735,7 +736,7 @@
     "id": "cnn",
     "title": "CNN：卷积、采样与空间表示",
     "subtitle": "局部连接与权重共享，如何决定表达能力、平移响应和空间信息。",
-    "lead": "卷积神经网络（CNN）是一类通过局部连接和参数共享处理空间数据的神经网络。同一卷积核在不同位置提取局部特征，多层卷积与非线性逐步组合这些特征，读出模块再形成分类或空间预测。它把图像的局部结构写进了网络连接。本章的 SmallCNN 接收 12×12 RGB 图像，经两次“卷积＋ReLU”，再由全局平均池化和线性层给出两类输出。后续沿同一网络解释窗口、感受野、采样与信息保留。",
+    "lead": "卷积神经网络（CNN）通过局部连接与参数共享处理空间数据：卷积与非线性提取、组合特征，读出模块把特征变成分类或空间预测。本章先看 LeNet 的完整流程，再沿同一个 SmallCNN 解释每一步：12×12 RGB 图像 → 两次卷积与 ReLU → 全局平均池化 → 两类输出。",
     "minutes": 200,
     "prerequisites": [
       "tensor",
@@ -814,8 +815,9 @@
     "sections": [
       {
         "id": "local-correlation",
-        "title": "局部窗口与跨通道求和",
+        "title": "先看完整网络，再理解局部卷积",
         "body": [
+          "沿图从左向右看：卷积在局部窗口中提取特征，激活引入非线性，池化缩小空间网格；随后将特征展平，用全连接层输出各类别的分数。图中每叠小方片是一组特征通道。本章贯穿的 SmallCNN 将这条主线具体化为两次“卷积＋ReLU”，再通过全局平均池化与线性层完成分类。",
           "二维卷积网络把图像表示为 [B,C,H,W]：B 是样本，C 是通道，H/W 是两个空间轴。一个普通卷积的输出通道，拥有覆盖所有输入通道的一组小核。例如 RGB 输入使用 3×3 核时，每个输出通道实际有 3×3×3 个权重。它在一个位置取出各通道的局部窗口，逐元素相乘后跨空间和通道求和，再加该输出通道的偏置。",
           "PyTorch Conv2d 实际计算的是互相关：窗口与权重按对应位置相乘，不把核在空间上翻转。数学教材中的卷积常包含核翻转，使用固定边缘检测核对照时必须明确约定。对于学习到的核，这种命名差异不限制一般的可学习滤波器族，但实现核对时会影响具体数值。一个卷积核不是每次滑动时重新生成的；同一输出通道在所有位置复用相同权重。",
           "输出通道不是简单等于输入颜色通道。一个输出通道可能混合多个输入通道中的局部模式，多个输出通道又使用不同参数寻找不同响应。没有非线性时，卷积对输入是仿射映射；ReLU 等激活放在哪里，会改变整段网络的函数。读取代码时应分别标记权重张量、输入特征图和输出特征图，避免把滤波器数量与每个滤波器内部的输入通道轴混淆。"
@@ -831,13 +833,21 @@
           ],
           "conclusion": "卷积的可学习之处是核里的数；相同核在各空间位置重复使用，多个输入通道的结果还要相加。"
         },
-        "lead": "卷积层用同一组小型权重在输入不同位置执行局部加权求和，形成输出特征图。一个输出通道通常同时汇总空间窗口和输入通道，核的空间位置并不是输出通道。先看一个输出怎样得到，再扩大到整张图。",
+        "lead": "一个典型 CNN 先读取图像，通过若干组“卷积、激活、下采样”形成特征图，再将这些特征读成类别或空间预测。下图先用 LeNet 展示整条流程，随后再拆开其中的一个卷积窗口。",
         "figures": [
+          {
+            "src": "/assets/figures/lenet-overview-d2l.svg",
+            "alt": "LeNet 的完整图像分类流程：二十八乘二十八图像经过两组卷积与池化，展平后通过多个全连接层，得到十类输出。",
+            "caption": "从左向右读：图像 → 卷积与池化 → 展平 → 全连接层 → 10 类输出。叠放的方片表示同一层的多个特征通道。图源：[《动手学深度学习》LeNet](https://d2l.ai/chapter_convolutional-neural-networks/lenet.html)。",
+            "afterParagraph": 0,
+            "width": 1416,
+            "height": 535
+          },
           {
             "src": "/assets/figures/conv-arithmetic-window.gif",
             "alt": "一个 3×3 卷积核在 4×4 单通道输入上以步幅 1、无填充滑动，生成 2×2 输出。",
-            "caption": "观察下方蓝色输入上的深色 3×3 窗口：它每移动一格，就计算上方一个输出位置。这是单通道、无 Padding、Stride=1 的 4×4 → 2×2 例子；多输入通道时还要汇总各通道的乘积。原动图：Dumoulin & Visin，[Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)、[论文](https://arxiv.org/abs/1603.07285)，按 [MIT 许可](/assets/figures/conv-arithmetic-LICENSE.txt) 原样复用。",
-            "afterParagraph": 0
+            "caption": "观察下方蓝色输入上的深色 3×3 窗口：它每移动一格，就计算上方一个输出位置。这是单通道、无 Padding、Stride=1 的 4×4 → 2×2 例子；多输入通道时还要汇总各通道的乘积。原动图：Dumoulin & Visin，[Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)、[论文](https://arxiv.org/abs/1603.07285)。",
+            "afterParagraph": 2
           }
         ]
       },
@@ -910,7 +920,7 @@
             "src": "/assets/figures/conv-padding-d2l.svg",
             "alt": "三乘三输入外围补一圈零，再与二乘二卷积核做互相关，得到四乘四输出，蓝色标出首个窗口。",
             "afterParagraph": 1,
-            "caption": "虚线外围是补零，蓝色是首个 2×2 窗口；补边让边界外也能放下窗口，输出增至 4×4。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#padding) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "虚线外围是补零，蓝色是首个 2×2 窗口；补边让边界外也能放下窗口，输出增至 4×4。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#padding)。",
             "width": 379,
             "height": 160
           },
@@ -918,7 +928,7 @@
             "src": "/assets/figures/conv-stride-d2l.svg",
             "alt": "带补零的二维互相关，窗口在高方向每次移动三格，在宽方向每次移动两格，得到二乘二输出。",
             "afterParagraph": 2,
-            "caption": "窗口每次向下移动 3 格、向右移动 2 格，因此只留下 2×2 个输出位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#stride) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "窗口每次向下移动 3 格、向右移动 2 格，因此只留下 2×2 个输出位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#stride)。",
             "width": 331,
             "height": 159
           }
@@ -1112,7 +1122,7 @@
             "src": "/assets/figures/pooling-d2l.svg",
             "alt": "三乘三输入经过窗口二乘二、步幅一的最大池化，得到四、五、七、八组成的二乘二输出。",
             "afterParagraph": 3,
-            "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html)。",
             "width": 248,
             "height": 108
           }
@@ -1842,7 +1852,7 @@
             "src": "/assets/figures/rope-roformer-figure1.svg",
             "title": "RoFormer 原论文 Figure 1：成对通道旋转",
             "alt": "RoFormer 原图：上部展示二维 Query/Key 随位置旋转，下部将通道配对并为不同位置施加不同旋转角。",
-            "caption": "先看上部二维情形：位置 m 决定旋转角；再看下部，不同颜色表示不同通道对，每对使用自己的频率，并在每个位置重复同一旋转规则。旋转用于 Q/K 匹配，不是在输入上另加一个位置向量。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)，按 [CC BY-NC-ND 4.0](/assets/figures/rope-figure1-LICENSE.txt) 原样复用；[放大查看](/assets/figures/rope-roformer-figure1.svg)。本节数值算例仍用于手算相对角差。",
+            "caption": "先看上部二维情形：位置 m 决定旋转角；再看下部，不同颜色表示不同通道对，每对使用自己的频率，并在每个位置重复同一旋转规则。旋转用于 Q/K 匹配，不是在输入上另加一个位置向量。原图：[Su et al., Figure 1](https://arxiv.org/html/2104.09864v5#S3.F1)；[放大查看](/assets/figures/rope-roformer-figure1.svg)。本节数值算例仍用于手算相对角差。",
             "afterParagraph": 3,
             "width": 1083,
             "height": 605
@@ -2706,6 +2716,7 @@
           "Flow Matching（FM）是一种训练连续生成模型的方法：给出连接噪声与数据的概率路径，让神经网络回归推动这条路径的速度。固定条件 \\(c\\)，从 \\(X_0\\sim\\mathcal N(0,I_2)\\) 出发，求解 \\(dX_t/dt=v_\\theta(X_t,t,c)\\)，到 \\(t=1\\) 得到二维样本。一个起点产生一条轨迹，许多起点的终点共同定义生成分布；网络需要学的是随状态和时间变化的函数，而非一条固定方向。",
           "全章主案例有两个条件 \\(c\\in\\{0,1\\}\\)。条件 0 选择均值为 (−1.6,−0.6)、(1.6,0.6)，权重为 0.35、0.65 的双高斯混合；条件 1 选择均值为 (−0.6,1.6)、(0.6,−1.6)，权重为 0.65、0.35 的混合。各分量标准差都是 0.28。条件选择一整个分布，不指定它的某个分量。先看下图的噪声与目标两栏：我们需要移动整片概率质量；生成结果一栏将在后面的同一实验中解释。",
           "这里 \\(t=0\\) 是噪声、\\(t=1\\) 是数据。训练时可以抽到一个数据端点 \\(X_1\\)，推理时只有噪声、条件和网络。接下来先利用训练端点造出速度标签，再解决“缺少端点时究竟应该预测哪种速度”。示例中 noise、data、t、condition、target 与 \\(X_0,X_1,t,c,U\\) 分别对应。",
+          "何时选择：单一连续目标且延迟很紧时，可以先建立直接回归基线；同一条件下有多种合理的连续结果、希望联合生成整段动作时，可以考虑本章的连续 FM。训练侧用目标样本与人工抽取的噪声构造路径，其时间导数直接提供速度监督。选型时把速度网络的多次评估纳入生成延迟预算，并比较固定预算下的样本质量与闭环效果。微调预训练流策略时，先沿用其路径、时间方向和输出参数化。",
           "FM 不限定网络架构；本章使用小型 MLP。Continuous Normalizing Flow（CNF）描述用连续 ODE 流变换分布的模型，FM 则给出训练这种流的一类目标。只有要计算密度时，才另需处理散度与密度演化。核心路径回归不以前向 SDE 或 Score 为先修；它们与本方法的联系在末尾的比较节展开。",
           "进入动作策略时，可以把二维变量换成完整动作块 \\(A\\in\\mathbb R^{H\\times D}\\)，同时保留动作时间轴。一次生成积分更新整块动作，生成时间 \\(t\\) 不等于执行时刻或动作索引 \\(h\\)。本章先把二维例子讲完整，再讨论有效位、单位与控制接口。"
         ],
@@ -2738,6 +2749,14 @@
         },
         "lead": "速度场是一个根据当前位置、时间与条件给出瞬时移动方向和速率的函数。许多噪声起点沿它运动，终点集合才构成生成分布。我们先明确要生成的双峰分布，再解释怎样从已有数据为这个函数建立监督。",
         "figures": [
+          {
+            "src": "/assets/figures/fm-classic-guide-overview.png",
+            "alt": "Flow Matching 官方四步总览：从噪声与数据两端分布出发，设计中间概率路径，训练速度场，再从新噪声沿速度场积分采样。",
+            "caption": "从左向右读：噪声与数据 → 设计中间分布 → 学习速度 → 积分采样。图中 \\(p\\) 为噪声分布、\\(q\\) 为数据分布，作者的学习场 \\(u_t^\\theta\\) 对应本章的 \\(v_\\theta\\)。图源：[Flow Matching Guide and Code](https://arxiv.org/abs/2412.06264)。",
+            "afterParagraph": 0,
+            "width": 1882,
+            "height": 408
+          },
           {
             "src": "assets/experiments/fm-mixture-distributions.svg",
             "alt": "条件为 0 时的初始噪声、双峰目标数据与学习场生成样本",

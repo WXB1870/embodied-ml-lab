@@ -1,0 +1,12 @@
+Asset: bc-classic-berkeley-overview.png
+Title: Imitation Learning (behavioral cloning overview).
+Author of lecture material: Sergey Levine, UC Berkeley.
+Course: CS 294-112: Deep Reinforcement Learning, Fall 2017 (predecessor of CS 285).
+Source lecture: Supervised Learning of Behaviors, Lecture 2, page 7.
+Source PDF: https://rail.eecs.berkeley.edu/deeprlcourse-fa17/f17docs/lecture_2_behavior_cloning.pdf
+Source course: https://rail.eecs.berkeley.edu/deeprlcourse-fa17/
+Original image credit printed on the source slide: Images: Bojarski et al. '16, NVIDIA.
+
+Extraction: The complete source slide was rasterized at 144 DPI (1920 x 1080) for a focused educational illustration. The original labels, diagrams, photographs, title and image-credit line are retained; no text or diagram content was changed. The entire lecture PDF is not redistributed in the learning pack.
+
+Copyright: Rights remain with the lecturer and credited original image creators. The source lecture does not state an open-content license; no MIT or Creative Commons license is asserted for this asset. This source record documents the attributed educational excerpt requested for the personal learning site.

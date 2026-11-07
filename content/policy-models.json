@@ -87,6 +87,7 @@
         "id": "act-conditional-latent-model",
         "title": "ACT：动作块之上的条件潜变量模型",
         "body": [
+          "ACT 适合把多视角观测映射成固定长度的连续动作块，并希望一次解码给出整段动作的模仿任务。训练时的潜变量表达示范变化；部署可沿用原实现取 z=0，再根据所需反馈频率与推理延迟决定每次真正执行多少步，随后读取新观测继续预测。",
           "动作分块本身只决定输出形状，不规定概率模型。ACT 进一步引入潜变量 \\(z\\in\\mathbb R^r\\)：\\(p_\\theta(A\\mid c)=\\int p_\\theta(A\\mid c,z)p(z)\\,dz\\)，通常取 \\(p(z)=\\mathcal N(0,I)\\)。训练时用近似后验 \\(q_\\phi(z\\mid A,s)\\) 编码示范动作块与本体状态 \\(s\\)；动作解码器则读取图像、状态、\\(z\\) 和各动作位置的查询。官方实现的后验编码器读取动作与 `qpos`，不应笼统写成所有模态都进入后验。",
           "对数边缘似然的变分推导见 [潜变量与 VAE](#/learn/latent-variable-models)。在此取负号可得训练目标：",
           "\\[\\mathbb E_q[-\\log p_\\theta(A\\mid c,z)]+D_{\\rm KL}(q_\\phi\\Vert p)\\]",
@@ -98,7 +99,17 @@
         ],
         "formula": "\\begin{aligned}\\mathcal L_{\\rm ACT}&=\\mathbb E_{z\\sim q_\\phi}\\left[\\mathcal L_{\\rm rec}(A,f_\\theta(c,z))\\right]+\\beta D_{\\rm KL}\\left(q_\\phi\\|\\mathcal N(0,I)\\right)\\\\ z&=\\mu+\\exp(\\ell/2)\\odot\\epsilon,\\quad\\epsilon\\sim\\mathcal N(0,I)\\\\ D_{\\rm KL}&=\\frac12\\sum_{j=1}^{r}\\left(\\mu_j^2+e^{\\ell_j}-1-\\ell_j\\right)\\end{aligned}",
         "takeaway": "ACT 的潜变量训练、并行动作查询和测试时 \\(z=0\\) 是具体设计；不能用“输出一个动作块”概括其全部机制。",
-        "lead": "ACT（Action Chunking with Transformers）是以动作块为输出、训练时用条件潜变量建模示范变化的模仿学习方法。动作分块规定输出时域，潜变量模型规定变化怎样表达，Transformer 负责具体计算。下面分别认识这三个层次。"
+        "lead": "ACT（Action Chunking with Transformers）是以动作块为输出、训练时用条件潜变量建模示范变化的模仿学习方法。动作分块规定输出时域，潜变量模型规定变化怎样表达，Transformer 负责具体计算。下面分别认识这三个层次。",
+        "figures": [
+          {
+            "src": "/assets/figures/act-classic-overview.png",
+            "alt": "ACT 官方整网图：训练时左侧 Transformer 将示范动作和关节状态编码为风格变量 z；右侧四路图像经 CNN 编码，与关节状态和 z 一起进入 Transformer 编码器，再由解码器同时预测动作序列。",
+            "caption": "左侧在训练时从示范动作和关节状态编码风格变量 z；右侧把多视角图像、关节与 z 汇入 Transformer，输出一整段动作。图源：[ACT 官方项目](https://tonyzhaozh.github.io/aloha/)。",
+            "afterParagraph": 0,
+            "width": 2764,
+            "height": 763
+          }
+        ]
       },
       {
         "id": "diffusion-policy-objective",

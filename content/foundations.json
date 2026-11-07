@@ -1101,16 +1101,57 @@
         "title": "激活函数同时决定函数形状与局部导数",
         "body": [
           "神经网络前向使用 \\(\\phi(z)\\)，反向使用 \\(\\phi^{\\prime}(z)\\)。这两个视角必须一起看：某激活让正负输入都产生非零输出，不代表它在所有区域都有足够大的导数；输出看起来平滑，也不代表梯度传播一定稳定。对深层网络，许多局部导数与权重矩阵连乘，局部尺度的偏差可能沿深度放大或衰减。",
-          "激活通常逐元素作用，因此保持输入形状，也不主动混合位置或通道。它依赖前一层形成的特征组合，后一层再将激活后的特征混合。选择激活时应考虑输入分布、初始化、归一化、残差结构和目标精度；单独比较几条函数曲线只能建立直觉，不能替代固定训练配置的实验。"
+          "激活通常逐元素作用，因此保持输入形状，也不主动混合位置或通道。它依赖前一层形成的特征组合，后一层再将激活后的特征混合。选择激活时应考虑输入分布、初始化、归一化、残差结构和目标精度；单独比较几条函数曲线只能建立直觉，不能替代固定训练配置的实验。",
+          "选型先看激活位于哪里。隐藏层负责构造特征，输出层则要匹配目标的数学含义：一般连续回归可直接输出实数，多类分类训练输出 logits，二元概率可在读出时做 Sigmoid。微调已有骨干时，先沿用其激活、初始化与归一化配置，再通过固定数据和预算的对照研究替换。"
         ],
         "id": "0",
-        "lead": "激活函数通常是逐元素的非线性函数：接收线性层产生的数值，变换后交给下一层。它在前向中改变可表示的函数，在反向中通过自身导数调节梯度。下面始终从这两个作用认识激活，而非只比较输出曲线。"
+        "lead": "激活函数通常是逐元素的非线性函数：接收线性层产生的数值，变换后交给下一层。它在前向中改变可表示的函数，在反向中通过自身导数调节梯度。下面始终从这两个作用认识激活，而非只比较输出曲线。",
+        "comparison": {
+          "title": "先按网络位置与输出语义选择",
+          "columns": [
+            "激活",
+            "典型位置或场景",
+            "选择理由"
+          ],
+          "rows": [
+            [
+              "Sigmoid",
+              "二元或多标签的概率读出；循环网络的门",
+              "把数值映射到 0～1，表达概率或保留比例。"
+            ],
+            [
+              "tanh",
+              "GRU 的候选状态；需要正负对称有界范围的输出",
+              "输出在 −1～1，零附近保留正负变化。"
+            ],
+            [
+              "ReLU",
+              "从零搭建的 CNN、普通 MLP 隐藏层",
+              "分段线性、计算简单，便于建立训练和手算基线。"
+            ],
+            [
+              "Leaky ReLU",
+              "隐藏层需要在负区间继续传递响应和梯度",
+              "保留小的负半轴斜率，配套选择初始化增益。"
+            ],
+            [
+              "GELU",
+              "GPT-2 等 Transformer 的前馈隐藏层",
+              "使用平滑的输入相关调制；适配已有模型时沿用其激活配置。"
+            ],
+            [
+              "SiLU",
+              "平滑激活的隐藏层；SwiGLU 的门控分支",
+              "以输入乘 Sigmoid 做平滑调制；门控结构还包含另一条特征分支。"
+            ]
+          ]
+        }
       },
       {
         "title": "Sigmoid 与 tanh：饱和为什么带来小梯度",
         "body": [
           "Sigmoid 的导数为 \\(\\sigma(z)(1-\\sigma(z))\\)，最大值出现在 \\(z=0\\)，等于 \\(\\frac14\\)；正负两端输出接近常数，导数趋近零。tanh 的导数为 \\(1-\\tanh^2(z)\\)，在零附近较大，在大绝对值处也会饱和。若很多层处于饱和区域，反向传回的梯度可能迅速变小，前层难以调整；仅增加训练步数未必解决尺度问题。",
-          "饱和不是这些函数“不能使用”的结论。输出概率、门控或有界状态可能确实需要它们；关键是把它们放在与数学意义相符的位置，并采用稳定的组合损失。例如二分类直接用 BCEWithLogitsLoss 接收 logits，可以避免先 sigmoid 再取对数的数值损失。隐藏层是否使用某激活，应结合实际信号统计，而不是把输出概率的需求直接推广到每一层。",
+          "典型用法是让 Sigmoid 表达二元概率或门控比例，让 tanh 表达对称有界状态，例如 [GRU 的候选状态](https://docs.pytorch.org/docs/stable/generated/torch.nn.GRU.html)。若用 tanh 输出归一化动作，还要按动作范围恢复单位。二分类训练通常直接将 logits 送入 [BCEWithLogitsLoss](https://docs.pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html)，在需要读取概率时再计算 Sigmoid。",
           "在多层 Sigmoid 网络中，即便每层预激活都接近零，局部导数最大也仅为 \\(\\frac14\\)；实际梯度还乘权重矩阵，因此不能只用激活导数单独断言一定消失。合理判断应看整条 Jacobian 链的增益，这也是残差与归一化结构需要一起讨论的原因。"
         ],
         "formula": "\\sigma(z)=\\frac{1}{1+e^{-z}},\\quad \\sigma^{\\prime}(z)=\\sigma(z)(1-\\sigma(z)),\\quad (\\tanh z)^{\\prime}=1-\\tanh^2z",
@@ -1130,7 +1171,7 @@
             "src": "/assets/figures/sigmoid-d2l.svg",
             "alt": "Sigmoid曲线在零附近较陡，输入绝对值较大时趋于水平并接近0或1。",
             "afterParagraph": 0,
-            "caption": "Sigmoid 将输入压到 0 与 1 之间；零处斜率为 1/4，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#sigmoid-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "Sigmoid 将输入压到 0 与 1 之间；零处斜率为 1/4，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#sigmoid-function)。",
             "width": 440,
             "height": 244
           },
@@ -1138,7 +1179,7 @@
             "src": "/assets/figures/tanh-d2l.svg",
             "alt": "tanh 激活曲线穿过原点，在输入绝对值较大时分别接近负一与正一。",
             "afterParagraph": 1,
-            "caption": "tanh 以原点为中心，零附近的斜率为 1，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#tanh-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "tanh 以原点为中心，零附近的斜率为 1，两端逐渐变平。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#tanh-function)。",
             "width": 451,
             "height": 244
           }
@@ -1148,7 +1189,7 @@
         "title": "ReLU：稀疏响应与失活单元",
         "body": [
           "\\(\\operatorname{ReLU}(z)=\\max(0,z)\\)，正区间导数为 1，负区间为 0，零点需采用实现的次梯度约定。它避免正区间的饱和，但如果某单元对训练数据长期处于负区间，其输入权重得不到来自该支路的梯度，这常被称为失活。一个样本上输出为零不等于永久失活，应在多个 Batch 上观察该单元激活与梯度。",
-          "过大的更新可能把预激活推到长期负值区；偏置、输入均值和初始化都会影响出现频率。Leaky ReLU 在负区间保留小斜率，改变了梯度路径与适用的初始化增益，但不保证所有训练问题消失。不要直接用“零值很多”判断模型失败：稀疏响应可以是正常表征，重点是任务误差、单元长期行为和可训练参数的更新证据。"
+          "典型场景是从零训练 CNN 或普通 MLP 的隐藏层，可配合面向 ReLU 的 Kaiming 初始化建立基线。若希望负区间也持续提供响应，可考虑 Leaky ReLU，并按负斜率选择初始化增益。偏置、输入均值和过大的更新会改变单元落在正负区间的频率，因此判断失活时应同时观察多个 Batch 的响应与梯度。"
         ],
         "focus": {
           "kind": "易错",
@@ -1163,7 +1204,7 @@
             "src": "/assets/figures/relu-d2l.svg",
             "alt": "ReLU在负半轴输出零，正半轴保持输入值，在零处形成折点。",
             "afterParagraph": 0,
-            "caption": "ReLU 在负半轴为零、正半轴为直线，两侧斜率分别为 0 和 1。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#relu-function) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "ReLU 在负半轴为零、正半轴为直线，两侧斜率分别为 0 和 1。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#relu-function)。",
             "width": 427,
             "height": 244
           }
@@ -1174,7 +1215,8 @@
         "body": [
           "精确 GELU 可写成 \\(z\\Phi(z)\\)，Φ 是标准正态分布的累积分布函数；SiLU 写成 \\(z\\sigma(z)\\)。它们用与输入相关的平滑权重调节 z，负区间仍可能有非零输出与导数，输出也不一定单调。GELU 的近似实现与精确版本会有细小数值差异，做逐元素等价测试时需要统一 approximation 配置。",
           "SiLU 的导数为 \\(\\sigma(z)+z\\sigma(z)(1-\\sigma(z))\\)。只把它当成“乘了一个 sigmoid”，却在手写反向中漏掉第二项，会产生错误梯度。GELU 同样包含概率函数与其导数两项。使用自动微分可以避免手写错误，但仍需理解这些梯度来自哪里；否则无法判断初始化和输入范围为什么影响训练。",
-          "这里 \\(\\varphi(z)=\\frac1{\\sqrt{2\\pi}}\\exp(-z^2/2)\\) 是标准正态密度，与激活函数的通用记号应按上下文区分。由于 \\(\\Phi^{\\prime}=\\varphi\\)，GELU 的第二项来自对门控概率求导；代码同时验证两个乘积法则，而不是只绘制函数曲线。"
+          "这里 \\(\\varphi(z)=\\frac1{\\sqrt{2\\pi}}\\exp(-z^2/2)\\) 是标准正态密度，与激活函数的通用记号应按上下文区分。由于 \\(\\Phi^{\\prime}=\\varphi\\)，GELU 的第二项来自对门控概率求导；代码同时验证两个乘积法则，而不是只绘制函数曲线。",
+          "在结构中定位时，可以先看两类典型用法：[GPT-2 的前馈层](https://github.com/openai/gpt-2/blob/master/src/model.py)在线性投影后使用 GELU；[LLaMA](https://arxiv.org/abs/2302.13971)采用 SwiGLU，由 SiLU 作用于一条投影分支，再与另一条特征分支逐元素相乘。前者是单路激活，后者还定义了双分支门控，选用时应连同前后投影一起看。"
         ],
         "formula": "\\begin{aligned}\\operatorname{SiLU}(z)&=z\\sigma(z),\\quad \\operatorname{SiLU}^{\\prime}(z)=\\sigma(z)+z\\sigma(z)(1-\\sigma(z)),\\\\ \\operatorname{GELU}(z)&=z\\Phi(z),\\quad \\operatorname{GELU}^{\\prime}(z)=\\Phi(z)+z\\varphi(z).\\end{aligned}",
         "example": {
@@ -1193,7 +1235,7 @@
             "src": "/assets/figures/gelu-relu-commons.svg",
             "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
             "afterParagraph": 0,
-            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg)。",
             "width": 246,
             "height": 205
           },
@@ -1201,7 +1243,7 @@
             "src": "/assets/figures/silu-commons.svg",
             "alt": "SiLU 曲线在负半轴先下探再返回原点，正半轴逐渐接近恒等映射。",
             "afterParagraph": 1,
-            "caption": "横轴是输入 z，纵轴是 SiLU(z)=zσ(z)；负区间保留平滑响应，正区间逐渐贴近 y=z。 图源：[Romain Mondon-Cancel](https://commons.wikimedia.org/wiki/File:Swish.svg) · [CC BY-SA 4.0](/assets/figures/activation-curves-LICENSE.txt)。",
+            "caption": "横轴是输入 z，纵轴是 SiLU(z)=zσ(z)；负区间保留平滑响应，正区间逐渐贴近 y=z。 图源：[Romain Mondon-Cancel](https://commons.wikimedia.org/wiki/File:Swish.svg)。",
             "width": 1000,
             "height": 600
           }
@@ -1458,7 +1500,7 @@
             "src": "/assets/figures/computational-graph-d2l.svg",
             "alt": "带正则项的网络计算图：输入与权重形成预测和数据损失，权重同时形成正则项，两条支路合成总目标。",
             "afterParagraph": 0,
-            "caption": "方框表示数值量，圆圈表示运算；数据损失 L 与正则项 s 合成总目标 J，反向从 J 沿依赖逆行。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "方框表示数值量，圆圈表示运算；数据损失 L 与正则项 s 合成总目标 J，反向从 J 沿依赖逆行。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/backprop.html)。",
             "width": 412,
             "height": 133
           }
@@ -1752,7 +1794,42 @@
           "conclusion": "损失的形状必须通过导数与训练作用连接起来，阈值还要与残差单位一致。",
           "afterParagraph": 2
         },
-        "codeKind": "runnable"
+        "codeKind": "runnable",
+        "comparison": {
+          "title": "先按监督问题选误差，再定义权重与归约",
+          "columns": [
+            "目标",
+            "常用起点",
+            "希望表达的代价"
+          ],
+          "rows": [
+            [
+              "欧氏连续回归",
+              "MSE",
+              "大残差付出平方代价；先统一各维单位或声明相对权重。"
+            ],
+            [
+              "欧氏连续回归，强调绝对偏差",
+              "L1",
+              "非零残差的局部斜率幅度相同。"
+            ],
+            [
+              "连续回归，希望小残差平滑、大残差作用受控",
+              "Huber / SmoothL1",
+              "在二次区与线性区之间过渡；阈值按残差单位选择。"
+            ],
+            [
+              "互斥的单标签分类",
+              "CrossEntropyLoss",
+              "直接比较类别 logits 与正确类别。"
+            ],
+            [
+              "多个标签可同时为真，或二元判断",
+              "BCEWithLogitsLoss",
+              "每个标签分别学习二元判断，输入为 logits。"
+            ]
+          ]
+        }
       },
       {
         "title": "逐元素损失与最终标量必须分开理解",
@@ -2053,11 +2130,36 @@
             "src": "/assets/figures/gradient-descent-d2l.svg",
             "alt": "一维二次函数上的梯度下降轨迹：圆点表示每次更新后的参数与函数值，逐步靠近零处的极小值。",
             "afterParagraph": 1,
-            "caption": "横轴 x 是待优化的参数，纵轴为目标 \\(f(x)=x^2\\)；圆点沿曲线显示连续更新。先用当前位置的斜率判断下一步朝向，再观察靠近极小值时相邻圆点怎样变密。这幅图展示确定性梯度下降，后文再加入随机抽样。原图：[《动手学深度学习》§12.3.1](https://d2l.ai/chapter_optimization/gd.html#one-dimensional-gradient-descent)，按 [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt) 原样复用。",
+            "caption": "横轴 x 是待优化的参数，纵轴为目标 \\(f(x)=x^2\\)；圆点沿曲线显示连续更新。先用当前位置的斜率判断下一步朝向，再观察靠近极小值时相邻圆点怎样变密。这幅图展示确定性梯度下降，后文再加入随机抽样。原图：[《动手学深度学习》§12.3.1](https://d2l.ai/chapter_optimization/gd.html#one-dimensional-gradient-descent)。",
             "width": 333,
             "height": 244
           }
-        ]
+        ],
+        "comparison": {
+          "title": "优化器选择先对应计算规模与状态预算",
+          "columns": [
+            "起点",
+            "典型场景",
+            "选择时着眼于"
+          ],
+          "rows": [
+            [
+              "完整梯度下降",
+              "小数据、解析目标或可遍历全量样本的教学对照",
+              "每一步直接使用完整经验目标的梯度。"
+            ],
+            [
+              "SGD / SGD＋Momentum",
+              "从零建立训练基线，希望优化器历史状态较少",
+              "采样开销、学习率日程与动量对梯度历史的平滑。"
+            ],
+            [
+              "AdamW",
+              "需要自适应坐标尺度与显式权重衰减；已有模型按其训练配方适配",
+              "一阶和二阶历史状态、衰减分组及真实更新次数。"
+            ]
+          ]
+        }
       },
       {
         "title": "动量把历史方向带入当前更新",
@@ -2741,7 +2843,7 @@
             "src": "/assets/figures/dropout-d2l.svg",
             "alt": "同一个多层感知机在 Dropout 前后的对比，右图隐藏单元 h2 与 h5 及其连接被屏蔽。",
             "afterParagraph": 1,
-            "caption": "右图在本次前向中屏蔽 h₂、h₅ 及对应连接；下次前向会重新采样屏蔽位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/dropout.html) · [CC BY-SA 4.0](/assets/figures/d2l-classic-LICENSE.txt)。",
+            "caption": "右图在本次前向中屏蔽 h₂、h₅ 及对应连接；下次前向会重新采样屏蔽位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/dropout.html)。",
             "width": 537,
             "height": 223
           }
