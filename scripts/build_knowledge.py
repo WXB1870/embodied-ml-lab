@@ -40,7 +40,7 @@ def section_learning_markdown(section, asset_prefix='../../'):
 def topic_markdown(topic):
     lines = ['# ' + topic['title'], topic['lead'], '## 符号约定', '| 符号 | 形状 | 含义 |', '|---|---|---|']
     lines += ['| ' + ' | '.join(str(n[k]).replace('|', '\\|') for k in ['symbol', 'shape', 'meaning']) + ' |' for n in topic['notation']]
-    for section in topic['sections']:
+    for section in topic['sections'] + topic.get('advancedSections', []):
         lines += ['## ' + section['title'], section.get('lead', ''), section_figures_markdown(section, after_paragraph=0), section_example_markdown(section, 0)]
         for i,paragraph in enumerate(section['body'],1):
             lines += [paragraph,section_figures_markdown(section,after_paragraph=i),section_example_markdown(section,i)]
@@ -77,9 +77,10 @@ def build_knowledge(root):
         assert topic['id'] == topic_id
         for key in ['title', 'lead', 'relatedLessons', 'notation', 'sections', 'implementations', 'labs', 'questions', 'pitfalls', 'sources']:
             assert topic.get(key), (topic_id, key)
-        section_ids = {section['id'] for section in topic['sections']}
-        assert len(section_ids) == len(topic['sections']), (topic_id, 'duplicate section')
-        for section in topic['sections']:
+        all_sections = topic['sections'] + topic.get('advancedSections', [])
+        section_ids = {section['id'] for section in all_sections}
+        assert len(section_ids) == len(all_sections), (topic_id, 'duplicate section')
+        for section in all_sections:
             assert section['title'] and section['body'], (topic_id, section['id'])
             assert isinstance(section.get('lead'),str) and section['lead'].strip(), (topic_id, section['id'], 'missing section introduction')
             if section.get('code'):
@@ -95,6 +96,13 @@ def build_knowledge(root):
                 compile(lab[key], topic_id + '/' + lab['id'] + '/' + key, 'exec')
         for collection in ['implementations', 'labs']:
             assert len({entry['id'] for entry in topic[collection]}) == len(topic[collection]), (topic_id, collection, 'duplicate id')
+        for field, collection in [('advancedImplementationIds','implementations'),('advancedLabIds','labs')]:
+            valid = {entry['id'] for entry in topic[collection]}
+            assert set(topic.get(field, [])) <= valid, (topic_id, field, 'unknown item')
+        for question in topic.get('questions', []) + topic.get('advancedQuestions', []):
+            assert question.get('question') and question.get('answer'), (topic_id, 'invalid question')
+        for pitfall in topic.get('pitfalls', []) + topic.get('advancedPitfalls', []):
+            assert pitfall.get('title') and pitfall.get('detail'), (topic_id, 'invalid pitfall')
         topics.append(topic)
     (root / 'dist' / 'data' / 'topics.json').write_text(json.dumps(topics, ensure_ascii=False, indent=2) + '\n')
     return topics

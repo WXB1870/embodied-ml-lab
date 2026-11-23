@@ -40,11 +40,13 @@ test('Deployment paths cover assets, downloads and repeated normalization',()=>{
 });
 
 for(const lesson of lessons){
+ const canonicalId=evaluate(`LEGACY_LESSON_IDS[${JSON.stringify(lesson.id)}]`)||lesson.id;
  test(lesson.id+' theory introduction and exercise separation',()=>{
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
   assert.ok(html.includes('class="article-intro"'));
   assert.ok(html.includes('class="chapter-goals"')&&html.includes('id="chapter-review"'));
-  assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length);
+  assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length+(lesson.advancedSections||[]).length);
+  if(lesson.advancedSections?.length)assert.ok(html.includes('advanced-material'));
   assert.ok(!html.includes('id="discussion"'));
   assert.ok(!html.includes('class="key-points"'));
   const practice=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);
@@ -55,16 +57,23 @@ for(const lesson of lessons){
   for(const anchor of ['discussion','question-0','mistakes','pitfall-0']){
    const raw='/learn/'+lesson.id+'/?tab=theory&anchor='+anchor;
    const target=new URL(evaluate(`routeHref(${JSON.stringify(raw)})`),origin);
-   assert.equal(target.pathname,basePath+'/learn/'+lesson.id+'/exercise/');
+   assert.equal(target.pathname,basePath+'/learn/'+canonicalId+'/');
    assert.equal(target.searchParams.get('anchor'),anchor);
    assert.equal(target.searchParams.get('tab'),'exercise');
   }
  });
- test(lesson.id+' native code and exercise routes',()=>{
+ test(lesson.id+' canonical theory/code/exercise query routes',()=>{
   for(const tab of ['theory','code','exercise']){
-   const expected='/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/')+'?tab='+tab;
-   assert.equal(evaluate(`routeHref(${JSON.stringify(expected)})`),basePath+expected);
-   assert.equal(evaluate(`routeHref(${JSON.stringify(basePath+expected)})`),basePath+expected);
+   const expected='/learn/'+lesson.id+'/?tab='+tab;
+   assert.equal(evaluate(`routeHref(${JSON.stringify(expected)})`),basePath+'/learn/'+canonicalId+'/?tab='+tab);
+   assert.equal(evaluate(`routeHref(${JSON.stringify(basePath+expected)})`),basePath+'/learn/'+canonicalId+'/?tab='+tab);
+   const legacy='/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/')+'?tab='+tab;
+   const legacyResult=evaluate(`routeHref(${JSON.stringify(legacy)})`);
+   assert.ok([basePath+'/learn/'+canonicalId+'/?tab='+tab,basePath+legacy].includes(legacyResult));
+   context.location.pathname=basePath+'/learn/'+lesson.id+'/';
+   context.location.search='?tab='+tab;context.location.hash='';
+   assert.equal(evaluate('parseRoute().path'),'/learn/'+lesson.id);
+   assert.equal(evaluate('parseRoute().params.get("tab")'),tab);
    context.location.pathname=basePath+'/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/');
    context.location.search='';context.location.hash='';
    assert.equal(evaluate('parseRoute().path'),'/learn/'+lesson.id);
@@ -72,7 +81,8 @@ for(const lesson of lessons){
   }
  });
  if(!lesson.theoryTopic)continue;
- const topic=topics.find(t=>t.id===lesson.theoryTopic),ids=new Set(topic.sections.map(s=>s.id));
+ const topic=topics.find(t=>t.id===lesson.theoryTopic),ids=new Set([...topic.sections,...(topic.advancedSections||[])].map(s=>s.id));
+ const topicCanonicalId=({mlp:'mlp',cnn:'cnn-receptive-field',transformer:'attention','flow-matching':'flow-matching'})[topic.id]||canonicalId;
  for(const [old,target] of Object.entries(lesson.legacySectionMap))test(lesson.id+' old section '+old,()=>assert.ok(ids.has(target)));
  for(const [old,target] of Object.entries(lesson.legacyAnchorMap)){
   test(lesson.id+' old discussion link '+old,()=>{
@@ -89,7 +99,7 @@ for(const lesson of lessons){
   let result;
   vm.runInNewContext(script,{URLSearchParams,location:{search:'?tab='+oldTab,hash:'',replace:value=>result=value}});
   const url=new URL(result,origin),tab=['labs','questions'].includes(oldTab)?'exercise':oldTab==='code'?'code':'theory';
-  assert.equal(url.pathname,basePath+'/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/'));
+  assert.equal(url.pathname,basePath+'/learn/'+topicCanonicalId+'/');
   assert.equal(url.searchParams.get('tab'),tab);
   if(oldTab==='labs')assert.equal(url.searchParams.get('lab'),topic.labs[0].id);
   if(oldTab==='questions')assert.equal(url.searchParams.get('anchor'),'discussion');
@@ -100,12 +110,13 @@ for(const lesson of lessons){
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams(${JSON.stringify('lab='+lab.id)}))`);
   assert.equal(evaluate('currentLesson.id'),id);assert.ok(html.includes(marker));
   const converted=evaluate(`routeHref(${JSON.stringify('#/topics/'+topic.id+'?tab=labs&lab='+lab.id)})`);
-  const url=new URL(converted,origin);assert.equal(url.pathname,basePath+'/learn/'+lesson.id+'/exercise/');
+  const url=new URL(converted,origin);assert.equal(url.pathname,basePath+'/learn/'+topicCanonicalId+'/');
+  assert.equal(url.searchParams.get('tab'),'exercise');
   assert.equal(url.searchParams.get('lab'),lab.id);
  });
 }
 test('Core code pages start with the running example and retain unique code frames',()=>{
- for(const id of ['mlp','cnn-receptive-field','transformer','flow-matching']){
+ for(const id of ['mlp','cnn-receptive-field','flow-matching']){
   const lesson=lessons.find(l=>l.id===id);
   const html=evaluate(`renderLesson(byId[${JSON.stringify(id)}],'code','python',new URLSearchParams())`);
   const mainStart=html.indexOf('id="demo-'+lesson.mainImplementation+'"');
@@ -113,6 +124,10 @@ test('Core code pages start with the running example and retain unique code fram
   assert.equal((html.match(/id="lesson-code"/g)||[]).length,1);
   for(const demo of lesson.extraImplementations)assert.equal((html.match(new RegExp('id="code-'+demo.id+'"','g'))||[]).length,1);
  }
+});
+test('Attention course retains its own executable code page',()=>{
+ const html=evaluate(`renderLesson(byId[\"attention\"],'code','python',new URLSearchParams())`);
+ assert.ok(html.includes('id=\"lesson-code\"')&&html.includes('id=\"code-implementation\"'));
 });
 fs.writeFileSync(path.join(root,'reports/route-validation.json'),JSON.stringify({total:records.length,passed:records.length,results:records},null,2)+'\n');
 console.log(JSON.stringify({routeAndRendererChecks:records.length,passed:records.length}));

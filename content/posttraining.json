@@ -1,0 +1,1375 @@
+[
+  {
+    "id": "lora",
+    "number": 26,
+    "module": "posttraining",
+    "title": "参数高效微调：LoRA 原理、初始化与权重合并",
+    "subtitle": "围绕参数高效微调：LoRA 原理、初始化与权重合并，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 95,
+    "tags": [
+      "LoRA",
+      "冻结",
+      "参数分组",
+      "遗忘",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "attention",
+      "norm-ffn"
+    ],
+    "objectives": [
+      "区分全量微调、冻结骨干、读出头和 LoRA 的参数更新范围",
+      "实现低秩线性层并检查初始化、梯度与合并等价性",
+      "设计同时覆盖新任务与保留能力的微调评估"
+    ],
+    "why": "全量微调、冻结骨干和 LoRA 对更新空间施加不同约束。可训练参数量、激活显存与最终能力变化是三个需要分别分析的量。",
+    "sections": [
+      {
+        "id": "objective-and-parameterization",
+        "title": "SFT、行为克隆与 PEFT 分别改变什么",
+        "body": [
+          "监督微调 SFT 描述用成对输入和目标继续训练已有模型的阶段；行为克隆描述从示范条件学习动作策略的监督问题。二者可以同时成立。LoRA 或其他参数高效微调方法 PEFT 则约束哪些参数可更新、增量怎样表达，并没有自行指定监督目标。使用 LoRA 的策略仍需根据动作生成方式选用正确的损失与采样接口。",
+          "离散动作 token 模型通常使用对齐后的交叉熵；固定方差高斯动作回归对应按尺度加权的 MSE；Diffusion 使用其噪声、数据或 velocity 参数化对应的目标；Flow Matching 回归条件速度。后两者的回归损失不能直接当成一段动作的 log π(a|c)，也不能因为都写作 MSE 就互换 target 或用于 PPO 概率比。生成目标详见 [生成式动作策略](#/learn/generative-policy)，策略密度与梯度问题见 [策略梯度](#/learn/policy-gradient)。",
+          "全量微调让指定模型全部参数可更新；部分层解冻、LoRA、可训练提示向量或新增适配层限制了不同的函数空间。PEFT 是这些参数效率方案的上位概念，不等同于 LoRA，也不承诺某个固定的显存降低比例。先明确目标域与需要改变的表示，再选更新范围，最后用参数实际变化、有效梯度、保存恢复及验证集行为检查选择是否成立。",
+          "下式用 \\(\\theta_0\\) 表示已有模型参数，φ 表示本次可训练参数，c 与 y 分别为条件输入和监督目标，𝒟 为训练分布。具体更新规则可以是冻结 \\(\\theta_0\\) 只学习适配参数，也可以将所选原始权重纳入 φ；损失 ℓ 的定义与这一参数化选择相互独立。"
+        ],
+        "formula": "\\min_{\\phi}\\ \\mathbb E_{(c,y)\\sim\\mathcal D}\\bigl[\\ell(f_{\\theta_0,\\phi}(c),y)\\bigr],\\qquad \\ell\\ \\text{defines the target},\\quad\\phi\\ \\text{defines trainable parameters}",
+        "takeaway": "训练目标、更新参数化和部署采样器是三个独立的设计问题，必须分别与模型匹配。",
+        "lead": "监督微调（SFT）是用输入—目标对继续训练已有模型，行为克隆是从示范学习动作策略，PEFT 是限制可训练参数的一类方法。它们分别描述训练阶段、监督问题与更新形式，可以在同一训练中同时成立。",
+        "comparison": {
+          "title": "按需要改变的部分选择微调范围",
+          "columns": [
+            "方案",
+            "典型场景",
+            "主要改变"
+          ],
+          "rows": [
+            [
+              "冻结骨干，训练新头",
+              "已有特征可用，主要新增分类或动作输出接口",
+              "学习从固定表示到新目标的映射。"
+            ],
+            [
+              "LoRA / 适配层",
+              "希望保存多个小型任务增量，或限制可训练状态的开销",
+              "在选定层学习受约束的增量。"
+            ],
+            [
+              "部分层解冻",
+              "需要重点调整后层表示、条件投影或动作模块",
+              "给确定需要适配的模块更充分的更新空间。"
+            ],
+            [
+              "全量微调",
+              "骨干表示与任务模块需要联合适配，且预算允许",
+              "直接调整所选模型的全部参数。"
+            ]
+          ]
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/finetuning-overview-d2l.svg",
+            "alt": "微调的整体流程：在源数据上预训练特征层，将它们复制到目标模型，为新分类任务初始化输出层，再用目标数据训练。",
+            "caption": "以新分类任务为例：复制预训练特征层，为新类别初始化输出层，再用目标数据适配模型。图源：[《动手学深度学习》微调](https://d2l.ai/chapter_computer-vision/fine-tuning.html)。",
+            "afterParagraph": 0,
+            "width": 495,
+            "height": 287
+          }
+        ]
+      },
+      {
+        "title": "微调范围由实际更新路径决定",
+        "body": [
+          "全量微调更新骨干及任务模块；冻结骨干只训练新增层；部分解冻只更新指定参数集合。名称描述的是意图，真正行为要由 requires_grad、前向计算图、优化器参数组与 step 前后参数差值共同确认。参数有梯度但没进优化器不会更新，进了优化器却与 loss 无关也不会学到目标。",
+          "冻结参数与禁用计算图不等价。如果一个可训练模块位于冻结模块之前，梯度还需要穿过冻结模块回传给前面的参数；把整个冻结模块放进 no_grad，会切断这条路径。只有上游没有需要优化的输入或参数、且该输出作为固定特征使用时，才可按设计关闭这一段记录。",
+          "train/eval 控制 Dropout、BatchNorm 等模块行为，与参数是否训练是另一个维度。冻结权重后 BatchNorm 的运行统计量仍可能在 train 模式变化，Dropout 仍可能产生随机输出。应明确模型中哪些状态可以改变，并检查保存时是否包含这些状态；仅比较某个 weight 张量不足以证明“骨干完全固定”。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "冻结骨干就把整段 forward 放进 no_grad",
+          "explanation": "这可能切断前置 Adapter、可训练输入或其他上游模块所需的梯度。",
+          "check": "构造一个前置可训练层，确认它在冻结骨干之后仍收到非零有限梯度；再分别检查参数与运行统计量。"
+        },
+        "id": "0",
+        "lead": "微调范围是实际允许更新的参数集合：全量微调更新全部选定模型参数，部分解冻只更新其中一部分，冻结骨干则可只训练新增模块。计算图和优化器还需要与这份范围一致，意图才会成为真实更新。"
+      },
+      {
+        "title": "LoRA 的形状、参数量与低秩约束",
+        "body": [
+          "线性层权重 \\(W_0\\) 的形状为 [out_dim,in_dim]。LoRA 将增量写成 BA，其中 A:[r,in_dim]、B:[out_dim,r]，并按 \\(\\alpha/r\\) 缩放。前向可以先算 \\(xA^\\top\\)，再乘 \\(B^\\top\\)，与直接使用 \\(W_0+\\frac{\\alpha}{r}BA\\) 等价。不要因为 Linear 的输入乘法写法是 \\(xW^\\top\\)，就把参数存储的朝向也转反。",
+          "不含低秩分支偏置时，可训练参数为 \\(r(d_{\\rm in}+d_{\\rm out})\\)，冻结原层仍保存 \\(d_{\\rm out}d_{\\rm in}\\) 个权重以及可能的偏置。小 r 限制单个更新矩阵的秩，不代表整个深层网络只增加 r 个自由度，也不代表所有任务所需变化都能被当前目标层与秩表达。目标层选择与 r 都应由实验验证。",
+          "LoRA 常被注入注意力或前馈投影，但并不要求所有线性层都使用同一秩和缩放。实际实现还可能包含 bias、额外保存模块或特定初始化变体，参数计数必须以模型的真实 named_parameters 为准。以下使用 \\(\\alpha/r\\) 缩放；改变初始化或缩放时，需要重新验证相应性质。"
+        ],
+        "formula": "W=W_0+\\frac\\alpha rBA,\\qquad y=xW_0^\\top+b+\\frac\\alpha r(xA^\\top)B^\\top",
+        "example": {
+          "title": "手算一个低秩分支的参数量",
+          "steps": [
+            "in_dim=5、out_dim=2、rank=2，原层带偏置并全部冻结。",
+            "冻结参数为 5×2+2=12；A 有 2×5=10 个数，B 有 2×2=4 个数。",
+            "低秩分支可训练参数合计 14，这个很小的例子甚至多于原层；优势取决于实际尺寸和秩。",
+            "再只比较一个 4096→4096 层的权重：基座有 \\(4096^2=16{,}777{,}216\\) 个数，rank=8 的两因子只有 \\(8(4096+4096)=65{,}536\\) 个，为前者的 1/256。这里不计偏置，用于对照大矩阵、小秩时的参数节省。"
+          ],
+          "conclusion": "LoRA 参数节省是相对于大矩阵与较小秩而言，不能对任意尺寸默认成立。",
+          "afterParagraph": 2
+        },
+        "id": "1",
+        "lead": "LoRA 是在冻结的线性权重旁增加两个小矩阵，其乘积构成低秩权重增量的方法。它用较少可训练参数限制增量的表达方式。下面先定义两因子形状，再计算前向和参数量。",
+        "figures": [
+          {
+            "src": "/assets/figures/lora-definition-v2.svg",
+            "alt": "LoRA 输入并行通过冻结的基座权重 W0 与可训练的 A、B 低秩分支，缩放后逐元素相加。",
+            "caption": "冻结的基座分支与可训练的 A、B 分支相加，形成低秩权重更新。机制参考 [Hu et al., Figure 1](https://arxiv.org/abs/2106.09685)。",
+            "afterParagraph": 0,
+            "width": 1120,
+            "height": 475
+          }
+        ]
+      },
+      {
+        "title": "为什么常见初始化只让一个因子为零",
+        "body": [
+          "设基础矩阵 \\(W_0\\in\\mathbb R^{d_{\\rm out}\\times d_{\\rm in}}\\)，低秩因子 \\(A\\in\\mathbb R^{r\\times d_{\\rm in}}\\)、\\(B\\in\\mathbb R^{d_{\\rm out}\\times r}\\)，\\(W=W_0+sBA\\)、\\(s=\\alpha/r\\)。令 \\(G=\\partial L/\\partial W\\)，则 \\(dW=s[(dB)A+B(dA)]\\)，并且标量损失的微分为 \\(dL=\\operatorname{tr}(G^\\top dW)\\)。",
+          "利用迹的循环性质，\\(\\operatorname{tr}(G^\\top(dB)A)=\\operatorname{tr}((GA^\\top)^\\top dB)\\)，\\(\\operatorname{tr}(G^\\top B(dA))=\\operatorname{tr}((B^\\top G)^\\top dA)\\)。与 \\(dL=\\operatorname{tr}((\\nabla_B L)^\\top dB)+\\operatorname{tr}((\\nabla_A L)^\\top dA)\\) 比较，便得到下方梯度。两个结果的形状分别与 \\(B\\)、\\(A\\) 完全相同。",
+          "为在训练开始时保持基础层的前向结果，常用初始化令 \\(A\\) 随机、\\(B=0\\)，于是 \\(BA=0\\)。此时 \\(\\nabla_A L=sB^\\top G=0\\)，但 \\(\\nabla_B L=sGA^\\top\\) 一般可以非零；B 更新后 A 才可能开始学习。因而首步 A 的零梯度是该初始化的预期行为，并不单独说明梯度链断开。这里讨论的是数据损失的反向梯度，优化器的权重衰减或已有状态可能另外影响参数。",
+          "若 A 与 B 同时初始化为零，两者梯度都包含另一个零因子，基础参数化会无法从这一点通过普通一阶更新起步。相反，如果 A、B 都随机，低秩分支开始时就改变了原模型行为。选择哪种初始化需要与“起始功能是否保持”的目标对应，不能只检查梯度张量是否存在。",
+          "alpha/r 的缩放会影响输出增量与参数梯度的尺度。改变 r 时，即使 alpha 不变，也同时改变容量与缩放；这会使单纯把效果归因于“秩更大”不充分。实验记录应包含实际缩放、目标模块、初始化与学习率；若使用 rank-stabilized 等变体，应按其定义单独分析。"
+        ],
+        "formula": "\\frac{\\partial L}{\\partial A}=\\frac\\alpha rB^\\top G,\\qquad \\frac{\\partial L}{\\partial B}=\\frac\\alpha rGA^\\top\\quad(G=\\partial L/\\partial W)",
+        "example": {
+          "title": "首步零梯度的两种含义",
+          "steps": [
+            "A 随机、\\(B=0\\) 时，初始输出与基础层一致。",
+            "\\(\\frac{\\partial L}{\\partial A}\\) 中包含 B，因此 A 的首步梯度为零；\\(\\frac{\\partial L}{\\partial B}\\) 可以非零。",
+            "若 \\(A=B=0\\)，则两式都为零；若第一步 B 更新后 A 仍长期没有梯度，应继续检查路径和优化器。"
+          ],
+          "conclusion": "初始化预期、首步行为与后续更新需要分开判断。",
+          "afterParagraph": 3
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "一看到 A 首步零梯度就判断 LoRA 坏了",
+          "explanation": "基础零 B 初始化本就使 A 的首步梯度为零，真正异常是可更新路径长期没有变化。",
+          "check": "分别记录 A/B 的首步和第二步梯度、参数差值，并确认初始输出与原层相同。"
+        },
+        "id": "2",
+        "lead": "LoRA 的零增量初始化让新增分支最初不改变原线性层输出。通常只将一个因子置零，使另一个因子仍提供首步学习所需的方向。下面推导两因子梯度，解释它与同时置零的区别。"
+      },
+      {
+        "title": "合并权重的等价性有前提",
+        "body": [
+          "固定 A、B 与缩放后，线性低秩分支可合并为 \\(W_{\\rm merge}=W_0+\\frac{\\alpha}{r}BA\\)，推理不再显式计算两个小矩阵。验证时先关闭随机层，使用同一输入比较合并前后输出；误差容限需要考虑浮点精度与计算顺序，不应要求低精度运算逐位完全相同。",
+          "LoRA 分支若包含训练期 Dropout，合并等价应在确定性的推理模式下讨论。量化基础权重的解量化与重新量化也可能引入差异，不能把 FP32 代数等价直接解释成量化部署的逐值相等。需要明确合并流程使用的精度、原模型身份，以及是否另外保留了未合并适配器。",
+          "重复合并同一增量会把它加两次；合并后的模型若又加载同一适配器并启用分支，也会重复计算。保存格式应标明合并状态，并保留基础模型版本。使用固定输入的等价测试和结构检查，比依赖文件名带 merged 更可靠。恢复继续训练时还要说明是训练合并权重，还是恢复原低秩参数化。"
+        ],
+        "id": "3",
+        "lead": "权重合并是把训练后的线性低秩增量加到基座矩阵中，使推理不必显式计算独立分支的操作。等价性依赖相同参数、缩放与确定性设置；量化和浮点计算还会带来额外约定。"
+      },
+      {
+        "title": "参数高效与显存高效不是同一比例",
+        "body": [
+          "LoRA 减少了需要保存梯度与优化器状态的参数数量，但基础权重仍需存放，反向传播还可能需要经过大量中间激活。长视觉语言序列的显存常由激活、注意力及输入长度主导，因此可训练参数减少一个数量级，不代表总训练显存也减少相同比例。",
+          "冻结参数能避免它们的参数梯度与优化器状态，但不一定允许丢弃其所有中间计算：为了给其他可训练路径求导，仍可能需要激活。激活重计算、混合精度、序列裁剪与低秩适配分别针对不同开销，叠加之前应测量各部分瓶颈，避免把所有显存下降都归因于 LoRA。",
+          "量化基础模型还会改变权重存储、数值误差、可用算子与反向路径。实际峰值显存、吞吐、可训练参数量和任务表现需要分别测量，不能只由 trainable ratio 推算资源需求。"
+        ],
+        "id": "4",
+        "lead": "可训练参数成本包括梯度和优化器状态，模型总内存还包括基座权重、激活和临时量。LoRA 主要直接减少前一类，所以参数效率不等于同比例的显存效率。下面按对象分开建立账目。"
+      },
+      {
+        "id": "lora-qlora-frameworks",
+        "title": "LoRA、QLoRA 与实现框架：分别减少哪一项成本",
+        "lead": "LoRA 定义低秩更新形式，QLoRA 将量化的冻结基座与这类可训练增量结合，框架则提供配置和执行这些方法的工具。它们分别作用于更新、存储与实现，不能仅凭一个框架名称判断实际训练成本。",
+        "body": [
+          "[LoRA](https://arxiv.org/abs/2106.09685) 的核心是冻结原权重并学习低秩增量，本身不规定基座必须采用哪一种存储精度。[QLoRA](https://arxiv.org/abs/2305.14314) 则把冻结的 4 bit 基座与可训练 LoRA 结合，进一步减少基座存储。原论文围绕语言模型开展实验；把同一思路用于 VLA 时，仍需单独验证视觉编码器、条件投影与动作头的精度敏感性，不能把语言任务结果直接当作闭环策略性能保证。",
+          "QLoRA 中三项设计解决不同开销。NF4 依据正态分布构造非均匀的 16 个量化表示值，以块内缩放配合 4 bit 编码；这一分布假设不表示任意层都能无误差压缩。双重量化进一步量化块缩放常数，减少量化元数据，而非把每个权重连续压缩两次。分页优化器利用统一内存机制，在显存紧张时将优化器状态分页到 CPU 内存，缓解瞬时峰值；它既不消除激活，也不保证分页没有传输成本。三者的定义与组合见原论文第 3 节。",
+          "4 bit 描述存储编码，不等于整次矩阵计算、激活或梯度都采用 4 bit。QLoRA 原论文在使用权重时反量化到 BF16 进行计算；实际实现还区分量化格式、计算 dtype 与未量化模块的 dtype，见 [bitsandbytes 集成文档](https://huggingface.co/docs/transformers/quantization/bitsandbytes#compute-data-type)。因此完整显存仍包括量化元数据、适配器、梯度、优化器状态、激活与临时工作空间。长序列的激活若已占主导，只压缩基座并不会按同样比例降低峰值。",
+          "令 \\(Q_4\\) 表示包含编码与缩放元数据的量化操作，\\(\\mathcal D\\) 表示反量化，得到 \\(\\widehat W_0=\\mathcal D(Q_4(W_0))\\)。沿用前面的权重方向，\\(X\\in\\mathbb R^{m\\times d_{\\rm in}}\\) 是 m 个输入向量，\\(W_0,\\widehat W_0\\in\\mathbb R^{d_{\\rm out}\\times d_{\\rm in}}\\)，\\(A\\in\\mathbb R^{r\\times d_{\\rm in}}\\)、\\(B\\in\\mathbb R^{d_{\\rm out}\\times r}\\)，\\(s=\\alpha/r\\)。忽略偏置时，输出仍是基座路径与低秩路径之和。置 \\(B=0\\) 后，初始输出等于量化后的基座；它与原始基座的差为 \\(X(\\widehat W_0-W_0)^\\top\\)，一般不为零。前面“零初始化保持基座函数”的结论仍成立，但必须说明用哪一个基座作为参照。",
+          "训练时量化编码保持冻结，梯度通过使用 \\(\\widehat W_0\\) 的运算传向适配器及其他允许训练的模块。冻结权重并不使输入导数消失，也不能直接用 no_grad 包住需要向上游传梯度的整段骨干。前文的 PEFT 指参数高效微调这一类方法；[Hugging Face PEFT](https://huggingface.co/docs/peft/index) 同时是实现适配器注入、配置与保存的框架名称。[bitsandbytes](https://huggingface.co/docs/bitsandbytes/reference/nn/linear4bit) 提供量化线性层等底层实现。框架、算子库与 LoRA 算法处在不同层次，安装其中一个并不能证明模块选择、冻结范围和优化器参数组已经正确。",
+          "部署时，浮点形式的 \\(\\widehat W_0+sBA\\) 可表达当前量化基座加适配器的有效权重，但若再量化合并结果，就再次引入近似；改用原始 \\(W_0+sBA\\) 也换了基座。具体后端是否支持合并、如何恢复量化状态，应核对所用版本的 [PEFT 量化说明](https://huggingface.co/docs/peft/developer_guides/quantization)。固定输入，在相同评估模式下对比适配前后、保存恢复后与部署合并后的输出，可以区分训练变化、恢复错误和再量化误差。",
+          "选择时先定位瓶颈：仅希望保存小型任务增量，可从 LoRA 理解更新空间；冻结基座的存储已构成约束时，再评价量化适配。对照应固定基础 checkpoint、目标模块、数据、输入长度与评估协议，并分别记录峰值显存、吞吐和新旧任务指标。本章下面的 CPU 实验验证浮点 LoRA 与迁移机制，不验证 NF4 内核、分页行为或 QLoRA 的设备性能；这些结论需要在目标硬件和完整模型上另做测量。"
+        ],
+        "formula": "\\begin{aligned}\\widehat W_0&=\\mathcal D(Q_4(W_0)),\\\\Y_{\\rm QLoRA}&=X\\widehat W_0^\\top+s(XA^\\top)B^\\top,\\\\Y_{B=0}-XW_0^\\top&=X(\\widehat W_0-W_0)^\\top.\\end{aligned}"
+      },
+      {
+        "title": "保留能力需要数据与评价证据",
+        "body": [
+          "只更新少量参数也能显著改变输出分布，尤其当增量加在影响范围很大的层。冻结基础权重只说明 \\(W_0\\) 没变，不说明加上适配器后的系统仍保留原行为；新模块、归一化、动作解码与条件分布改变也可能造成退化。因此新任务与原有能力应使用各自明确的保留评估。",
+          "可比较全量微调、部分解冻、LoRA 与固定特征基线，但要说明数据量、训练步数、有效样本、调参预算和可训练范围是否一致。不同方法的最优学习率可能不同，严格相同超参数并不总是公平；应固定可解释的搜索预算，并避免让某个方法获得额外测试集反馈。",
+          "混合保留数据或加入约束项可以表达能力保持目标，但权重会改变最终优化问题。观察新旧任务的分组指标及梯度，而不是仅看总 loss。若原能力测试条件已参与反复调参，它们成为开发证据，需要另留独立条件评估最终结果。容量更小或更新矩阵低秩都不是免除这些验证的理由。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "分别回答适应与保持两个问题",
+          "explanation": "新任务损失下降只能说明对该训练目标更合适，无法量化旧任务是否受损。",
+          "check": "同时保留新任务与原能力测试，报告分组变化，并记录数据混合与选模规则。"
+        },
+        "id": "5",
+        "lead": "能力保持是适配后模型在原有任务上仍满足既定性能要求的性质。冻结基座只保证一组参数不变，新增增量仍会改变完整函数。判断保持与迁移收益，需要在各自目标分布上评价。"
+      },
+      {
+        "id": "transfer-risk-and-gradients",
+        "title": "迁移优化的目标与源域损失变化",
+        "body": [
+          "迁移学习首先要说明复用什么，以及在哪个分布上衡量收益。令标量回归模型为 \\(f_\\theta(x)=w^\\top h_\\psi(x)+b\\)，\\(h_\\psi(x)\\in\\mathbb R^d\\) 是骨干特征，\\(w\\in\\mathbb R^d\\)、\\(b\\in\\mathbb R\\) 是线性读出。源域与目标域分别记为 S、T，预训练得到 \\(\\theta_0\\)。适配时用 φ 表示本次可训练变量：冻结骨干时 \\(\\phi=(w,b)\\)，全量更新时 \\(\\phi=(\\psi,w,b)\\)，LoRA 则用各层 A、B 和允许训练的读出参数表示 φ。相同的监督目标经过不同参数化，允许采用的函数变化方向并不相同。",
+          "设目标训练集有 \\(n_T\\) 个样本，残差 \\(e_i=f_{\\theta_0,\\phi}(x_i)-y_i\\)，经验目标是这些残差平方的平均。先对读出和骨干求导：\\(\\nabla_w\\) 是残差加权的特征平均；\\(\\nabla_\\psi\\) 还要经过特征对骨干参数的 Jacobian \\(J_{h,\\psi}(x)\\in\\mathbb R^{d\\times P_\\psi}\\)，其中 Pψ 是骨干参数数目。冻结 ψ 后这条参数更新路径消失，但 w、b 的改变仍会作用于所有输入，包括旧域样本。LoRA 保留原始矩阵 \\(W_0\\)，却通过 BA 改变中间特征；低秩约束既不是增量范数约束，也不是旧输出相等约束。前面的初始化与合并推导给出这条梯度路径的具体形式。",
+          "记 \\(R_S(\\phi)\\) 为固定参数化下的源域平方风险，\\(g_S=\\nabla_\\phi R_S\\)，\\(H_S\\) 为对 φ 的 Hessian，Δφ 是优化器真正执行的参数位移。对二次可微目标，沿这一步做 Taylor 展开，会得到线性项 \\(g_S^\\top\\Delta\\phi\\) 和曲率项。式中的 \\(\\xi\\in(0,1)\\) 表示更新线段上的某个位置；只有步长足够小、曲率影响可忽略时，线性项才主导损失变化。实际计算用固定独立源探针上的均值近似 \\(R_S\\)，因而结论还受有限探针的覆盖范围限制。",
+          "对无动量、无其他更新项的 SGD，\\(\\Delta\\phi=-\\eta g_T\\)，因此源风险的一阶变化为 \\(-\\eta g_S^\\top g_T\\)：梯度夹角为钝角时，一阶预测为源风险增加。这是梯度冲突的局部解释，相关约束见 GEM 原论文第 3 节；本文没有实现 GEM。Adam 的位移还取决于矩估计、逐坐标缩放与 ε，不能直接替换成 \\(-\\eta g_T\\)。下面保存实际更新前后的 φ，再计算 \\(g_S^\\top\\Delta\\phi\\)，并与真实源损失变化对照。即便线性预测为负，较大的曲率项仍可能使这次有限更新增加源风险。",
+          "只训练线性读出时，可以进一步得到无需忽略高阶项的检查。固定源探针有 m 个输入，把每个 \\([h_\\psi(x_j)^\\top,1]\\) 堆成设计矩阵 \\(\\Phi_S\\in\\mathbb R^{m\\times(d+1)}\\)，\\(\\phi=(w,b)\\)。此时模型对 φ 线性，平方风险对 φ 严格二次，精确变化等于 \\(g_S^\\top\\Delta\\phi+\\frac{\\lVert\\Phi_S\\Delta\\phi\\rVert^2}{m}\\)。代码用前后输出差直接计算第二项，并断言两项之和等于观测到的源 MSE 变化。这个等式具体说明了：骨干完全不动，读出的一个更新也可以损害旧域表现。",
+          "若目标域收益必须伴随一定的旧域保持，可以把保持数据混入训练，或声明 \\(R_T+\\lambda R_S\\) 之类的联合目标；这会改变目标函数，而不只是更换微调名称。实际项目应使用独立的目标验证集，并按事先约定的源域保持限制选择 checkpoint 或超参数，最后用未参与选择的测试集报告结果。下面固定适配 600 步，不依据探针早停或调参，以隔离预训练、更新空间与小样本拟合的影响。评估口径与选模纪律见 [策略评估](#/learn/evaluation)。"
+        ],
+        "formula": "\\begin{aligned}\\widehat R_T^{\\,y}(\\phi)&=\\frac1{n_T}\\sum_{i=1}^{n_T}e_i^2,\\qquad e_i=f_{\\theta_0,\\phi}(x_i)-y_i\\\\\\nabla_w\\widehat R_T^{\\,y}&=\\frac2{n_T}\\sum_i e_i h_\\psi(x_i),\\quad \\nabla_\\psi\\widehat R_T^{\\,y}=\\frac2{n_T}\\sum_i e_i J_{h,\\psi}(x_i)^\\top w\\\\R_S(\\phi+\\Delta\\phi)-R_S(\\phi)&=g_S^\\top\\Delta\\phi+\\frac12\\Delta\\phi^\\top H_S(\\phi+\\xi\\Delta\\phi)\\Delta\\phi,\\quad 0<\\xi<1\\\\\\Delta\\widehat R_S\\ \\text{(fixed features)}&=g_S^\\top\\Delta\\phi+\\frac1m\\lVert\\Phi_S\\Delta\\phi\\rVert_2^2\\end{aligned}",
+        "takeaway": "更新参数少、基座不变与旧域函数保持是不同性质；保持需要完整系统上的独立证据。",
+        "lead": "迁移学习是在新任务或新分布中复用已有模型信息，源域风险与目标域风险分别衡量它在两份分布上的误差。一次目标域更新可能改变二者。下面用同一参数空间的梯度分析局部变化，再做独立评价。"
+      },
+      {
+        "id": "controlled-transfer",
+        "title": "受控迁移实验：从零、冻结、LoRA 与全量适配",
+        "body": [
+          "下面构造可完整复现的两域回归。输入 \\(x\\in\\mathbb R^2\\)，源域为 \\(\\mathcal N(0,I_2)\\)，目标域为 \\(\\mathcal N((1.5,-1)^\\top,0.6^2I_2)\\)。两个域共用同一个真函数 \\(f^*(x)=\\sin(1.5x_1)+0.4x_2^2+0.3x_1x_2\\)；训练标签均为 \\(y=f^*(x)+\\epsilon\\)，ε 独立服从 \\(\\mathcal N(0,0.05^2)\\)。因此改变的是输入分布，不是给同一输入强行指定相互冲突的任务标签。这里 \\(x_1\\)、\\(x_2\\) 分别对应代码 x[:,0]、x[:,1]。",
+          "模型为 2→32→32 的 Tanh 骨干和 32→1 的线性读出，不使用 BatchNorm 或 Dropout，以免混入批次统计与随机模式差异。固定 512 个源训练样本、48 个目标训练样本以及每域 2,048 个独立探针。探针标签使用无噪真函数，测量对条件均值的预测误差；对于训练完的固定模型和重新抽取的独立标签噪声，带噪总体 MSE 比这个风险多常数 \\(0.05^2\\)。训练集与探针 MSE 的数值不能直接解释为同一批数据上的泛化间隙。",
+          "先从固定随机初始化进行 900 次源域 Adam 全批次更新。冻结、LoRA 和全量路线都复制这一份完整 checkpoint，保留同一个已有读出；LoRA 令 A 随机、\\(B=0\\)，断言三条路线适配前输出完全一致。所有目标优化器重新建立，不继承源域动量。从零路线则复制预训练之前的随机 checkpoint：它与后三条起始函数不同，这是比较预训练作用时有意设置的变量，不能声称四条路线的初始权重完全一样。",
+          "每条路线使用同一份目标数据、600 次全批次 Adam 更新、学习率 0.01、零权重衰减，且不混入源训练数据。全量与从零可训练参数均为 \\(96+1056+33=1185\\)；冻结路线仅训练读出的 33 个数；LoRA 在两个骨干矩阵上分别增加 1×(2+32) 和 1×(32+32) 个参数，再加读出，共 131 个。LoRA 总共存储 1283 个参数；冻结基座仍要占存储。首层权重是 [32,2]，这里使用 r=1 才对其增量施加严格的低秩限制。",
+          "表格来自下面代码的真实 CPU、FP32、单线程运行，固定种子 20261106。此协议并未按不同方法搜索最优学习率；相同目标更新次数也不代表相同 FLOPs、显存或总训练成本，预训练路线还额外使用了源数据和 900 步计算。它是机制对照，不是方法性能排行榜。代码输出每 100 步的训练与探针曲线，且用 JSON 保留完整数值、梯度检查和首步位移诊断。",
+          "这次运行中，三个预训练适配方案的目标探针误差都低于从零路线，但未适配基座的目标误差更低。目标训练 MSE 从共同的 0.005174 降到 0.003457、0.001770、0.001772，并没有转化为独立目标探针的收益。保留基座参照才会暴露这一点：预训练已经提供了有用迁移，继续拟合这 48 条含噪标签并不自动更好。这组观测与小样本过拟合、更新约束及当前优化设置有关，不能单凭一个种子分离其因果贡献。",
+          "源探针中，冻结、LoRA、全量适配的误差都高于基座。冻结路线的骨干逐张量完全不变；LoRA 的基座权重与偏置完全不变，两层增量的数值秩均为 1，但启用适配器后的完整系统仍发生源域退化。此处保持指标包括读出变化，不能把全部退化都归因于骨干表示。关闭 LoRA 再评价会换成另一预测函数，不是同一个适配系统的保持结果。从零路线没有先学过源任务，因此只报告其源域误差，不给它定义遗忘增量。",
+          "首步诊断还提供了一个可手算的核对：冻结骨干路线的 \\(g_S^\\top\\Delta\\phi\\) 约为 −0.002319，但固定特征二次项约为 0.031836，因此源 MSE 实际增加约 0.029517；代码断言这条精确二次等式。全量路线也出现一阶预测为负而真实变化为正，此时非线性和有限位移的高阶影响不能忽略。不要只看两个梯度的夹角，就宣称 Adam 的一次真实更新必然保持旧域。",
+          "把这一实验用于真实后训练时，替换为实际策略目标，并重新固定观测与动作表示、分组切分和源域保持指标。再用独立目标验证集选择适配范围与训练时长，最后报告保留测试条件上的结果。"
+        ],
+        "comparison": {
+          "title": "一次固定种子运行：训练拟合、目标泛化与源域保持分别报告",
+          "columns": [
+            "路线",
+            "适配可训练参数",
+            "目标训练 MSE（含噪）",
+            "目标探针 MSE（干净）",
+            "源探针 MSE（干净）",
+            "源 MSE 相对基座变化"
+          ],
+          "rows": [
+            [
+              "预训练基座，不适配",
+              "0",
+              "0.005174",
+              "0.001519",
+              "0.012809",
+              "0"
+            ],
+            [
+              "从零训练",
+              "1185",
+              "0.001715",
+              "0.008821",
+              "0.562597",
+              "—，未先学习源域"
+            ],
+            [
+              "冻结骨干，仅训练读出",
+              "33",
+              "0.003457",
+              "0.001861",
+              "0.022338",
+              "+0.009529"
+            ],
+            [
+              "LoRA r=1 + 读出",
+              "131",
+              "0.001770",
+              "0.003059",
+              "0.078981",
+              "+0.066172"
+            ],
+            [
+              "全量适配",
+              "1185",
+              "0.001772",
+              "0.003689",
+              "0.042288",
+              "+0.029479"
+            ]
+          ]
+        },
+        "code": "\"\"\"CPU transfer experiment; no external data and no probe-based model selection.\"\"\"\nimport argparse\nimport copy\nimport json\nimport math\nimport time\nfrom pathlib import Path\n\nimport torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\nSEED = 20261106\nPRETRAIN_STEPS, ADAPT_STEPS = 900, 600\nLEARNING_RATE, NOISE_STD = 0.01, 0.05\nRANK = 1\n\n\ndef generator(seed):\n    return torch.Generator(device=\"cpu\").manual_seed(seed)\n\n\ndef truth(x):\n    # Same conditional mean in both domains: no task-label conflict.\n    return (torch.sin(1.5 * x[:, 0]) + 0.4 * x[:, 1].square()\n            + 0.3 * x[:, 0] * x[:, 1])[:, None]\n\n\ndef dataset(n, mean, std, seed, noisy):\n    rng = generator(seed)\n    x = std * torch.randn(n, 2, generator=rng) + torch.tensor(mean)\n    y = truth(x)\n    if noisy:\n        y = y + NOISE_STD * torch.randn(n, 1, generator=rng)\n    return x, y\n\n\nclass Regressor(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.backbone = nn.Sequential(nn.Linear(2, 32), nn.Tanh(),\n                                      nn.Linear(32, 32), nn.Tanh())\n        self.head = nn.Linear(32, 1)\n\n    def forward(self, x):\n        return self.head(self.backbone(x))\n\n\nclass LowRankLinear(nn.Module):\n    def __init__(self, layer, rng):\n        super().__init__()\n        self.base = copy.deepcopy(layer).requires_grad_(False)\n        self.A = nn.Parameter(0.05 * torch.randn(RANK, layer.in_features,\n                                                generator=rng))\n        self.B = nn.Parameter(torch.zeros(layer.out_features, RANK))\n        self.scale = 1.0  # alpha/r = 1; alpha = rank = 1 in this experiment.\n\n    def forward(self, x):\n        return self.base(x) + self.scale * F.linear(F.linear(x, self.A), self.B)\n\n\ndef build_variant(name, initial, pretrained):\n    model = copy.deepcopy(initial if name == \"scratch\" else pretrained)\n    model.zero_grad(set_to_none=True)\n    if name == \"frozen\":\n        model.backbone.requires_grad_(False)\n    if name == \"lora\":\n        rng = generator(SEED + 20)\n        for i in (0, 2):\n            model.backbone[i] = LowRankLinear(model.backbone[i], rng)\n    return model\n\n\n@torch.no_grad()\ndef mse(model, data):\n    return F.mse_loss(model(data[0]), data[1]).item()\n\n\ndef scalar_norm(tensors):\n    return math.sqrt(sum(t.square().sum().item() for t in tensors))\n\n\ndef run():\n    started = time.perf_counter()\n    torch.manual_seed(SEED)\n    torch.set_num_threads(1)\n    # Fixed independent splits. Both observed training distributions use noise SD .05.\n    source_train = dataset(512, [0., 0.], 1.0, SEED + 1, True)\n    target_train = dataset(48, [1.5, -1.], 0.6, SEED + 2, True)\n    source_probe = dataset(2048, [0., 0.], 1.0, SEED + 3, False)\n    target_probe = dataset(2048, [1.5, -1.], 0.6, SEED + 4, False)\n    initial = Regressor()\n    pretrained = copy.deepcopy(initial)\n    pre_optimizer = torch.optim.Adam(pretrained.parameters(), lr=LEARNING_RATE)\n    for _ in range(PRETRAIN_STEPS):\n        pre_optimizer.zero_grad(set_to_none=True)\n        loss = F.mse_loss(pretrained(source_train[0]), source_train[1])\n        loss.backward()\n        pre_optimizer.step()\n    pretrained.zero_grad(set_to_none=True)\n    base_source = mse(pretrained, source_probe)\n    base_target = mse(pretrained, target_probe)\n    result = {\n        \"seed\": SEED, \"torch\": torch.__version__, \"device\": \"cpu\", \"dtype\": \"float32\",\n        \"config\": {\"source_n\": 512, \"target_n\": 48, \"probe_n_each\": 2048,\n                   \"pretrain_steps\": PRETRAIN_STEPS, \"adapt_steps\": ADAPT_STEPS,\n                   \"optimizer\": \"Adam; fresh state for every target run\",\n                   \"lr\": LEARNING_RATE, \"weight_decay\": 0., \"batching\": \"full batch\",\n                   \"source_mean\": [0., 0.], \"source_std\": 1.0,\n                   \"target_mean\": [1.5, -1.], \"target_std\": 0.6,\n                   \"label_noise_std\": NOISE_STD, \"probe_labels\": \"clean conditional mean\",\n                   \"rank\": RANK, \"lora_scale\": 1.0},\n        \"pretrained\": {\"source_probe_mse\": base_source, \"target_probe_mse\": base_target,\n                       \"source_train_noisy_mse\": mse(pretrained, source_train)},\n        \"methods\": [],\n    }\n    for name in (\"scratch\", \"frozen\", \"lora\", \"full\"):\n        model = build_variant(name, initial, pretrained)\n        trainable = [(n, p) for n, p in model.named_parameters() if p.requires_grad]\n        parameters = [p for _, p in trainable]\n        frozen = {n: p.detach().clone() for n, p in model.named_parameters()\n                  if not p.requires_grad}\n        before = {n: p.detach().clone() for n, p in trainable}\n        start_s, start_t = mse(model, source_probe), mse(model, target_probe)\n        start_training = mse(model, target_train)\n        with torch.no_grad():\n            difference = (model(target_probe[0]) - pretrained(target_probe[0])).abs().max().item()\n        if name != \"scratch\":\n            assert difference == 0., \"Pretrained adaptation routes must start identically\"\n        opt = torch.optim.Adam(parameters, lr=LEARNING_RATE)\n        curve = [{\"step\": 0, \"source_mse\": start_s, \"target_mse\": start_t,\n                  \"target_train_noisy_mse\": start_training}]\n        # Probe derivatives diagnose an update; never used by the optimizer or stopping rule.\n        source_grad = torch.autograd.grad(\n            F.mse_loss(model(source_probe[0]), source_probe[1]), parameters)\n        first_before = [p.detach().clone() for p in parameters]\n        with torch.no_grad():\n            source_output_before = model(source_probe[0]).clone()\n        first_step, lora_gradients = {}, {}\n        for step in range(1, ADAPT_STEPS + 1):\n            opt.zero_grad(set_to_none=True)\n            loss = F.mse_loss(model(target_train[0]), target_train[1])\n            assert torch.isfinite(loss)\n            loss.backward()\n            assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in parameters)\n            if name == \"lora\" and step in (1, 2):\n                for suffix in (\"A\", \"B\"):\n                    value = scalar_norm([p.grad for n, p in trainable if n.endswith(\".\" + suffix)])\n                    lora_gradients[f\"step_{step}_{suffix}_norm\"] = value\n            opt.step()\n            if step == 1:\n                delta = [p.detach() - old for p, old in zip(parameters, first_before)]\n                linear_prediction = sum((g * d).sum().item() for g, d in zip(source_grad, delta))\n                actual_change = mse(model, source_probe) - start_s\n                first_step = {\"source_gradient_norm\": scalar_norm(source_grad),\n                              \"parameter_step_norm\": scalar_norm(delta),\n                              \"linear_source_change\": linear_prediction,\n                              \"actual_source_change\": actual_change,\n                              \"taylor_remainder\": actual_change - linear_prediction}\n                if name == \"frozen\":\n                    # Fixed features + a linear head make the source MSE exactly quadratic.\n                    with torch.no_grad():\n                        quadratic_term = (model(source_probe[0]) - source_output_before).square().mean().item()\n                    assert abs(actual_change - linear_prediction - quadratic_term) < 2e-7\n                    first_step[\"exact_head_quadratic_term\"] = quadratic_term\n            if step % 100 == 0:\n                curve.append({\"step\": step, \"source_mse\": mse(model, source_probe),\n                              \"target_mse\": mse(model, target_probe),\n                              \"target_train_noisy_mse\": mse(model, target_train)})\n        frozen_equal = all(torch.equal(dict(model.named_parameters())[n], v)\n                           for n, v in frozen.items())\n        frozen_no_grad = all(dict(model.named_parameters())[n].grad is None for n in frozen)\n        assert frozen_equal and frozen_no_grad\n        low_rank_checks = []\n        if name == \"lora\":\n            assert lora_gradients[\"step_1_A_norm\"] == 0.\n            assert lora_gradients[\"step_1_B_norm\"] > 0. and lora_gradients[\"step_2_A_norm\"] > 0.\n            for i in (0, 2):\n                layer = model.backbone[i]\n                delta = (layer.scale * (layer.B @ layer.A)).detach()\n                observed_rank = int(torch.linalg.matrix_rank(delta))\n                assert observed_rank <= RANK and delta.norm().item() > 0.\n                low_rank_checks.append({\"layer\": i, \"shape\": list(delta.shape),\n                                        \"rank\": observed_rank, \"frobenius_norm\": delta.norm().item()})\n        parameter_change = scalar_norm([p.detach() - before[n] for n, p in trainable])\n        assert parameter_change > 0.\n        final_s, final_t = mse(model, source_probe), mse(model, target_probe)\n        result[\"methods\"].append({\n            \"method\": name, \"trainable_parameters\": sum(p.numel() for p in parameters),\n            \"stored_parameters\": sum(p.numel() for p in model.parameters()),\n            \"initial_source_mse\": start_s, \"initial_target_mse\": start_t,\n            \"initial_target_train_noisy_mse\": start_training,\n            \"final_source_mse\": final_s, \"final_target_mse\": final_t,\n            \"target_train_noisy_mse\": mse(model, target_train),\n            \"source_change_from_pretrained\": None if name == \"scratch\" else final_s - base_source,\n            \"initial_pretrained_output_maxdiff\": None if name == \"scratch\" else difference,\n            \"frozen_parameters_exactly_equal\": frozen_equal,\n            \"frozen_parameters_have_no_grad\": frozen_no_grad,\n            \"trainable_parameter_change_norm\": parameter_change,\n            \"first_step\": first_step, \"lora_gradients\": lora_gradients,\n            \"low_rank_checks\": low_rank_checks, \"curve\": curve,\n        })\n    result[\"seconds_in_process\"] = time.perf_counter() - started\n    result[\"checks_passed\"] = True\n    return result\n\n\nif __name__ == \"__main__\":\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--output\", default=\"transfer_results.json\")\n    args = parser.parse_args()\n    results = run()\n    Path(args.output).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding=\"utf-8\")\n    for row in results[\"methods\"]:\n        print(row[\"method\"], \"trainable\", row[\"trainable_parameters\"],\n              \"target\", round(row[\"final_target_mse\"], 6),\n              \"source\", round(row[\"final_source_mse\"], 6))\n    print(\"seconds\", round(results[\"seconds_in_process\"], 3), \"checks passed\")\n",
+        "codeExplanation": "保存为 transfer_controlled.py，运行 python transfer_controlled.py；仅依赖 PyTorch 和标准库。默认写出 transfer_results.json，可用 --output 指定路径。build_variant 明确初始化和可训练范围；source_grad 只用于解释首步，优化器只接收目标训练 loss。测试覆盖预训练路线初始输出相等、冻结参数与梯度、LoRA 第一/第二步梯度、增量秩，以及固定特征源风险变化的精确二次等式。常数步数在看探针前已固定，没有早停或择优报告。代码统计的是机制与误差，不测试某一种方法必胜。",
+        "takeaway": "预训练有益、继续适配有益、目标域泛化改善以及旧域保持，是四个需要分别检查的结论。",
+        "lead": "上一节的风险变化关系需要一个能够控制变量的实验来核对。这里固定数据生成函数与预训练起点，只改变目标域上的更新范围。保留未适配基座作为参照，可以同时检验迁移收益、过拟合与旧域退化，而不是只比较几个训练后的损失。"
+      },
+      {
+        "title": "用更新与恢复测试闭合微调流程",
+        "body": [
+          "在开始长训练前，列出所有可训练参数名、形状与参数组；对一小批输入运行前后向，检查预计训练的参数具有有限梯度，预计冻结的参数保持不变。某些参数在特定样本上梯度为零可能合理，因此用多个有辨别力的输入和明确初始化预期，避免把一次检查当作永久证明。",
+          "然后比较 step 前后的实际数值，检查优化器是否持有当前模型的参数对象。有时替换模块后优化器仍引用旧层，loss.backward 正常、梯度正常，但新模块不会更新。保存后在新进程重新构造基础模型与适配器，加载状态并验证固定输入输出一致，才闭合训练到部署的链路。",
+          "初始等价、A/B 梯度、冻结基础权重、可训练参数量与合并等价，是互不替代的性质。迁移到实际模型时，额外模块、预处理统计和任务配置也属于检查范围；可训练参数占比只覆盖其中一项。",
+          "微调需要共同定义监督目标、可更新参数与增量形式。LoRA 回答怎样限制参数更新，源域与目标域评价回答更新是否有效；初始化、合并和恢复则保证这份方法在实际程序中仍是同一个函数。"
+        ],
+        "id": "6",
+        "lead": "数学上的参数化正确，还需要通过保存、加载与部署保持相同计算。一次实际更新和一次独立恢复分别验证训练链路与交付链路。将这些检查与前面的初始化、梯度和合并性质组合，才能判断微调流程是否闭合。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "base weight W0",
+        "shape": "[D_out,D_in]",
+        "meaning": "冻结的原始线性层权重"
+      },
+      {
+        "name": "A / B",
+        "shape": "[r,D_in] / [D_out,r]",
+        "meaning": "可训练低秩更新因子"
+      },
+      {
+        "name": "input / output",
+        "shape": "[...,D_in] / [...,D_out]",
+        "meaning": "支持 Batch 与 token 维的线性投影"
+      }
+    ],
+    "code": {
+      "title": "从零实现 LoRA 并验证初始化与权重合并",
+      "source": "import torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\n\n# STEP 1: 冻结原层，A 随机、B 为零\nclass LoRALinear(nn.Module):\n    def __init__(self, in_dim, out_dim, rank=2, alpha=2.):\n        super().__init__()\n        self.base = nn.Linear(in_dim,out_dim)\n        self.base.requires_grad_(False)\n        self.A = nn.Parameter(torch.randn(rank,in_dim)*0.1)\n        self.B = nn.Parameter(torch.zeros(out_dim,rank))\n        self.scale = alpha/rank\n    def forward(self,x):\n        return self.base(x) + self.scale*F.linear(F.linear(x,self.A),self.B)\n\nlayer = LoRALinear(4,3)\nx = torch.randn(32,4)\ntarget = torch.randn(32,3)\nfrozen_weight = layer.base.weight.detach().clone()\ntorch.testing.assert_close(layer(x),layer.base(x))\n\n# STEP 2: 检查第一步梯度，区分零梯度与没有梯度\noptimizer = torch.optim.AdamW([p for p in layer.parameters() if p.requires_grad],lr=0.03)\nloss = (layer(x)-target).square().mean()\nloss.backward()\nprint('first A/B grad norms:', layer.A.grad.norm().item(), layer.B.grad.norm().item())\nassert layer.A.grad is not None and layer.B.grad is not None\nassert layer.base.weight.grad is None\noptimizer.step()\n\n# STEP 3: 小型监督训练，只更新适配器\nfor _ in range(60):\n    loss = (layer(x)-target).square().mean()\n    optimizer.zero_grad(set_to_none=True)\n    loss.backward()\n    optimizer.step()\ntorch.testing.assert_close(layer.base.weight, frozen_weight)\n\n# STEP 4: 合并后线性层应与适配器前向等价\nwith torch.no_grad():\n    merged = layer.base.weight + layer.scale*(layer.B @ layer.A)\n    merged_output = F.linear(x,merged,layer.base.bias)\n    torch.testing.assert_close(merged_output,layer(x),atol=1e-6,rtol=1e-5)\nprint('trainable parameters:', sum(p.numel() for p in layer.parameters() if p.requires_grad))\nprint('frozen weight unchanged; merge check passed')\n",
+      "explanations": [
+        {
+          "lines": "8–25",
+          "text": "低秩分支与原层相加；由于 B 为零，模型初始行为与冻结原层完全相同。"
+        },
+        {
+          "lines": "26–34",
+          "text": "第一次 A 的梯度可为零，B 的梯度可非零。冻结原权重的 grad 应是 None；这些状态代表不同原因。"
+        },
+        {
+          "lines": "35–42",
+          "text": "只把可训练参数送进优化器，并检查原权重未变。这个合成回归任务只用于验证训练路径。"
+        },
+        {
+          "lines": "43–49",
+          "text": "合并公式是 W0+scale·B@A。比较合并前后输出，可直接发现矩阵方向或缩放错误。"
+        }
+      ],
+      "expected": "首步 A 梯度范数为零，B 梯度通常非零；可训练参数数目为 14；冻结权重和 LoRA 合并检查通过。"
+    },
+    "exercise": {
+      "title": "算清 LoRA 真正训练多少参数",
+      "prompt": "实现 parameter_counts(in_dim,out_dim,rank)。返回包含 frozen 与 trainable 的字典。原层含偏置且全部冻结；低秩 A/B 不含偏置。维度与 rank 都必须是正整数。",
+      "runtime": "python",
+      "starter": "def parameter_counts(in_dim, out_dim, rank):\n    # TODO: 分别统计原层和两个低秩矩阵\n    raise NotImplementedError\n",
+      "solution": "def parameter_counts(in_dim, out_dim, rank):\n    if any(not isinstance(x,int) or x <= 0 for x in (in_dim,out_dim,rank)):\n        raise ValueError('dimensions must be positive integers')\n    return {'frozen':in_dim*out_dim+out_dim, 'trainable':rank*(in_dim+out_dim)}\n",
+      "tests": "assert parameter_counts(8,6,2) == {'frozen':54,'trainable':28}\nassert parameter_counts(4,3,2) == {'frozen':15,'trainable':14}\nassert parameter_counts(4,4,4) == {'frozen':20,'trainable':32}\ntry:\n    parameter_counts(8,6,0)\n    raise AssertionError('零秩应报错')\nexcept ValueError:\n    pass\nprint('参数量检查通过：较大的 rank 不保证参数更少。')\n",
+      "hints": [
+        "A 有 rank×in_dim 个参数，B 有 out_dim×rank 个。",
+        "原层的偏置有 out_dim 个元素，本题约定它也被冻结。"
+      ],
+      "explanation": "当层本身很小或 rank 很大时，低秩参数总数可能超过原层。实际显存还包含激活、梯度和优化器状态，不能只根据这一计数推断完整训练显存。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 lora_forward(x,W,b,A,B,alpha)。按 \\(\\alpha/r\\) 缩放低秩分支，支持 x 的任意前导维度。函数只实现前向；哪些输入需要梯度由调用者设置。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef lora_forward(x,W,b,A,B,alpha):\n    # TODO: 原线性层 + 低秩更新\n    raise NotImplementedError\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef lora_forward(x,W,b,A,B,alpha):\n    rank = A.shape[0]\n    if rank <= 0 or B.shape != (W.shape[0],rank) or A.shape[1] != W.shape[1]:\n        raise ValueError('invalid LoRA shape')\n    return F.linear(x,W,b) + (alpha/rank)*F.linear(F.linear(x,A),B)\n",
+      "tests": "torch.manual_seed(3)\nx = torch.randn(2,5,4)\nW = torch.randn(3,4)\nb = torch.randn(3)\nA = torch.randn(2,4,requires_grad=True)\nB = torch.randn(3,2,requires_grad=True)\ny = lora_forward(x,W,b,A,B,4.)\nmerged = F.linear(x,W+2*(B@A),b)\ntorch.testing.assert_close(y,merged)\ntorch.testing.assert_close(lora_forward(x,W,b,A,torch.zeros_like(B),4.),F.linear(x,W,b))\ny.square().mean().backward()\nassert A.grad is not None and B.grad is not None and W.grad is None\nprint('LoRA 前向、合并等价性与梯度检查通过。')\n",
+      "hints": [
+        "F.linear 的权重形状是 [out,in]，先过 A 再过 B。",
+        "缩放量 alpha/r 只作用于低秩增量，不作用于原层输出。"
+      ],
+      "explanation": "A 将输入投到 r 维，B 再投到输出维，因此增量权重是 B@A。用 F.linear(F.linear(x,A),B) 可以保留任意前导 Batch/token 维。与 F.linear(x,W+(alpha/r)*B@A,b) 比较能验证方向与缩放。此函数只定义计算，不负责冻结 W；调用方必须设置 requires_grad、优化器参数组和保存范围。"
+    },
+    "pitfalls": [
+      {
+        "title": "冻结权重后把所有相关计算都 detach",
+        "detail": "冻结与梯度通路不同。检查可训练模块的位置，并验证上游所需梯度没有被 no_grad 截断。"
+      },
+      {
+        "title": "A 与 B 同时零初始化",
+        "detail": "基础 LoRA 的两个因子会相互阻断起步梯度。按初始化设计检查初始输出与两步梯度。"
+      },
+      {
+        "title": "用参数比例直接预测显存比例",
+        "detail": "基础权重、激活、注意力和优化器状态是不同开销。测量真实峰值显存并定位主导部分。"
+      },
+      {
+        "title": "保存适配器但不保存基础模型身份",
+        "detail": "同形基础模型可能来自不同权重或结构，加载后行为会改变。绑定配置与基础版本，进行新进程恢复对照。"
+      },
+      {
+        "title": "LoRA 自动避免遗忘",
+        "detail": "低秩增量仍能显著改变行为。保留独立旧能力评估并记录新旧目标的权重。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "LoRA 原论文",
+        "url": "https://arxiv.org/abs/2106.09685"
+      },
+      {
+        "title": "Hugging Face PEFT：LoRA 概念与参数",
+        "url": "https://huggingface.co/docs/peft/main/en/conceptual_guides/lora"
+      },
+      {
+        "title": "PyTorch：自动微分与冻结参数",
+        "url": "https://docs.pytorch.org/docs/stable/notes/autograd.html"
+      },
+      {
+        "title": "PEFT 官方文档：方法范围与配置",
+        "url": "https://huggingface.co/docs/peft/main/en/index"
+      },
+      {
+        "title": "GEM 原论文：旧任务风险、梯度约束与局部近似",
+        "url": "https://arxiv.org/abs/1706.08840"
+      },
+      {
+        "title": "QLoRA 原论文：NF4、双重量化、分页优化器与计算精度",
+        "url": "https://arxiv.org/abs/2305.14314"
+      },
+      {
+        "title": "PEFT 官方文档：量化模型上的适配训练",
+        "url": "https://huggingface.co/docs/peft/developer_guides/quantization"
+      },
+      {
+        "title": "Transformers / bitsandbytes：存储格式与计算 dtype",
+        "url": "https://huggingface.co/docs/transformers/quantization/bitsandbytes"
+      },
+      {
+        "title": "bitsandbytes 官方参考：4 bit 线性层",
+        "url": "https://huggingface.co/docs/bitsandbytes/reference/nn/linear4bit"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "首步 A.grad 全零、B.grad 非零，而冻结原权重 grad=None，这三种状态分别说明什么？",
+        "answer": [
+          "B 初始化为零时，监督损失传向 A 的路径会被 B 乘成零，所以 A 的梯度张量可能存在但全零。B 的梯度可通过非零的 A 和输入得到。冻结原权重则不需要计算该参数梯度，通常显示 None，含义与“参与计算但导数为零”不同。",
+          "确认优化器更新 B 后，检查后续 A 的监督梯度。还需区分梯度与实际参数变化：某些优化器的权重衰减或历史动量也可能改变零当前梯度的参数。用参数前后差值、梯度和优化器配置三者联合判断。"
+        ],
+        "codeFocus": "LoRALinear 初始化、first A/B grad norms 与 optimizer.step() 前后参数快照。",
+        "acceptance": [
+          "区分 None、零梯度和非零梯度。",
+          "说明必须检查参数更新而不只看梯度。"
+        ]
+      },
+      {
+        "question": "骨干完全冻结，为什么仍需要评估语言跟随和旧任务？",
+        "answer": [
+          "完整系统包含骨干之外的投影器、适配器、读出头、预处理与动作解码。骨干权重固定仅说明这些参数没有被更新，不保证新模块仍正确利用已有表征。新头也可能偏向视觉捷径，或通过错误归一化改变输出含义。",
+          "保留独立旧任务集与同图不同指令的配对检查。比较新任务成功率、旧任务保留和语言条件敏感性，固定评估条件。另做梯度与权重差值检查，确认所谓冻结在实现中真实成立；实现检查和能力评估回答不同问题。"
+        ],
+        "codeFocus": "base.requires_grad_(False)、参数组筛选及旧任务/指令干预评估入口。",
+        "acceptance": [
+          "解释参数不变与系统行为不变的差异。",
+          "给出旧任务和语言条件两类独立评估。"
+        ]
+      },
+      {
+        "question": "量化基座上的 LoRA 令 B=0，却与原始浮点模型输出不同，是否说明初始化代码有错？应如何定位？",
+        "answer": [
+          "不能仅据此判断。B=0 只消除低秩分支，保留的是反量化后的基座权重。先在相同输入、模式与计算 dtype 下对比量化基座和启用零增量适配器的输出；再单独比较量化基座与原始浮点基座。后一差异可以来自量化，不能归到 LoRA 初始化。",
+          "对于本节忽略偏置的单层，量化前后的输出差恰为 \\(X(\\widehat W_0-W_0)^\\top\\)。完整网络还会传播这些局部误差，因此不能把某层的误差直接等同最终策略误差。保存恢复与合并再量化需要各自的对照输入，最终还应评价新旧任务行为。"
+        ],
+        "codeFocus": "在已有 LoRALinear 初始化与合并检查中区分原始基座、量化基座和带适配器的模型；现有示例未实现真实量化后端。",
+        "acceptance": [
+          "给出正确的初始等价参照。",
+          "将量化误差、低秩增量与恢复/合并误差分别定位。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "requires_grad、计算图、优化器参数组、train/eval 和保存范围需要分别检查。",
+      "LoRA 的低秩增量 BA 需要正确的形状、缩放与初始化；两因子都置零会阻断起步梯度。",
+      "减少可训练参数不等于同比减少激活显存，也不自动保证保留能力。",
+      "新任务收益、旧任务保持与数据/计算预算应在同一对照协议中报告。"
+    ],
+    "lead": "微调是以已有模型参数为起点，用新任务数据继续训练，使其适应新的目标或输入分布。参数高效微调（PEFT）限制需要学习的参数数量，LoRA 则通过给线性权重增加可训练低秩增量实现一种 PEFT。它们规定更新方式，并不自行规定监督目标。本章先定义训练什么与更新什么，再推导 LoRA、初始化和合并，最后检验迁移与能力保持。"
+  },
+  {
+    "id": "policy-gradient",
+    "number": 44,
+    "module": "posttraining",
+    "title": "策略梯度基础：REINFORCE、方差缩减与 GAE",
+    "subtitle": "围绕策略梯度基础：REINFORCE、方差缩减与 GAE，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 90,
+    "tags": [
+      "Policy Gradient",
+      "Advantage",
+      "Gaussian",
+      "`log_prob`",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "behavior-cloning"
+    ],
+    "objectives": [
+      "读写最小 score-function 策略梯度损失并判断更新方向",
+      "区分价值基线的独立训练与 actor 中的梯度阻断",
+      "实现对角 Gaussian 的联合 `log_prob`，解释 `sample` 与 `rsample` 的适用目标"
+    ],
+    "why": "策略梯度用回报给动作的 `log_prob` 梯度加权。无偏性取决于采样分布和基线依赖关系；自动微分还必须保留与估计式一致的路径。",
+    "sections": [
+      {
+        "title": "从示教标签转向期望回报",
+        "body": [
+          "行为克隆告诉模型在条件 c 下示教做了什么；强化学习则依据执行结果评价一个动作或整段轨迹的收益。随机策略 \\(\\pi_\\theta(a\\mid s)\\) 定义在状态下采取不同动作的概率或密度，目标 \\(J(\\theta)\\) 是由该策略产生轨迹时的期望回报。奖励不是正确动作向量，不能把奖励大小直接当作动作监督标签。",
+          "轨迹概率可以分解为初始状态分布、各步策略概率和环境转移概率。若初始状态分布、环境动力学与奖励函数均不依赖 \\(\\theta\\)，对轨迹概率使用 \\(\\nabla p=p\\nabla\\log p\\)，参数梯度只需要经过策略 `log_prob`。这个 score-function 估计不要求对真实环境求导，所以能在不可微的机器人或模拟器中使用。下式针对有限时域、无折扣目标，\\(G_t\\) 是从 t 起的奖励和；若 J 定义为从起点计算的折扣回报，精确推导还需相应的 \\(\\gamma^t\\) 权重，或明确采用折扣状态访问分布的约定。",
+          "把中间步骤展开，令 \\(\\tau=(s_0,a_0,\\ldots,s_T)\\)，无折扣总奖励为 \\(R(\\tau)=\\sum_{t=0}^{T-1}r_t\\)，初始分布为 \\(\\rho_0\\)、转移为 \\(P\\)。假设轨迹概率（密度）在参数无关的共同支持上可微，并满足交换参数求导与积分的正则条件，则\\[\\begin{aligned}p_\\theta(\\tau)&=\\rho_0(s_0)\\prod_{t=0}^{T-1}\\pi_\\theta(a_t\\mid s_t)P(s_{t+1}\\mid s_t,a_t),\\\\\\nabla_\\theta J&=\\int R(\\tau)\\nabla_\\theta p_\\theta(\\tau)\\,d\\tau\\\\&=\\mathbb E_{\\tau\\sim p_\\theta}\\!\\left[R(\\tau)\\sum_t\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)\\right].\\end{aligned}\\]对一条固定轨迹求对数概率梯度时，环境因子没有策略参数；这并不表示真实的状态访问分布与参数无关，后者已经包含在外层采样分布中。 离散状态和动作的情形将积分换成求和。",
+          "为什么可以把整段 \\(R\\) 换成从当前时刻起的 \\(G_t\\)？在给定采样动作前的历史后，更早奖励已经确定，且 \\(\\mathbb E_{a_t\\sim\\pi_\\theta}[\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)]=0\\)。因此过去奖励与当前 score 的乘积期望为零，可以从估计器删除；未来奖励不能删除，因为它受到当前动作影响。下面枚举一个两步系统的全部轨迹，直接核对完整概率求导、整段回报权重和 reward-to-go 三种计算。",
+          "估计式仍依赖数据来自对应策略及相应分布假设。拿一份任意旧策略数据，直接套同一个 on-policy 公式，并不自动得到当前策略的无偏梯度；数据复用需要对应的重要性比率、目标设计或其他 off-policy 方法。回报定义、状态访问权重和估计方式都属于算法的一部分。"
+        ],
+        "formula": "\\nabla_\\theta J=\\mathbb E_{\\tau\\sim\\pi_\\theta}\\left[\\sum_t\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)\\,G_t\\right]",
+        "focus": {
+          "kind": "常用",
+          "title": "先核对动作数据由哪一个策略采集",
+          "explanation": "策略梯度的期望不是对任意日志求平均，行为策略变化会改变分布与概率比率。",
+          "check": "保存采样时策略版本、动作、`log_prob` 和回合边界，明确算法允许如何复用这些数据。"
+        },
+        "id": "0",
+        "lead": "随机策略是给定状态后动作的概率分布，策略目标是它产生轨迹时的期望回报。策略梯度研究怎样调整这些概率以改善结果，区别于模仿学习拟合专家动作。先固定这个目标，再对轨迹概率求导。",
+        "code": "import torch\n\ntheta = torch.tensor([0.3, -0.4], dtype=torch.float64, requires_grad=True)\ndef probability(action, state):\n    p = torch.sigmoid(theta[state])\n    return p if action else 1 - p\n\nexpected_return = torch.zeros((), dtype=theta.dtype)\nfor a0 in (0, 1):\n    for a1 in (0, 1):\n        r0, r1 = float(a0), (2.0 if a1 == a0 else -1.0)\n        expected_return = expected_return + probability(a0, 0) * probability(a1, a0) * (r0 + r1)\nexact = torch.autograd.grad(expected_return, theta)[0]\nfull = torch.zeros_like(theta)\nto_go = torch.zeros_like(theta)\nwrong = torch.zeros_like(theta)\nfor a0 in (0, 1):\n    for a1 in (0, 1):\n        r0, r1 = float(a0), (2.0 if a1 == a0 else -1.0)\n        p0, p1 = probability(a0, 0), probability(a1, a0)\n        mass = (p0 * p1).detach()\n        g0 = torch.autograd.grad(p0.log(), theta)[0]\n        g1 = torch.autograd.grad(p1.log(), theta)[0]\n        full += mass * (g0 + g1) * (r0 + r1)\n        to_go += mass * (g0 * (r0 + r1) + g1 * r1)\n        wrong += mass * (g0 + g1) * r1\ntorch.testing.assert_close(full, exact, rtol=1e-12, atol=1e-12)\ntorch.testing.assert_close(to_go, exact, rtol=1e-12, atol=1e-12)\nassert not torch.allclose(wrong, exact)\nprint(\"通过：整轨迹求导与两种 score 估计一致，错误删除当前奖励的版本不一致。\")\n",
+        "codeExplanation": "状态从 0 开始，第一步动作决定第二步状态，两个状态分别使用一个 Bernoulli logit。穷举四条轨迹消除了采样方差；对 score 加权时把轨迹概率作为数值权重，而 exact 路径对完整概率求导。错误版本把第一步自己的奖励也删除，测试应拒绝这种混淆。"
+      },
+      {
+        "title": "损失负号与更新方向要能手算",
+        "body": [
+          "优化器通常做梯度下降，而策略目标是最大化期望回报，因此 actor 常写 \\(L_\\pi=-\\operatorname{mean}\\bigl(\\log\\pi_\\theta(a\\mid s)\\,\\hat A\\bigr)\\)。优势为正时，下降应提高该样本动作的概率；优势为负时，应降低它的概率。检查这一方向比仅看 actor loss 数值是否下降更重要，因为负 `log_prob` 与正负优势组合没有统一的“越接近零越好”解释。",
+          "对离散 Softmax，选择动作 j 时，\\(-A\\log p_j\\) 对 logit \\(z_i\\) 的梯度为 \\(A(p_i-\\mathbf1_{i=j})\\)。这来自交叉熵梯度乘一个有符号权重。优势不是概率，允许为负；它表达相对基线更好或更差，而不是要求模型拟合某个固定类别标签。",
+          "同一损失数值可以对应不同更新方向，尤其 Batch 中正负优势互相抵消时。记录概率变化、梯度范数、熵和实际回报比单一 actor loss 更有解释力。构造一个单样本、两个动作的小例子，检查正优势和负优势是否产生相反更新，是接入复杂训练循环前的必要步骤。"
+        ],
+        "formula": "L_\\pi=-\\operatorname{mean}(\\log\\pi_\\theta(a\\mid s)\\operatorname{stopgrad}(\\hat A)),\\qquad \\frac{\\partial L}{\\partial z_i}=\\hat A(p_i-\\mathbf1_{i=j})",
+        "example": {
+          "title": "两动作的正优势更新方向",
+          "steps": [
+            "初始概率 \\(p=(0.5,0.5)\\)，采到第二个动作，优势 \\(A=2\\)。",
+            "logits 梯度为 [1,−1]；梯度下降使第一个 logit 降低，第二个升高。",
+            "若 \\(A=-2\\)，梯度反号，第二个动作的概率应降低。"
+          ],
+          "conclusion": "先用最小例子检查符号，再讨论复杂 actor-critic 训练曲线。"
+        },
+        "id": "1",
+        "lead": "actor 是参数化的策略，actor loss 是为梯度下降程序构造的优化表达式。回报最大化常通过负号转换为损失最小化，优势则给动作概率的改变提供方向与权重。下面用可手算例子核对符号。"
+      },
+      {
+        "title": "基线无偏，需要怎样的独立性",
+        "body": [
+          "固定状态 s，记 \\(g(a,s)=\\nabla_\\theta\\log\\pi_\\theta(a\\mid s)\\)。在分布支持和求导交换满足正则条件时，\\(\\mathbb E_a[g\\mid s]=\\nabla_\\theta\\int\\pi_\\theta(a\\mid s)\\,da=0\\)。因此给定 s 后不依赖这次动作抽样的 \\(b(s)\\)，满足 \\(\\mathbb E[g\\,b(s)\\mid s]=0\\)。基线可以由过去数据训练，也可以随参数变化；在当前 actor 更新里，将其数值作为固定权重。",
+          "“输入没有动作”不自动等于统计独立。若先用当前样本的奖励拟合基线，再把这个基线用于同一动作样本，拟合结果可能通过数据依赖该动作。需要按实际采集、拟合、复用顺序判断，不能只看 `critic.forward` 是否只收 s。下一节的同批均值给出可以精确计算的反例。",
+          "无偏与最小方差也是两回事。在固定状态、用梯度向量的总方差作为标准时，最小化 \\(\\mathbb E[\\|g\\|^2(G-b)^2\\mid s]\\)，对 b 求导为零，得到 \\(b^*=\\frac{\\mathbb E[G\\|g\\|^2\\mid s]}{\\mathbb E[\\|g\\|^2\\mid s]}\\)，分母须为正。常用 \\(V(s)=\\mathbb E[G\\mid s]\\) 没有这个梯度范数权重，通常是方便的选择，不能无条件说它一定是最优方差基线。",
+          "代码里使用 `stopgrad(advantage)`，是为了阻止 actor 通过修改权重本身来降低乘积损失；它不能消除数据造成的统计依赖。critic 另用回报或 TD 目标更新，共享骨干可以同时收到两项损失的梯度。GAE、bootstrap 和优势标准化又有各自的估计性质，不能全部归为同一个“减基线不改变期望”的结论。"
+        ],
+        "formula": "\\mathbb E[g\\,b(s)\\mid s]=b(s)\\mathbb E[g\\mid s]=0,\\qquad b^*(s)=\\frac{\\mathbb E[G\\|g\\|^2\\mid s]}{\\mathbb E[\\|g\\|^2\\mid s]}",
+        "focus": {
+          "kind": "易错",
+          "title": "让 actor 沿着 advantage 反传到 critic",
+          "explanation": "这增加了不属于所写策略梯度估计的路径，模型可通过改变权重而不是动作概率影响损失。",
+          "check": "检查 actor-only backward 时 advantage 和独立 critic 参数没有梯度，再单独验证 critic 的训练目标。"
+        },
+        "id": "2",
+        "lead": "基线是从回报权重中减去的参考值，目的是降低策略梯度估计的方差。给定状态后不依赖当前采样动作的适当基线，可以保持期望梯度不变。下面推导这条独立性要求，而非假定任意均值都无偏。"
+      },
+      {
+        "title": "同一批回报的均值，为什么会带来有限样本偏差",
+        "body": [
+          "取同一个状态下 N 个独立的一步样本 \\((a_i,R_i)\\)，令 \\(g_i=\\nabla\\log\\pi(a_i)\\)，真实梯度 \\(g^*=\\mathbb E[g_iR_i]\\)。用同批均值 \\(\\bar R=\\frac1N\\sum_jR_j\\) 作每个样本的基线。展开 \\(\\mathbb E[g_i\\bar R]\\)：\\(j=i\\) 的项是 \\(g^*/N\\)；\\(j\\ne i\\) 的项因独立而成为 \\(\\mathbb E[g_i]\\mathbb E[R_j]=0\\)。于是整个中心化估计的期望是 \\((1-1/N)g^*\\)。",
+          "\\(N=1\\) 时 \\(R_1-\\bar R=0\\)，更新直接消失；\\(N=2\\) 时期望只剩一半。\\(\\operatorname{detach}(\\bar R)\\) 不改变这个结果，因为这里讨论的是抽样依赖，不是反向传播路径。使用不含样本 i 的 leave-one-out 均值，在这个独立同分布的一步例子中可以恢复无偏；跨时间相关的轨迹不能直接沿用这份证明。",
+          "再除以同批回报的标准差，会引入额外的随机尺度，不能简单地解释成除以一个固定常数。实际优势中心化或标准化可能对优化有帮助，但应把它视为具有自身性质的估计与优化选择。"
+        ],
+        "formula": "\\mathbb E\\left[\\frac1N\\sum_i g_i(R_i-\\bar R)\\right]=\\left(1-\\frac1N\\right)g^*",
+        "code": "from itertools import product\nimport math\n\n# Bernoulli policy at p=0.5; reward is the sampled action.\n# With logit as parameter, score = action - p.\np = 0.5\nplain = centered = leave_one_out = 0.0\nfor actions in product((0, 1), repeat=2):\n    probability = math.prod(p if a else 1 - p for a in actions)\n    rewards = actions\n    scores = [a - p for a in actions]\n    mean_reward = sum(rewards) / 2\n    plain += probability * sum(g * r for g, r in zip(scores, rewards)) / 2\n    centered += probability * sum(g * (r - mean_reward)\n                                  for g, r in zip(scores, rewards)) / 2\n    leave_one_out += probability * sum(\n        scores[i] * (rewards[i] - rewards[1 - i]) for i in range(2)) / 2\nassert math.isclose(plain, 0.25)\nassert math.isclose(centered, 0.125)\nassert math.isclose(leave_one_out, 0.25)\nprint('plain / same-batch / leave-one-out:', plain, centered, leave_one_out)",
+        "codeExplanation": "四种二动作组合穷举了整个分布，不用 Monte Carlo 近似。probability 是该组合出现的概率，scores 是对 logit 求导的 `log_prob`。三个估计分别得到 0.25、0.125、0.25：相同数值处理只有在依赖关系不同的条件下才有不同的无偏性。",
+        "id": "3",
+        "lead": "同批回报基线是用本批数据的平均回报作为各样本的参考值。它包含当前样本自身的信息，因此与逐动作独立的基线不同。下面在独立的一步采样中计算由此产生的有限样本偏差。"
+      },
+      {
+        "title": "连续动作的联合密度与动作轴",
+        "body": [
+          "对角 Gaussian 常由 \\(\\mu\\in\\mathbb R^{B\\times D}\\) 与标准差 \\(\\sigma\\) 给出，假设给定状态时各动作坐标条件独立。联合 `log_prob` 是各维 log 密度之和；`torch.distributions.Normal.log_prob` 返回逐维值，需要 `sum(-1)`，或者用 Independent 正确声明事件维。Batch 平均则在得到每样本联合值之后进行。",
+          "连续概率密度可以大于 1，所以 `log_prob` 也可以为正，这不违反概率归一化。密度的数值还随动作单位变化，不能把连续 `log_prob` 直接当离散类别概率来解释。若将动作维上的 sum 改成 mean，基础梯度多出一个维度尺度；在 PPO 比率等非线性运算里，更会改变完整联合分布的比值。",
+          "使用 `log_std` 有助于表达正标准差，但 exp 后仍需合理的数值范围。过小方差会产生很大的 `log_prob` 梯度，过大方差会导致探索动作偏离可用区域。clamp 是一种明确的参数约束，超出范围的梯度行为也要理解；它不替代动作边界与执行接口的处理。"
+        ],
+        "formula": "\\log\\pi(a\\mid s)=-\\frac12\\sum_{d=1}^{D}\\left[\\left(\\frac{a_d-\\mu_d}{\\sigma_d}\\right)^2+2\\log\\sigma_d+\\log(2\\pi)\\right]",
+        "example": {
+          "title": "为什么联合 log_prob 要沿动作维相加",
+          "steps": [
+            "两个动作坐标在给定状态下独立，某个动作处密度分别是 0.2 和 0.3。",
+            "联合密度为 0.06，联合 log 密度为 \\(\\log(0.2)+\\log(0.3)\\)。",
+            "把两项平均后再取 exp 得到 \\(\\sqrt{0.06}\\)，并不是这个二维动作的联合密度。"
+          ],
+          "conclusion": "事件维求和与 Batch 平均是两种归约，不能用一次 mean 代替。"
+        },
+        "id": "4",
+        "lead": "连续策略用概率密度描述动作向量，联合对数密度描述整条多维动作，而每维 log_prob 只描述一个坐标。是否先沿动作轴求和决定所用统计对象。下面以对角高斯建立这项约定。"
+      },
+      {
+        "title": "sample 与 rsample：不要混用梯度估计",
+        "body": [
+          "score-function 估计把采样动作视为固定数据，对 \\(\\log\\pi_\\theta(a\\mid s)\\) 关于 \\(\\theta\\) 求导。通常使用 `sample` 获得不带重参数化路径的动作；若动作来自其他带图的计算，应在这个损失中 `detach`。环境返回的优势也按估计式作为固定权重，而不是沿环境执行过程直接反传。",
+          "`rsample` 使用 \\(a=\\mu+\\sigma\\epsilon\\) 让动作对分布参数可微，适合通过可微奖励或 critic 计算 pathwise 梯度的目标。若把同一 `rsample` 动作不 `detach` 地送回 `Normal.log_prob`，并声称在做普通 REINFORCE，均值项的路径可能互相抵消：\\(a-\\mu=\\sigma\\epsilon\\) 的总导数不再是固定动作下的 score 梯度。",
+          "二者都可以用于合理算法，关键是目标是否需要 \\(\\partial Q/\\partial a\\) 或其他通过动作的导数。不能看到 `rsample`“可微”就认为总比 `sample` 更好。先写清估计式，再检查自动微分实际包含的路径；Gaussian score-function 练习把 action 与 advantage 作为固定样本和权重，明确停止它们的梯度。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "在 score-function 损失里保留 rsample 的动作路径",
+          "explanation": "这会改变固定样本求 `log_prob` 梯度的含义，甚至使均值梯度抵消。",
+          "check": "对同一数值动作比较 `detach` 前后 \\(\\mu\\) 的梯度，并说明当前算法使用的是 score-function 还是 pathwise 目标。"
+        },
+        "id": "5",
+        "lead": "Score-function 估计通过动作的对数概率求参数梯度，重参数化估计则通过可微采样值传播梯度。sample 和 rsample 支持这两类不同用法。先选定估计器，再决定哪些动作和优势应保持为固定数据。"
+      },
+      {
+        "title": "有界动作与熵项的额外约定",
+        "body": [
+          "Gaussian 支持整个实数轴，而机器人动作通常有边界。直接在采样后 clip 动作，会把很多原始样本映射到同一个边界点，实际执行分布不再是原来的 Gaussian。若还用未裁剪密度作为执行动作的 `log_prob`，需要明确算法如何处理这一差异，不能认为一个 clamp 没改变概率模型。",
+          "常见平滑方法是 \\(a=\\tanh(u)\\) 并做幅值缩放。对变换后动作计算密度时，应加入变量变换的 Jacobian 修正，例如 \\(\\log\\pi_a(a)=\\log\\pi_u(u)-\\sum_d\\log(1-\\tanh^2u_d)\\)，再包含固定尺度的修正。接近边界时需要稳定数值实现。未压缩 Gaussian 的 `log_prob` 不能直接解释压缩后的动作密度。",
+          "熵奖励鼓励分布保持一定随机性，通常在最小化损失中以 \\(-\\lambda\\mathcal H\\) 的形式加入；但探索更多并不保证收益更高。系数、动作尺度和方差共同影响行为。评估时应说明是采样动作还是使用均值/模式执行，因为训练探索策略与确定性部署策略可能产生不同结果。"
+        ],
+        "id": "6",
+        "lead": "有界动作分布需要将概率模型与动作范围共同定义；采样后裁剪会改变实际分布，不能只当作无影响的数值处理。熵正则又是对分布分散程度的额外目标。下面分别说明密度变换与目标约定。"
+      },
+      {
+        "title": "重要性比率校正了动作，是否也校正了状态",
+        "body": [
+          "固定同一个状态 s，若行为策略 \\(\\mu\\) 在 \\(\\pi_\\theta\\) 可能采到的动作上都有正概率，\\(\\rho(a,s)=\\pi_\\theta(a\\mid s)/\\mu(a\\mid s)\\) 可以把 \\(\\mathbb E_{a\\sim\\mu}[\\rho f(s,a)]\\) 改写成 \\(\\mathbb E_{a\\sim\\pi_\\theta}[f(s,a)]\\)。这一步只改变给定状态下的动作测度；若状态仍来自旧策略 \\(d_\\mu\\)，它没有自动变成当前策略的访问分布 \\(d_{\\pi_\\theta}\\)。",
+          "在有限轨迹上，若初始分布与环境动力学相同且有支持覆盖，整条轨迹的重要性比率是各步策略比率的乘积。它可以形式上校正轨迹分布，但连乘会使方差很大；逐决策校正、价值函数方法等有各自目标与条件，不能把任意一个单步 ratio 当成完整修复。",
+          "PPO 的常见 surrogate 固定旧策略采集的状态与优势，在其附近优化新动作概率；它不是任意新策略完整回报梯度的精确无偏估计。裁剪进一步有意改变目标，限制某些样本继续推动概率的激励。旧策略覆盖不足、更新过大或错误的动作 `log_prob`，都不能由一个 clip 自动解决。"
+        ],
+        "formula": "\\mathbb E_{s\\sim d_\\mu,a\\sim\\mu}[\\rho f]=\\mathbb E_{s\\sim d_\\mu,a\\sim\\pi_\\theta}[f],\\qquad \\frac{p_{\\pi_\\theta}(\\tau)}{p_\\mu(\\tau)}=\\prod_t\\frac{\\pi_\\theta(a_t\\mid s_t)}{\\mu(a_t\\mid s_t)}",
+        "id": "7",
+        "lead": "重要性比率是目标分布密度与采样分布密度的比，用来对已有样本重新加权。动作条件分布的校正不自动校正访问状态的分布。先明确期望针对哪些随机变量，再判断比率修正了什么。"
+      },
+      {
+        "title": "PPO 的比率、裁剪与旧策略快照",
+        "body": [
+          "PPO 常保存采集数据时旧策略的 `log_prob`，训练时计算 \\(r=\\exp(\\log\\pi_{\\mathrm{new}}-\\log\\pi_{\\mathrm{old}})\\)，再使用带裁剪的 surrogate objective。旧 `log_prob` 应对应同一个动作、状态、事件维归约和动作变换，并在优化期间作为固定值。它表示行为策略快照，不等于某个长期固定的参考模型或监督数据策略。 下式的裁剪 surrogate 是要最大化的目标；若用梯度下降实现 actor loss，应对它取负，再按约定加入价值与熵项。",
+          "对正优势，过大的比率不再增加裁剪目标；对负优势，过小比率同样被限制额外收益。这里取 min 的分支需要结合优势符号理解，不能把所有 ratio 无条件 clamp 后就认为等价。裁剪只改变这个样本目标的激励，并不严格保证所有状态下的 KL 或策略变化都在固定范围内。",
+          "多轮小批更新还需监控 KL、clip fraction、熵、critic 误差与真实回报，防止数据很快偏离当前策略。完整 PPO 包含 rollout、优势估计、边界处理与优化协议，不能仅靠一个 ratio 公式成为完整后训练方法。特别是生成式动作模型，普通去噪或 FM MSE 不自动提供 PPO 所需的精确动作 `log_prob`。"
+        ],
+        "formula": "L_{\\rm clip}=\\mathbb E\\left[\\min\\left(r\\hat A,\\operatorname{clip}(r,1-\\epsilon,1+\\epsilon)\\hat A\\right)\\right],\\qquad r=e^{\\log\\pi_\\theta-\\log\\pi_{\\rm old}}",
+        "id": "8",
+        "lead": "PPO（近端策略优化）使用旧策略采样的数据、动作概率比率和裁剪代理目标来训练新策略。裁剪改变过大比率带来的优化激励，并非硬性保证策略变化不超过某个范围。下面将目标与旧策略快照逐项对应。",
+        "comparison": {
+          "title": "裁剪分支随优势符号改变",
+          "columns": [
+            "优势",
+            "比率（裁剪范围 0.8～1.2）",
+            "被选择的目标",
+            "对比率的局部导数"
+          ],
+          "rows": [
+            [
+              "+1",
+              "1.3",
+              "1.2",
+              "0"
+            ],
+            [
+              "+1",
+              "0.7",
+              "0.7",
+              "+1"
+            ],
+            [
+              "−1",
+              "1.3",
+              "−1.3",
+              "−1"
+            ],
+            [
+              "−1",
+              "0.7",
+              "−0.8",
+              "0"
+            ]
+          ]
+        },
+        "example": {
+          "title": "正负优势下，PPO 的 min 选择不同分支",
+          "afterParagraph": 2,
+          "steps": [
+            "取裁剪幅度 ε=0.2，并讨论要最大化的单样本代理目标。若优势 A=2、比率 r=1.4，未裁剪项为 2.8，裁剪项为 \\(1.2\\times2=2.4\\)，min 取 2.4；继续提高这个比率不再增加该项收益。",
+            "若优势 A=−2、比率 r=0.6，未裁剪项为 −1.2，裁剪项为 \\(0.8\\times(-2)=-1.6\\)，min 取 −1.6；把已不受欢迎动作的概率继续压低，也不再从该项获得额外收益。",
+            "但 A=−2、r=1.4 时，min 取 −2.8，惩罚仍随比率变化；不能无条件把所有比率先 clamp，再只计算那一个乘积。梯度下降实现还要对上述代理目标取负。"
+          ],
+          "conclusion": "裁剪改变单样本的优化激励，不是对所有状态、参数更新或策略 KL 的硬性范围保证。"
+        }
+      },
+      {
+        "title": "从单步检查到完整后训练",
+        "body": [
+          "完整示例在一步合成任务上分别训练 actor 与 critic，并用解析 logit 梯度核对方向。扩展到多步环境时，需要接通回报、终止/截断、bootstrap 和策略版本，才能分析长时信用分配。",
+          "局部检查覆盖四件事：正负优势方向、动作维 `log_prob` 归约、优势与动作样本的梯度路径、采样策略身份。多回合表现还依赖评价协议；单独的 actor loss 无法区分策略改善、概率塌缩、基线变化和目标尺度变化。",
+          "对于 VLA 的奖励驱动后训练，还要定义一次动作决策覆盖多少控制步、动作序列概率怎样计算、环境回报怎样分配以及旧数据如何复用。确定性 ODE 生成仍含初始噪声的随机性，但要得到密度或可用的替代优化目标，需要另外的数学与实现。先把基础估计器边界弄清楚，才能可靠阅读这些方法。",
+          "一个具体连接是 [DPPO：Diffusion Policy Policy Optimization（2024，ICLR 2025）](https://arxiv.org/abs/2409.00588v3)。它把环境决策和内部去噪组织为两层扩展 MDP：当前环境状态、带噪动作与去噪步共同确定内部决策，下一次去噪结果作为内部动作；只有最终结果被执行时，环境才推进并产生任务奖励。在采用正方差的高斯反向转移时，每一步的条件 `log_prob` 可解析计算。保存旧策略生成的去噪链后，就能在相应扩展状态上构造新旧概率比，并用环境回报形成优势，将前面的 PPO 机制用于扩散策略后训练。",
+          "这里计算的是给定当前带噪动作与条件后的下一步概率，不是把所有中间潜变量积分掉之后的最终动作边缘密度。因此它既没有将负去噪 MSE 直接当作最终动作 `log_prob`，也不自动适用于确定性 Flow ODE：固定当前点后的确定性转移是 Dirac 分布，不能直接套用非退化 Gaussian 的密度比。实际训练还需要环境反馈、完整采样记录、对应的旧策略快照，以及明确的噪声方差和优势估计协议；修改采样方差或概率计算方式会改变估计的含义。阅读 [DPPO 官方实现](https://github.com/irom-princeton/dppo) 时应一起核对这些配置，而不是只移植一个 ratio 表达式。",
+          "策略梯度把执行结果转成动作分布的更新信号。估计器、基线、动作密度、采样来源与策略版本共同决定这份信号是否对应原目标；单步数值检查与完整多步训练应据此分开评价。"
+        ],
+        "id": "9",
+        "lead": "局部梯度正确只是奖励驱动后训练的起点，还需要采样、优势估计和执行共同使用一致的语义。把这些接口接回动作块和生成模型，可以识别哪些基础估计能够直接沿用，哪些需要新的概率目标。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "categorical logits",
+        "shape": "[B,A]",
+        "meaning": "每个样本的离散动作分布参数"
+      },
+      {
+        "name": "Gaussian mean / `log_std`",
+        "shape": "[B,D] / [D] 或 [B,D]",
+        "meaning": "连续动作每维均值与对数标准差"
+      },
+      {
+        "name": "joint `log_prob` / advantage",
+        "shape": "[B]",
+        "meaning": "动作轴归约后的联合对数概率及样本权重"
+      }
+    ],
+    "code": {
+      "title": "一步合成任务中的 actor 与独立 critic",
+      "source": "import torch\nfrom torch import nn\nfrom torch.distributions import Categorical\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\n\n# STEP 1: 观测正负决定哪一个离散动作得到奖励\nactor=nn.Linear(1,2)\ncritic=nn.Linear(1,1)\noptimizer=torch.optim.Adam(list(actor.parameters())+list(critic.parameters()),lr=0.03)\n\n# STEP 2: 用当前策略采样；这个一步任务中 reward=return\nfor _ in range(160):\n    obs=torch.rand(128,1)*2-1\n    distribution=Categorical(logits=actor(obs))\n    actions=distribution.sample()\n    correct=(obs[:,0]>0).long()\n    rewards=(actions==correct).float()\n    values=critic(obs).squeeze(-1)\n    advantages=rewards-values\n\n    # actor 不通过 advantage 更新 critic；critic 有自己的回归损失。\n    actor_loss=-(distribution.log_prob(actions)*advantages.detach()).mean()\n    critic_loss=(values-rewards.detach()).square().mean()\n    optimizer.zero_grad(set_to_none=True)\n    (actor_loss+0.5*critic_loss).backward()\n    optimizer.step()\n\n# STEP 3: 独立网格只用于检查合成决策，不是机器人评估\nwith torch.no_grad():\n    test_obs=torch.linspace(-1,1,101).unsqueeze(-1)\n    greedy=actor(test_obs).argmax(dim=-1)\n    accuracy=(greedy==(test_obs[:,0]>0).long()).float().mean()\nprint('synthetic greedy accuracy:',round(accuracy.item(),3))\n\n# STEP 4: 对单个正优势样本检查梯度方向\nlogits=torch.zeros(1,2,requires_grad=True)\ndist=Categorical(logits=logits)\nloss=-(dist.log_prob(torch.tensor([1]))*torch.tensor([2.])).mean()\nloss.backward()\nprint('logit gradients:',logits.grad.tolist())\ntorch.testing.assert_close(logits.grad,torch.tensor([[1.,-1.]]))\nprint('Gradient descent increases the positive-advantage action logit.')\n",
+      "explanations": [
+        {
+          "lines": "8–12",
+          "text": "这是一步、二动作的合成环境，避免回报长度和复杂动力学遮住概率更新本身。"
+        },
+        {
+          "lines": "13–29",
+          "text": "动作由当前分布采样。actor 使用 detached advantage；critic 通过独立损失学习奖励期望，不通过 actor 乘积取巧。"
+        },
+        {
+          "lines": "30–36",
+          "text": "额外网格只检验这个小任务的决策趋势。真实机器人还涉及连续动作、约束、部分观测和多步反馈。"
+        },
+        {
+          "lines": "37–44",
+          "text": "正优势动作 1 的 logit 梯度为负，梯度下降会增大它。直接看这个符号比记忆损失前面的负号更可靠。"
+        }
+      ],
+      "expected": "单样本梯度检查得到 [[1,-1]]，合成分类决策逐渐学习观测符号。这个示例不是完整 actor-critic 控制算法或真实 VLA 后训练配方。"
+    },
+    "exercise": {
+      "title": "检查正负优势会怎样改变动作概率",
+      "prompt": "实现 `categorical_logit_gradient(probabilities,chosen,advantage)`，返回损失 \\(-A\\log p(\\mathrm{chosen})\\) 对 logits 的梯度。输入概率应非负且和为 1，chosen 合法。",
+      "runtime": "python",
+      "starter": "import math\n\ndef categorical_logit_gradient(probabilities,chosen,advantage):\n    # TODO: 使用 softmax 对数概率的导数\n    raise NotImplementedError\n",
+      "solution": "import math\n\ndef categorical_logit_gradient(probabilities,chosen,advantage):\n    if not probabilities or not 0<=chosen<len(probabilities):\n        raise ValueError('invalid action')\n    if any(p<0 or not math.isfinite(p) for p in probabilities) or not math.isclose(sum(probabilities),1.0):\n        raise ValueError('invalid distribution')\n    return [advantage*(p-(1.0 if j==chosen else 0.0)) for j,p in enumerate(probabilities)]\n",
+      "tests": "assert categorical_logit_gradient([0.5,0.5],1,2.0)==[1.0,-1.0]\nassert categorical_logit_gradient([0.5,0.5],1,-2.0)==[-1.0,1.0]\ng=categorical_logit_gradient([0.2,0.3,0.5],2,1.)\nassert abs(sum(g))<1e-12 and g[2]<0\nprint('正优势增大动作概率，负优势减小动作概率；梯度方向检查通过。')\n",
+      "hints": [
+        "\\(-\\log\\operatorname{softmax}\\) 的导数是 \\(p-\\operatorname{one\\_hot}(a)\\)。",
+        "梯度下降减去梯度，所以选中动作的负梯度会提高它的 logit。"
+      ],
+      "explanation": "优势是这个交叉熵式梯度的带符号权重。正优势和负优势方向相反，零优势不贡献此项更新。概率为零时真实 `log_prob` 有边界问题；本练习给出的是 softmax 有限 logits 情况下导数公式的计算。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 `gaussian_actor_loss(mu,log_std,actions,advantages)`。mu/actions 为 `[B,D]`，`log_std` 为 [D] 或 `[B,D]`，advantages 为 `[B]`。`log_std` clamp 到 [−5,2]，对动作轴求和；停止 action 与 advantage 的梯度，仅实现未压缩对角 Gaussian 的 score-function 损失。",
+      "starter": "import torch\nfrom torch.distributions import Normal\n\ndef gaussian_actor_loss(mu,log_std,actions,advantages):\n    # TODO: 正标准差、联合 log_prob、正确的梯度边界\n    raise NotImplementedError\n",
+      "solution": "import torch\nfrom torch.distributions import Normal\n\ndef gaussian_actor_loss(mu,log_std,actions,advantages):\n    if mu.ndim!=2 or actions.shape!=mu.shape or advantages.shape!=(len(mu),):\n        raise ValueError('shape mismatch')\n    if log_std.shape not in ((mu.shape[1],),mu.shape):\n        raise ValueError('invalid log_std shape')\n    std=log_std.clamp(-5.,2.).exp()\n    distribution=Normal(mu,std)\n    joint_log_prob=distribution.log_prob(actions.detach()).sum(dim=-1)\n    return -(joint_log_prob*advantages.detach()).mean()\n",
+      "tests": "mu=torch.zeros(1,2,requires_grad=True)\nlog_std=torch.zeros(2,requires_grad=True)\nactions=torch.tensor([[1.,-2.]],requires_grad=True)\nadvantages=torch.tensor([2.],requires_grad=True)\nloss=gaussian_actor_loss(mu,log_std,actions,advantages)\nloss.backward()\ntorch.testing.assert_close(mu.grad,torch.tensor([[-2.,4.]]))\nassert log_std.grad is not None\nassert actions.grad is None and advantages.grad is None\n# rsample 的路径必须停止，才能得到这里声明的 score-function 项。\ntorch.manual_seed(4)\nm=torch.zeros(1,requires_grad=True)\nd=Normal(m,torch.ones(1))\na=d.rsample()\nbad=torch.autograd.grad(-d.log_prob(a).sum(),m,retain_graph=True)[0]\ngood=torch.autograd.grad(-d.log_prob(a.detach()).sum(),m)[0]\ntorch.testing.assert_close(bad,torch.zeros_like(bad))\nassert good.abs().item()>1e-6\nprint('动作轴求和、可学习方差和 sample/rsample 梯度边界检查通过。')\n",
+      "hints": [
+        "`Normal.log_prob` 返回 `[B,D]`；只沿 `dim=-1` 求和后才能与 `[B]` 优势逐样本相乘。",
+        "`actions.detach()` 防止 `rsample` 的路径改变 score-function 估计；advantages.`detach`() 阻止 actor 乘积训练基线。"
+      ],
+      "explanation": "对角独立分布的联合 `log_prob` 是各动作维的和。`log_std` 保证标准差正值，clamp 是本题明确的数值约定，范围外梯度会为零。actions 的路径应停止以实现此处估计；依赖可微 Q 的重参数化 actor 目标则可能有意保留。tanh 压缩或动作裁剪需要另行处理密度，不能直接使用本函数宣称正确。"
+    },
+    "pitfalls": [
+      {
+        "title": "将 reward 当动作回归标签",
+        "detail": "收益用于调整动作概率或价值目标，维度和语义与动作监督不同。先写明 J 与实际梯度估计。"
+      },
+      {
+        "title": "actor 经 advantage 反向修改 critic",
+        "detail": "普通 score-function 将优势作为固定权重。分开 actor/critic 的损失与梯度路径，检查共享模块的更新来源。"
+      },
+      {
+        "title": "对 log_prob 的 Batch 与动作维一起平均",
+        "detail": "事件维应形成联合 `log_prob`，再对样本归约；PPO 比率尤其依赖正确联合密度。"
+      },
+      {
+        "title": "rsample 一定比 sample 更适合所有策略梯度",
+        "detail": "是否需要动作路径取决于估计式。固定样本 score-function 需阻断该路径，pathwise 方法则有不同目标。"
+      },
+      {
+        "title": "clip 后仍使用原 Gaussian 的执行动作密度",
+        "detail": "裁剪或 tanh 会改变分布。按变换定义概率，并检查边界与 Jacobian；未压缩练习不覆盖这些情况。"
+      },
+      {
+        "title": "PPO 裁剪保证所有更新都安全且改善回报",
+        "detail": "裁剪 surrogate 不构成全局 KL 或性能保证。监控策略变化、价值误差和独立闭环结果。"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "基线只输入状态且已经 `detach`，为什么仍不能断言 actor 梯度无偏？",
+        "answer": [
+          "`detach` 只停止自动微分路径。如果基线用当前样本自己的回报计算或拟合，其数值仍可能依赖当前动作。N 个独立一步样本使用同批回报均值，会把梯度期望乘以 \\(1-1/N\\)；\\(N=1\\) 时更新为零。",
+          "零期望抵消需要给定状态后的相应独立性与分布条件。独立数据训练的状态基线，或在上述独立样本例子中的 leave-one-out 基线，可以满足该条件；整段轨迹中相关样本需要重新分析。"
+        ],
+        "codeFocus": "穷举两次 Bernoulli 抽样，比较无基线、同批均值和 leave-one-out。",
+        "acceptance": [
+          "区分计算图依赖与抽样依赖。",
+          "推导或复核 \\(1-1/N\\) 因子。"
+        ]
+      },
+      {
+        "question": "Normal 的 `sample` 与 `rsample` 对策略梯度有什么区别？为什么连续动作 `log_prob` 要求和？",
+        "answer": [
+          "`sample` 不携带采样路径梯度，适合把动作当固定样本的 score-function 更新。`rsample` 将动作表示为 `mu+std*epsilon`；若未经 `detach` 计算同一个 Normal 的 `log_prob`，总导数可能抵消均值的 score 项。若目标通过可微 Q 对动作求导，保留这条路径可能正是算法需要的。",
+          "对角 Gaussian 各动作维独立，联合密度是乘积，所以联合 `log_prob` 沿动作轴求和。可学习 `log_std` 通过 exp 得到正标准差，限制范围有数值与梯度代价；tanh 变换需要 Jacobian 修正。要先写清估计目标和动作变换，不能只看张量形状。"
+        ],
+        "codeFocus": "`gaussian_actor_loss` 的 `sum(-1)`、`actions.detach()` 与测试中的 bad/good 梯度。",
+        "acceptance": [
+          "解释 score-function 与路径梯度的区别。",
+          "说明动作轴求和、`log_std` 与变换密度边界。"
+        ]
+      },
+      {
+        "question": "给旧轨迹每步乘 \\(\\pi_{\\mathrm{new}}/\\pi_{\\mathrm{old}}\\)，为什么不等于获得任意新策略的无偏梯度？",
+        "answer": [
+          "单步比率在固定状态下校正动作分布，状态访问频率仍由旧策略产生。新策略会改变未来状态；完整轨迹校正涉及多步比率与支持覆盖，且可能有很大方差。",
+          "PPO 固定旧数据与优势来构造近邻 surrogate，再通过裁剪改变样本激励。它需要匹配动作变换与联合 `log_prob`，并控制数据陈旧程度；不能把 clip 解释为严格限制所有状态 KL 的保证。"
+        ],
+        "codeFocus": "`log_prob_old` 的策略版本、同一动作的事件维归约与 rollout 状态来源。",
+        "acceptance": [
+          "说明单步比率没有改变旧状态分布。",
+          "区分 surrogate 与完整新策略目标。"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "title": "Spinning Up：策略梯度推导、基线与代码",
+        "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html"
+      },
+      {
+        "title": "PyTorch distributions：sample、rsample 与 log_prob",
+        "url": "https://docs.pytorch.org/docs/stable/distributions.html"
+      },
+      {
+        "title": "Spinning Up：Vanilla Policy Gradient",
+        "url": "https://spinningup.openai.com/en/latest/algorithms/vpg.html"
+      },
+      {
+        "title": "Schulman et al. · PPO 原论文",
+        "url": "https://arxiv.org/abs/1707.06347"
+      },
+      {
+        "title": "Greensmith et al. · 策略梯度中的基线与方差",
+        "url": "https://www.jmlr.org/papers/v5/greensmith04a.html"
+      },
+      {
+        "title": "Ren et al. · DPPO（2409.00588v3 / ICLR 2025）：扩展去噪 MDP 与逐步概率",
+        "url": "https://arxiv.org/abs/2409.00588v3"
+      },
+      {
+        "title": "DPPO 官方实现：Diffusion Policy 的 PPO 后训练",
+        "url": "https://github.com/irom-princeton/dppo"
+      }
+    ],
+    "keyPoints": [
+      "策略梯度使用动作得到的收益调整动作概率，不是把高收益标量当动作标签回归。",
+      "score-function actor 损失对动作样本和优势停止梯度；critic 使用自己的目标训练。",
+      "对角 Gaussian 的联合 `log_prob` 沿动作维求和，连续密度与离散概率不可混淆。",
+      "`sample` 与 `rsample` 对应不同梯度估计；PPO 的旧策略比率与裁剪需要匹配实际采集分布。"
+    ],
+    "lead": "策略梯度是直接对策略参数求期望回报梯度、据此改进动作分布的方法。常见估计用采样动作的对数概率梯度，乘以回报或优势，让结果较好的动作更可能被选择；它不要求真实环境可微。本章先推导这种估计，再定义基线、连续动作密度与采样梯度，最后连接重要性比率和 PPO 的局部代理目标。"
+  },
+  {
+    "id": "ppo",
+    "number": 44,
+    "module": "posttraining",
+    "title": "在线强化学习：PPO 裁剪目标与双网络训练",
+    "subtitle": "围绕在线强化学习：PPO 裁剪目标与双网络训练，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 90,
+    "tags": [
+      "Policy Gradient",
+      "Advantage",
+      "Gaussian",
+      "`log_prob`",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "policy-gradient"
+    ],
+    "objectives": [
+      "读写最小 score-function 策略梯度损失并判断更新方向",
+      "区分价值基线的独立训练与 actor 中的梯度阻断",
+      "实现对角 Gaussian 的联合 `log_prob`，解释 `sample` 与 `rsample` 的适用目标"
+    ],
+    "why": "策略梯度用回报给动作的 `log_prob` 梯度加权。无偏性取决于采样分布和基线依赖关系；自动微分还必须保留与估计式一致的路径。",
+    "sections": [
+      {
+        "id": "ppo-rollout",
+        "title": "从 on-policy rollout 到 PPO 更新",
+        "lead": "PPO 使用旧策略采集的数据构造局部代理目标，并在多个 epoch 中更新策略与价值网络。",
+        "body": [
+          "每条样本至少保存 observation、action、old_log_prob、reward、terminated/truncated、value 和必要的 mask。",
+          "先计算 return 与 advantage，再固定 rollout 数据和 old_log_prob；更新期间新策略重新计算同一动作的 log_prob。",
+          "连续动作要对动作事件维求和；动作经过 tanh 或其他变换时，old/new log_prob 必须使用一致的密度定义。"
+        ]
+      },
+      {
+        "title": "重要性比率校正了动作，是否也校正了状态",
+        "body": [
+          "固定同一个状态 s，若行为策略 \\(\\mu\\) 在 \\(\\pi_\\theta\\) 可能采到的动作上都有正概率，\\(\\rho(a,s)=\\pi_\\theta(a\\mid s)/\\mu(a\\mid s)\\) 可以把 \\(\\mathbb E_{a\\sim\\mu}[\\rho f(s,a)]\\) 改写成 \\(\\mathbb E_{a\\sim\\pi_\\theta}[f(s,a)]\\)。这一步只改变给定状态下的动作测度；若状态仍来自旧策略 \\(d_\\mu\\)，它没有自动变成当前策略的访问分布 \\(d_{\\pi_\\theta}\\)。",
+          "在有限轨迹上，若初始分布与环境动力学相同且有支持覆盖，整条轨迹的重要性比率是各步策略比率的乘积。它可以形式上校正轨迹分布，但连乘会使方差很大；逐决策校正、价值函数方法等有各自目标与条件，不能把任意一个单步 ratio 当成完整修复。",
+          "PPO 的常见 surrogate 固定旧策略采集的状态与优势，在其附近优化新动作概率；它不是任意新策略完整回报梯度的精确无偏估计。裁剪进一步有意改变目标，限制某些样本继续推动概率的激励。旧策略覆盖不足、更新过大或错误的动作 `log_prob`，都不能由一个 clip 自动解决。"
+        ],
+        "formula": "\\mathbb E_{s\\sim d_\\mu,a\\sim\\mu}[\\rho f]=\\mathbb E_{s\\sim d_\\mu,a\\sim\\pi_\\theta}[f],\\qquad \\frac{p_{\\pi_\\theta}(\\tau)}{p_\\mu(\\tau)}=\\prod_t\\frac{\\pi_\\theta(a_t\\mid s_t)}{\\mu(a_t\\mid s_t)}",
+        "id": "ppo-1",
+        "lead": "重要性比率是目标分布密度与采样分布密度的比，用来对已有样本重新加权。动作条件分布的校正不自动校正访问状态的分布。先明确期望针对哪些随机变量，再判断比率修正了什么。"
+      },
+      {
+        "title": "PPO 的比率、裁剪与旧策略快照",
+        "body": [
+          "PPO 常保存采集数据时旧策略的 `log_prob`，训练时计算 \\(r=\\exp(\\log\\pi_{\\mathrm{new}}-\\log\\pi_{\\mathrm{old}})\\)，再使用带裁剪的 surrogate objective。旧 `log_prob` 应对应同一个动作、状态、事件维归约和动作变换，并在优化期间作为固定值。它表示行为策略快照，不等于某个长期固定的参考模型或监督数据策略。 下式的裁剪 surrogate 是要最大化的目标；若用梯度下降实现 actor loss，应对它取负，再按约定加入价值与熵项。",
+          "对正优势，过大的比率不再增加裁剪目标；对负优势，过小比率同样被限制额外收益。这里取 min 的分支需要结合优势符号理解，不能把所有 ratio 无条件 clamp 后就认为等价。裁剪只改变这个样本目标的激励，并不严格保证所有状态下的 KL 或策略变化都在固定范围内。",
+          "多轮小批更新还需监控 KL、clip fraction、熵、critic 误差与真实回报，防止数据很快偏离当前策略。完整 PPO 包含 rollout、优势估计、边界处理与优化协议，不能仅靠一个 ratio 公式成为完整后训练方法。特别是生成式动作模型，普通去噪或 FM MSE 不自动提供 PPO 所需的精确动作 `log_prob`。"
+        ],
+        "formula": "L_{\\rm clip}=\\mathbb E\\left[\\min\\left(r\\hat A,\\operatorname{clip}(r,1-\\epsilon,1+\\epsilon)\\hat A\\right)\\right],\\qquad r=e^{\\log\\pi_\\theta-\\log\\pi_{\\rm old}}",
+        "id": "ppo-2",
+        "lead": "PPO（近端策略优化）使用旧策略采样的数据、动作概率比率和裁剪代理目标来训练新策略。裁剪改变过大比率带来的优化激励，并非硬性保证策略变化不超过某个范围。下面将目标与旧策略快照逐项对应。",
+        "comparison": {
+          "title": "裁剪分支随优势符号改变",
+          "columns": [
+            "优势",
+            "比率（裁剪范围 0.8～1.2）",
+            "被选择的目标",
+            "对比率的局部导数"
+          ],
+          "rows": [
+            [
+              "+1",
+              "1.3",
+              "1.2",
+              "0"
+            ],
+            [
+              "+1",
+              "0.7",
+              "0.7",
+              "+1"
+            ],
+            [
+              "−1",
+              "1.3",
+              "−1.3",
+              "−1"
+            ],
+            [
+              "−1",
+              "0.7",
+              "−0.8",
+              "0"
+            ]
+          ]
+        },
+        "example": {
+          "title": "正负优势下，PPO 的 min 选择不同分支",
+          "afterParagraph": 2,
+          "steps": [
+            "取裁剪幅度 ε=0.2，并讨论要最大化的单样本代理目标。若优势 A=2、比率 r=1.4，未裁剪项为 2.8，裁剪项为 \\(1.2\\times2=2.4\\)，min 取 2.4；继续提高这个比率不再增加该项收益。",
+            "若优势 A=−2、比率 r=0.6，未裁剪项为 −1.2，裁剪项为 \\(0.8\\times(-2)=-1.6\\)，min 取 −1.6；把已不受欢迎动作的概率继续压低，也不再从该项获得额外收益。",
+            "但 A=−2、r=1.4 时，min 取 −2.8，惩罚仍随比率变化；不能无条件把所有比率先 clamp，再只计算那一个乘积。梯度下降实现还要对上述代理目标取负。"
+          ],
+          "conclusion": "裁剪改变单样本的优化激励，不是对所有状态、参数更新或策略 KL 的硬性范围保证。"
+        }
+      },
+      {
+        "title": "从单步检查到完整后训练",
+        "body": [
+          "完整示例在一步合成任务上分别训练 actor 与 critic，并用解析 logit 梯度核对方向。扩展到多步环境时，需要接通回报、终止/截断、bootstrap 和策略版本，才能分析长时信用分配。",
+          "局部检查覆盖四件事：正负优势方向、动作维 `log_prob` 归约、优势与动作样本的梯度路径、采样策略身份。多回合表现还依赖评价协议；单独的 actor loss 无法区分策略改善、概率塌缩、基线变化和目标尺度变化。",
+          "对于 VLA 的奖励驱动后训练，还要定义一次动作决策覆盖多少控制步、动作序列概率怎样计算、环境回报怎样分配以及旧数据如何复用。确定性 ODE 生成仍含初始噪声的随机性，但要得到密度或可用的替代优化目标，需要另外的数学与实现。先把基础估计器边界弄清楚，才能可靠阅读这些方法。",
+          "一个具体连接是 [DPPO：Diffusion Policy Policy Optimization（2024，ICLR 2025）](https://arxiv.org/abs/2409.00588v3)。它把环境决策和内部去噪组织为两层扩展 MDP：当前环境状态、带噪动作与去噪步共同确定内部决策，下一次去噪结果作为内部动作；只有最终结果被执行时，环境才推进并产生任务奖励。在采用正方差的高斯反向转移时，每一步的条件 `log_prob` 可解析计算。保存旧策略生成的去噪链后，就能在相应扩展状态上构造新旧概率比，并用环境回报形成优势，将前面的 PPO 机制用于扩散策略后训练。",
+          "这里计算的是给定当前带噪动作与条件后的下一步概率，不是把所有中间潜变量积分掉之后的最终动作边缘密度。因此它既没有将负去噪 MSE 直接当作最终动作 `log_prob`，也不自动适用于确定性 Flow ODE：固定当前点后的确定性转移是 Dirac 分布，不能直接套用非退化 Gaussian 的密度比。实际训练还需要环境反馈、完整采样记录、对应的旧策略快照，以及明确的噪声方差和优势估计协议；修改采样方差或概率计算方式会改变估计的含义。阅读 [DPPO 官方实现](https://github.com/irom-princeton/dppo) 时应一起核对这些配置，而不是只移植一个 ratio 表达式。",
+          "策略梯度把执行结果转成动作分布的更新信号。估计器、基线、动作密度、采样来源与策略版本共同决定这份信号是否对应原目标；单步数值检查与完整多步训练应据此分开评价。"
+        ],
+        "id": "ppo-3",
+        "lead": "局部梯度正确只是奖励驱动后训练的起点，还需要采样、优势估计和执行共同使用一致的语义。把这些接口接回动作块和生成模型，可以识别哪些基础估计能够直接沿用，哪些需要新的概率目标。"
+      },
+      {
+        "id": "ppo-training-loop",
+        "title": "双网络训练与诊断",
+        "lead": "Actor 优化策略代理目标，Critic 回归价值目标；两者可以共享特征骨干，但梯度来源必须明确。",
+        "body": [
+          "每轮 rollout 后执行若干 epoch 的小批更新，按 minibatch 计算 policy loss、value loss 和 entropy bonus。",
+          "记录 approximate KL、clip fraction、entropy、value loss、explained variance 和环境回报。",
+          "PPO clipping 不保证全局 KL 上界，也不保证单调提升；需要 early stopping 与独立评估。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "categorical logits",
+        "shape": "[B,A]",
+        "meaning": "每个样本的离散动作分布参数"
+      },
+      {
+        "name": "Gaussian mean / `log_std`",
+        "shape": "[B,D] / [D] 或 [B,D]",
+        "meaning": "连续动作每维均值与对数标准差"
+      },
+      {
+        "name": "joint `log_prob` / advantage",
+        "shape": "[B]",
+        "meaning": "动作轴归约后的联合对数概率及样本权重"
+      }
+    ],
+    "code": {
+      "title": "PPO clipped objective 的最小实现",
+      "source": "import torch\n\ndef ppo_actor_loss(new_logp, old_logp, advantage, eps=0.2):\n    ratio = (new_logp - old_logp).exp()\n    raw = ratio * advantage\n    clipped = ratio.clamp(1-eps, 1+eps) * advantage\n    return -torch.minimum(raw, clipped).mean()\n\nnew=torch.tensor([0.2,-0.3],requires_grad=True)\nold=torch.tensor([0.0,-0.2])\nadv=torch.tensor([1.0,-1.0])\nloss=ppo_actor_loss(new,old,adv); loss.backward()\nassert torch.isfinite(loss) and torch.isfinite(new.grad).all()\nprint('loss',loss.item(),'grad',new.grad) ",
+      "explanations": [
+        {
+          "lines": "1–7",
+          "text": "ratio 由新旧策略对同一动作的联合 log_prob 差取指数得到。"
+        }
+      ],
+      "expected": "损失有限且梯度可计算。"
+    },
+    "exercise": {
+      "title": "手写 PPO clipped surrogate",
+      "prompt": "实现 ppo_surrogate(ratio, advantage, eps)，返回最大化目标的单样本平均值；ratio 与 advantage 等长。",
+      "runtime": "python",
+      "starter": "def ppo_surrogate(ratios, advantages, eps=0.2):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "def ppo_surrogate(ratios,advantages,eps=0.2):\n    if len(ratios)!=len(advantages) or not ratios or eps<0: raise ValueError('invalid inputs')\n    values=[]\n    for r,a in zip(ratios,advantages):\n        clipped=max(1-eps,min(1+eps,r))\n        values.append(min(r*a,clipped*a))\n    return sum(values)/len(values)\n",
+      "tests": "assert abs(ppo_surrogate([1.5],[2.0],0.2)-2.4)<1e-12\nassert abs(ppo_surrogate([0.5],[-2.0],0.2)-(-1.6))<1e-12\nassert abs(ppo_surrogate([1.0],[1.0]))<1e-12 or ppo_surrogate([1.0],[1.0])==1.0\nprint('PPO clipping branches passed')\n",
+      "hints": [
+        "分别计算 ratio*A 与 clip(ratio)*A。",
+        "取 min 之前先乘优势；优势为负时分支会改变。"
+      ],
+      "explanation": "这是要最大化的 surrogate，不是梯度下降使用的负损失；完整 PPO 还需要 rollout、GAE、critic 与策略版本管理。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 GAE：输入 rewards、values、dones 均为 [T]，从末端反向递推优势；done 为 True 时不跨终止边界 bootstrap。",
+      "starter": "import torch\ndef compute_gae(rewards, values, dones, gamma=0.99, lam=0.95, last_value=0.0):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "import torch\ndef compute_gae(rewards,values,dones,gamma=0.99,lam=0.95,last_value=0.0):\n    if rewards.ndim!=1 or values.shape!=rewards.shape or dones.shape!=rewards.shape: raise ValueError('shape mismatch')\n    adv=torch.zeros_like(rewards); running=torch.as_tensor(last_value,dtype=values.dtype,device=values.device)\n    for t in reversed(range(len(rewards))):\n        nonterminal=(~dones[t]).to(values.dtype)\n        next_value=running if t==len(rewards)-1 else values[t+1]\n        delta=rewards[t]+gamma*next_value*nonterminal-values[t]\n        running=delta+gamma*lam*nonterminal*running\n        adv[t]=running\n    return adv,adv+values\n",
+      "tests": "r=torch.tensor([1.,1.]); v=torch.tensor([0.5,0.5]); d=torch.tensor([False,True])\na,ret=compute_gae(r,v,d,gamma=1.,lam=1.)\ntorch.testing.assert_close(a,torch.tensor([1.5,0.5]))\ntorch.testing.assert_close(ret,torch.tensor([2.,1.]))\nprint('GAE terminal-boundary test passed')\n",
+      "hints": [
+        "TD residual 是 r_t + gamma * V_{t+1} * (1-done) - V_t。",
+        "GAE 递推也要乘 (1-done)，避免优势穿过终止边界。"
+      ],
+      "explanation": "本实现使用 dones 表示真正终止；时间截断需要单独保留 bootstrap value，不能与 terminal 混为一谈。"
+    },
+    "pitfalls": [
+      {
+        "title": "将 reward 当动作回归标签",
+        "detail": "收益用于调整动作概率或价值目标，维度和语义与动作监督不同。先写明 J 与实际梯度估计。"
+      },
+      {
+        "title": "actor 经 advantage 反向修改 critic",
+        "detail": "普通 score-function 将优势作为固定权重。分开 actor/critic 的损失与梯度路径，检查共享模块的更新来源。"
+      },
+      {
+        "title": "对 log_prob 的 Batch 与动作维一起平均",
+        "detail": "事件维应形成联合 `log_prob`，再对样本归约；PPO 比率尤其依赖正确联合密度。"
+      },
+      {
+        "title": "rsample 一定比 sample 更适合所有策略梯度",
+        "detail": "是否需要动作路径取决于估计式。固定样本 score-function 需阻断该路径，pathwise 方法则有不同目标。"
+      },
+      {
+        "title": "clip 后仍使用原 Gaussian 的执行动作密度",
+        "detail": "裁剪或 tanh 会改变分布。按变换定义概率，并检查边界与 Jacobian；未压缩练习不覆盖这些情况。"
+      },
+      {
+        "title": "PPO 裁剪保证所有更新都安全且改善回报",
+        "detail": "裁剪 surrogate 不构成全局 KL 或性能保证。监控策略变化、价值误差和独立闭环结果。"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "基线只输入状态且已经 `detach`，为什么仍不能断言 actor 梯度无偏？",
+        "answer": [
+          "`detach` 只停止自动微分路径。如果基线用当前样本自己的回报计算或拟合，其数值仍可能依赖当前动作。N 个独立一步样本使用同批回报均值，会把梯度期望乘以 \\(1-1/N\\)；\\(N=1\\) 时更新为零。",
+          "零期望抵消需要给定状态后的相应独立性与分布条件。独立数据训练的状态基线，或在上述独立样本例子中的 leave-one-out 基线，可以满足该条件；整段轨迹中相关样本需要重新分析。"
+        ],
+        "codeFocus": "穷举两次 Bernoulli 抽样，比较无基线、同批均值和 leave-one-out。",
+        "acceptance": [
+          "区分计算图依赖与抽样依赖。",
+          "推导或复核 \\(1-1/N\\) 因子。"
+        ]
+      },
+      {
+        "question": "Normal 的 `sample` 与 `rsample` 对策略梯度有什么区别？为什么连续动作 `log_prob` 要求和？",
+        "answer": [
+          "`sample` 不携带采样路径梯度，适合把动作当固定样本的 score-function 更新。`rsample` 将动作表示为 `mu+std*epsilon`；若未经 `detach` 计算同一个 Normal 的 `log_prob`，总导数可能抵消均值的 score 项。若目标通过可微 Q 对动作求导，保留这条路径可能正是算法需要的。",
+          "对角 Gaussian 各动作维独立，联合密度是乘积，所以联合 `log_prob` 沿动作轴求和。可学习 `log_std` 通过 exp 得到正标准差，限制范围有数值与梯度代价；tanh 变换需要 Jacobian 修正。要先写清估计目标和动作变换，不能只看张量形状。"
+        ],
+        "codeFocus": "`gaussian_actor_loss` 的 `sum(-1)`、`actions.detach()` 与测试中的 bad/good 梯度。",
+        "acceptance": [
+          "解释 score-function 与路径梯度的区别。",
+          "说明动作轴求和、`log_std` 与变换密度边界。"
+        ]
+      },
+      {
+        "question": "给旧轨迹每步乘 \\(\\pi_{\\mathrm{new}}/\\pi_{\\mathrm{old}}\\)，为什么不等于获得任意新策略的无偏梯度？",
+        "answer": [
+          "单步比率在固定状态下校正动作分布，状态访问频率仍由旧策略产生。新策略会改变未来状态；完整轨迹校正涉及多步比率与支持覆盖，且可能有很大方差。",
+          "PPO 固定旧数据与优势来构造近邻 surrogate，再通过裁剪改变样本激励。它需要匹配动作变换与联合 `log_prob`，并控制数据陈旧程度；不能把 clip 解释为严格限制所有状态 KL 的保证。"
+        ],
+        "codeFocus": "`log_prob_old` 的策略版本、同一动作的事件维归约与 rollout 状态来源。",
+        "acceptance": [
+          "说明单步比率没有改变旧状态分布。",
+          "区分 surrogate 与完整新策略目标。"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "title": "Spinning Up：策略梯度推导、基线与代码",
+        "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html"
+      },
+      {
+        "title": "PyTorch distributions：sample、rsample 与 log_prob",
+        "url": "https://docs.pytorch.org/docs/stable/distributions.html"
+      },
+      {
+        "title": "Spinning Up：Vanilla Policy Gradient",
+        "url": "https://spinningup.openai.com/en/latest/algorithms/vpg.html"
+      },
+      {
+        "title": "Schulman et al. · PPO 原论文",
+        "url": "https://arxiv.org/abs/1707.06347"
+      },
+      {
+        "title": "Greensmith et al. · 策略梯度中的基线与方差",
+        "url": "https://www.jmlr.org/papers/v5/greensmith04a.html"
+      },
+      {
+        "title": "Ren et al. · DPPO（2409.00588v3 / ICLR 2025）：扩展去噪 MDP 与逐步概率",
+        "url": "https://arxiv.org/abs/2409.00588v3"
+      },
+      {
+        "title": "DPPO 官方实现：Diffusion Policy 的 PPO 后训练",
+        "url": "https://github.com/irom-princeton/dppo"
+      }
+    ],
+    "keyPoints": [
+      "策略梯度使用动作得到的收益调整动作概率，不是把高收益标量当动作标签回归。",
+      "score-function actor 损失对动作样本和优势停止梯度；critic 使用自己的目标训练。",
+      "对角 Gaussian 的联合 `log_prob` 沿动作维求和，连续密度与离散概率不可混淆。",
+      "`sample` 与 `rsample` 对应不同梯度估计；PPO 的旧策略比率与裁剪需要匹配实际采集分布。"
+    ],
+    "lead": "策略梯度是直接对策略参数求期望回报梯度、据此改进动作分布的方法。常见估计用采样动作的对数概率梯度，乘以回报或优势，让结果较好的动作更可能被选择；它不要求真实环境可微。本章先推导这种估计，再定义基线、连续动作密度与采样梯度，最后连接重要性比率和 PPO 的局部代理目标。"
+  },
+  {
+    "id": "dpo-grpo",
+    "number": 44,
+    "module": "posttraining",
+    "title": "大模型与 VLA 后训练：DPO 与 GRPO 组内相对优势",
+    "subtitle": "围绕大模型与 VLA 后训练：DPO 与 GRPO 组内相对优势，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 90,
+    "tags": [
+      "Policy Gradient",
+      "Advantage",
+      "Gaussian",
+      "`log_prob`",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "lora",
+      "policy-gradient"
+    ],
+    "objectives": [
+      "读写最小 score-function 策略梯度损失并判断更新方向",
+      "区分价值基线的独立训练与 actor 中的梯度阻断",
+      "实现对角 Gaussian 的联合 `log_prob`，解释 `sample` 与 `rsample` 的适用目标"
+    ],
+    "why": "策略梯度用回报给动作的 `log_prob` 梯度加权。无偏性取决于采样分布和基线依赖关系；自动微分还必须保留与估计式一致的路径。",
+    "sections": [
+      {
+        "id": "dpo-pairs",
+        "title": "偏好对与 DPO 目标",
+        "lead": "DPO 将偏好排序转成策略相对参考模型的隐式奖励差，不需要显式训练独立奖励模型。",
+        "body": [
+          "一个偏好样本包含 prompt、chosen completion 与 rejected completion。策略分别计算两个 completion 的条件 log probability。",
+          "隐式奖励与策略相对 reference 的 log-ratio 成正比，DPO 对偏好对的奖励差使用 sigmoid 二元分类目标。",
+          "序列 log probability 通常按有效 token 求和；长度归一化是另一个目标选择，必须与论文及实现配置一致。"
+        ],
+        "formula": "L_{DPO}=-\\log\\sigma\\left(\\beta\\left[\\log\\frac{\\pi_\\theta(y_w|x)}{\\pi_{ref}(y_w|x)}-\\log\\frac{\\pi_\\theta(y_l|x)}{\\pi_{ref}(y_l|x)}\\right]\\right)"
+      },
+      {
+        "id": "dpo-reference",
+        "title": "参考策略、β 与 KL 约束",
+        "lead": "参考策略定义偏好优化的相对基准，β 控制隐式奖励差的尺度。",
+        "body": [
+          "reference 通常冻结，策略模型可训练；两者必须使用一致 tokenizer、mask 和序列 log_prob 约定。",
+          "β 越大，给定 log-ratio 差对偏好分类的影响越强；它并非直接等同于实际测得的 KL。",
+          "训练监控应包括 chosen/rejected log-ratio、偏好准确率、reference KL 与输出长度。"
+        ]
+      },
+      {
+        "id": "grpo-group",
+        "title": "GRPO 的组内相对优势",
+        "lead": "GRPO 对同一 prompt 采样多个 completion，以组内奖励统计构造相对优势，弱化对独立价值模型的依赖。",
+        "body": [
+          "对同一 prompt 采样 G 个 completion，分别计算可验证奖励或奖励模型分数。",
+          "常见组内标准化优势为 (r_i-mean(r))/(std(r)+epsilon)，同组奖励相同或方差极小时需要处理退化情况。",
+          "策略更新仍需明确旧策略概率比、clip、KL 项、token mask 与 completion 长度归约。"
+        ],
+        "formula": "A_i=\\frac{r_i-\\operatorname{mean}(r_1,\\ldots,r_G)}{\\operatorname{std}(r_1,\\ldots,r_G)+\\epsilon}"
+      },
+      {
+        "id": "grpo-boundaries",
+        "title": "DPO 与 GRPO 的适用边界",
+        "lead": "DPO 依赖成对偏好监督，GRPO 依赖同 prompt 多样本及可比较奖励；二者解决的监督条件不同。",
+        "body": [
+          "DPO 的核心训练信号来自 chosen/rejected 对比，样本质量和参考策略选择至关重要。",
+          "GRPO 的组内优势要求同 prompt 的候选可比较；奖励噪声、奖励 hacking 和组内方差会影响更新。",
+          "VLA 使用这些方法时还需定义动作序列概率、终止条件、执行时长和奖励归属，不能把语言 token 的默认实现直接视为机器人动作策略实现。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "categorical logits",
+        "shape": "[B,A]",
+        "meaning": "每个样本的离散动作分布参数"
+      },
+      {
+        "name": "Gaussian mean / `log_std`",
+        "shape": "[B,D] / [D] 或 [B,D]",
+        "meaning": "连续动作每维均值与对数标准差"
+      },
+      {
+        "name": "joint `log_prob` / advantage",
+        "shape": "[B]",
+        "meaning": "动作轴归约后的联合对数概率及样本权重"
+      }
+    ],
+    "code": {
+      "title": "DPO 与 GRPO 关键张量计算",
+      "source": "import torch\nimport torch.nn.functional as F\n\ndef dpo_loss(policy_w, policy_l, ref_w, ref_l, beta=0.1):\n    margin = beta*((policy_w-ref_w)-(policy_l-ref_l))\n    return -F.logsigmoid(margin).mean()\n\ndef group_advantage(rewards, eps=1e-6):\n    mean=rewards.mean(dim=-1,keepdim=True)\n    std=rewards.std(dim=-1,keepdim=True,unbiased=False)\n    return (rewards-mean)/(std+eps)\n\nw=torch.tensor([ -2.0, -1.0 ],requires_grad=True); l=torch.tensor([-3.0,-2.0],requires_grad=True)\nloss=dpo_loss(w,l,torch.tensor([-2.5,-2.5]),torch.tensor([-2.5,-2.5])); loss.backward()\nr=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\na=group_advantage(r)\nassert a[0,0]<0 and a[0,2]>0 and torch.isfinite(a).all()\nprint('DPO loss',loss.item(),'group advantages',a)",
+      "explanations": [
+        {
+          "lines": "1–8",
+          "text": "DPO 将 chosen 与 rejected 的策略相对 reference log-ratio 做差，再用 log-sigmoid 形成偏好损失。"
+        }
+      ],
+      "expected": "DPO 损失有限；组内较高奖励对应正优势，退化组保持有限数值。"
+    },
+    "exercise": {
+      "title": "计算偏好对的 DPO margin",
+      "prompt": "实现 DPO 的单样本损失，输入四个标量 log probability 与 beta，返回 -log sigmoid(beta * ((policy_chosen-ref_chosen)-(policy_rejected-ref_rejected)))。",
+      "runtime": "python",
+      "starter": "import math\ndef dpo_loss(pc, pr, rc, rr, beta):\n    # TODO: 稳定计算 log-sigmoid\n    raise NotImplementedError\n",
+      "solution": "import math\ndef dpo_loss(pc, pr, rc, rr, beta):\n    z=beta*((pc-rc)-(pr-rr))\n    return max(-z,0.0)+math.log1p(math.exp(-abs(z)))\n",
+      "tests": "assert abs(dpo_loss(-1.,-2.,-1.,-2.,0.1)-math.log(2))<1e-12\nassert dpo_loss(-0.5,-2.,-1.,-2.,0.1)<dpo_loss(-2.,-0.5,-1.,-2.,0.1)\nprint('DPO margin tests passed')\n",
+      "hints": [
+        "先计算策略相对 reference 的两个 log-ratio，再求差。",
+        "使用稳定 softplus 形式计算 -log sigmoid(z)。"
+      ],
+      "explanation": "本练习只覆盖 DPO 的偏好对目标，不包含完整语言模型训练、token mask 或 reference 前向缓存。"
+    },
+    "pytorchTask": {
+      "prompt": "实现组内标准化优势，输入 rewards [B,G]，按每行组内均值与总体标准差归一化。",
+      "starter": "import torch\ndef group_advantage(rewards, eps=1e-6):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "import torch\ndef group_advantage(rewards, eps=1e-6):\n    if rewards.ndim!=2 or rewards.shape[1]<2: raise ValueError('expect [B,G], G>=2')\n    mean=rewards.mean(-1,keepdim=True)\n    std=rewards.std(-1,keepdim=True,unbiased=False)\n    return (rewards-mean)/(std+eps)\n",
+      "tests": "r=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\na=group_advantage(r)\nassert a[0,0]<0<a[0,2]\nassert torch.isfinite(a).all()\ntorch.testing.assert_close(a[1],torch.zeros(3))\nprint('GRPO group advantage tests passed')\n",
+      "hints": [
+        "保持 prompt 维度，沿最后一维计算组内统计。",
+        "std 使用 unbiased=False，常量组加 epsilon 后应输出有限零值。"
+      ],
+      "explanation": "组内标准化只是 GRPO 的优势构造环节，真实算法还需要采样、策略比率、KL 与 token mask。"
+    },
+    "pitfalls": [
+      {
+        "title": "将 reward 当动作回归标签",
+        "detail": "收益用于调整动作概率或价值目标，维度和语义与动作监督不同。先写明 J 与实际梯度估计。"
+      },
+      {
+        "title": "actor 经 advantage 反向修改 critic",
+        "detail": "普通 score-function 将优势作为固定权重。分开 actor/critic 的损失与梯度路径，检查共享模块的更新来源。"
+      },
+      {
+        "title": "对 log_prob 的 Batch 与动作维一起平均",
+        "detail": "事件维应形成联合 `log_prob`，再对样本归约；PPO 比率尤其依赖正确联合密度。"
+      },
+      {
+        "title": "rsample 一定比 sample 更适合所有策略梯度",
+        "detail": "是否需要动作路径取决于估计式。固定样本 score-function 需阻断该路径，pathwise 方法则有不同目标。"
+      },
+      {
+        "title": "clip 后仍使用原 Gaussian 的执行动作密度",
+        "detail": "裁剪或 tanh 会改变分布。按变换定义概率，并检查边界与 Jacobian；未压缩练习不覆盖这些情况。"
+      },
+      {
+        "title": "PPO 裁剪保证所有更新都安全且改善回报",
+        "detail": "裁剪 surrogate 不构成全局 KL 或性能保证。监控策略变化、价值误差和独立闭环结果。"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "基线只输入状态且已经 `detach`，为什么仍不能断言 actor 梯度无偏？",
+        "answer": [
+          "`detach` 只停止自动微分路径。如果基线用当前样本自己的回报计算或拟合，其数值仍可能依赖当前动作。N 个独立一步样本使用同批回报均值，会把梯度期望乘以 \\(1-1/N\\)；\\(N=1\\) 时更新为零。",
+          "零期望抵消需要给定状态后的相应独立性与分布条件。独立数据训练的状态基线，或在上述独立样本例子中的 leave-one-out 基线，可以满足该条件；整段轨迹中相关样本需要重新分析。"
+        ],
+        "codeFocus": "穷举两次 Bernoulli 抽样，比较无基线、同批均值和 leave-one-out。",
+        "acceptance": [
+          "区分计算图依赖与抽样依赖。",
+          "推导或复核 \\(1-1/N\\) 因子。"
+        ]
+      },
+      {
+        "question": "Normal 的 `sample` 与 `rsample` 对策略梯度有什么区别？为什么连续动作 `log_prob` 要求和？",
+        "answer": [
+          "`sample` 不携带采样路径梯度，适合把动作当固定样本的 score-function 更新。`rsample` 将动作表示为 `mu+std*epsilon`；若未经 `detach` 计算同一个 Normal 的 `log_prob`，总导数可能抵消均值的 score 项。若目标通过可微 Q 对动作求导，保留这条路径可能正是算法需要的。",
+          "对角 Gaussian 各动作维独立，联合密度是乘积，所以联合 `log_prob` 沿动作轴求和。可学习 `log_std` 通过 exp 得到正标准差，限制范围有数值与梯度代价；tanh 变换需要 Jacobian 修正。要先写清估计目标和动作变换，不能只看张量形状。"
+        ],
+        "codeFocus": "`gaussian_actor_loss` 的 `sum(-1)`、`actions.detach()` 与测试中的 bad/good 梯度。",
+        "acceptance": [
+          "解释 score-function 与路径梯度的区别。",
+          "说明动作轴求和、`log_std` 与变换密度边界。"
+        ]
+      },
+      {
+        "question": "给旧轨迹每步乘 \\(\\pi_{\\mathrm{new}}/\\pi_{\\mathrm{old}}\\)，为什么不等于获得任意新策略的无偏梯度？",
+        "answer": [
+          "单步比率在固定状态下校正动作分布，状态访问频率仍由旧策略产生。新策略会改变未来状态；完整轨迹校正涉及多步比率与支持覆盖，且可能有很大方差。",
+          "PPO 固定旧数据与优势来构造近邻 surrogate，再通过裁剪改变样本激励。它需要匹配动作变换与联合 `log_prob`，并控制数据陈旧程度；不能把 clip 解释为严格限制所有状态 KL 的保证。"
+        ],
+        "codeFocus": "`log_prob_old` 的策略版本、同一动作的事件维归约与 rollout 状态来源。",
+        "acceptance": [
+          "说明单步比率没有改变旧状态分布。",
+          "区分 surrogate 与完整新策略目标。"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "title": "Spinning Up：策略梯度推导、基线与代码",
+        "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html"
+      },
+      {
+        "title": "PyTorch distributions：sample、rsample 与 log_prob",
+        "url": "https://docs.pytorch.org/docs/stable/distributions.html"
+      },
+      {
+        "title": "Spinning Up：Vanilla Policy Gradient",
+        "url": "https://spinningup.openai.com/en/latest/algorithms/vpg.html"
+      },
+      {
+        "title": "Schulman et al. · PPO 原论文",
+        "url": "https://arxiv.org/abs/1707.06347"
+      },
+      {
+        "title": "Greensmith et al. · 策略梯度中的基线与方差",
+        "url": "https://www.jmlr.org/papers/v5/greensmith04a.html"
+      },
+      {
+        "title": "Ren et al. · DPPO（2409.00588v3 / ICLR 2025）：扩展去噪 MDP 与逐步概率",
+        "url": "https://arxiv.org/abs/2409.00588v3"
+      },
+      {
+        "title": "DPPO 官方实现：Diffusion Policy 的 PPO 后训练",
+        "url": "https://github.com/irom-princeton/dppo"
+      }
+    ],
+    "keyPoints": [
+      "策略梯度使用动作得到的收益调整动作概率，不是把高收益标量当动作标签回归。",
+      "score-function actor 损失对动作样本和优势停止梯度；critic 使用自己的目标训练。",
+      "对角 Gaussian 的联合 `log_prob` 沿动作维求和，连续密度与离散概率不可混淆。",
+      "`sample` 与 `rsample` 对应不同梯度估计；PPO 的旧策略比率与裁剪需要匹配实际采集分布。"
+    ],
+    "lead": "策略梯度是直接对策略参数求期望回报梯度、据此改进动作分布的方法。常见估计用采样动作的对数概率梯度，乘以回报或优势，让结果较好的动作更可能被选择；它不要求真实环境可微。本章先推导这种估计，再定义基线、连续动作密度与采样梯度，最后连接重要性比率和 PPO 的局部代理目标。"
+  }
+]

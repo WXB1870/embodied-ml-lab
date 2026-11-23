@@ -41,11 +41,9 @@ function page(route,title,description,expression,{noindex=false,redirect}={}){
 for(const name of ['learn','topics','practice','guide'])fs.rmSync(path.join(dist,name),{recursive:true,force:true});
 page('/','机器学习、生成模型与具身策略','个人自用的机器学习与具身智能学习网站，整理原理笔记、代码示例和练习。','renderCatalog()');
 for(const lesson of lessons){
- for(const [tab,suffix] of [['theory',''],['code','code/'],['exercise','exercise/']]){
-  const route='/learn/'+lesson.id+'/'+suffix;
-  page(route,lesson.title+(tab==='theory'?'':tab==='code'?' · 代码':' · 练习'),lesson.subtitle,
-   `renderLesson(byId[${JSON.stringify(lesson.id)}],${JSON.stringify(tab)},'python',new URLSearchParams())`);
- }
+ const route='/learn/'+lesson.id+'/';
+ page(route,lesson.title,lesson.subtitle,
+  `renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
 }
 page('/practice/','课程练习','结合数学推导、手工计算、反例分析与可运行实现，检验对课程的理解。','renderPractice()');
 page('/guide/','下载与运行','下载完整讲义、PyTorch 代码及练习，配置本地运行环境。','renderGuide()');
@@ -55,7 +53,7 @@ for(const [lessonId,topicId] of Object.entries(curriculum.canonicalTopics||{})){
  const dir=path.join(dist,'topics',topicId);fs.mkdirSync(dir,{recursive:true});
  const target=sitePath('/learn/'+lessonId+'/');
  const firstLab=topics.find(t=>t.id===topicId).labs[0].id;
- const redirectScript=`const p=new URLSearchParams(location.search),old=p.get('tab')||'guide';const tab=({guide:'theory',labs:'exercise',questions:'exercise',reference:'theory'}[old]||old);p.set('tab',tab);if(old==='questions')p.set('anchor','discussion');if(old==='labs'&&!p.has('lab'))p.set('lab',${JSON.stringify(firstLab)});location.replace(${JSON.stringify(target)}+(tab==='theory'?'':tab+'/')+'?'+p.toString()+location.hash);`;
+ const redirectScript=`const p=new URLSearchParams(location.search),old=p.get('tab')||'guide';const tab=({guide:'theory',labs:'exercise',questions:'exercise',reference:'theory'}[old]||old);p.set('tab',tab);if(old==='questions')p.set('anchor','discussion');if(old==='labs'&&!p.has('lab'))p.set('lab',${JSON.stringify(firstLab)});location.replace(${JSON.stringify(target)}+'?'+p.toString()+location.hash);`;
  fs.writeFileSync(path.join(dir,'index.html'),`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>课程地址已合并</title><meta name="robots" content="noindex"><link rel="canonical" href="${origin+target}"></head><body><a href="${target}">打开课程</a><script>${redirectScript}</script></body></html>`);
 }
 fs.writeFileSync(path.join(dist,'robots.txt'),`User-agent: *\nAllow: /\nSitemap: ${origin+sitePath('/sitemap.xml')}\n`);

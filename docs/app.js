@@ -34,8 +34,25 @@ function inline(value){
 }
 const pad=v=>String(v).padStart(2,'0');
 const cleanTitle=t=>String(t).replace(/^\d+[.、．]\s*/,'');
-const moduleFor=l=>MODULES.find(m=>m.id===l.module)||MODULES[0];
-const lessonHref=(id,tab='theory',mode)=>sitePath('/learn/'+id+'/'+(tab==='theory'?'':tab+'/'))+'?tab='+tab+(mode?'&mode='+mode:'');
+const moduleFor=l=>MODULES.find(m=>m.id===l.module)||(l.module==='legacy'?{name:'历史课程归档'}:MODULES[0]);
+const LEGACY_LESSON_IDS={
+ embeddings:'rope',normalization:'norm-ffn','tokenizer-autoregressive':'masking-autoregressive','kv-cache-inference':'kv-cache',
+ 'latent-variable-models':'vae','action-chunk':'action-chunking',finetuning:'lora',
+ 'contrastive-pretraining':'multimodal','conditioning-fusion':'dit-adaln'
+};
+for(const [oldId,newId] of Object.entries(LEGACY_LESSON_IDS)){
+ for(const bucket of ['drafts','notes','passed','viewed']){
+  for(const key of Object.keys(state[bucket])){
+   if(key===oldId||key.startsWith(oldId+':')){
+    const target=newId+key.slice(oldId.length);
+    if(!(target in state[bucket]))state[bucket][target]=state[bucket][key];
+    delete state[bucket][key];
+   }
+  }
+ }
+ if(state.lastLesson===oldId)state.lastLesson=newId;
+}
+const lessonHref=(id,tab='theory',mode)=>sitePath('/learn/'+id+'/')+'?tab='+tab+(mode?'&mode='+mode:'');
 const topicHref=(id,tab='guide',extra='')=>lessonHref(Object.keys(CORE_LESSON_TOPIC).find(k=>CORE_LESSON_TOPIC[k]===id)||id,({guide:'theory',labs:'exercise'}[tab]||tab))+extra;
 const topicExerciseId=(t,l)=>'topic-'+t.id+'-'+l.id;
 const normalize=t=>String(t).toLowerCase().replace(/[\s_-]+/g,'');
@@ -63,6 +80,7 @@ function routeHref(raw){
   }
  }
  if(parts[0]==='learn'&&parts[1]){
+  parts[1]=LEGACY_LESSON_IDS[parts[1]]||parts[1];
   let tab=params.get('tab')||(['code','exercise'].includes(parts[2])?parts[2]:'theory');
   if(raw.startsWith('#/learn/')){
    const map=byId[parts[1]]?.legacyAnchorMap||{};
@@ -109,15 +127,16 @@ function markReading(kind,item,tab){
 function lastReading(){
  if(state.lastRead){
   const match=state.lastRead.href.match(/(?:#)?\/(learn|topics)\/([a-z0-9-]+)/);
-  if(match){const item=match[1]==='learn'?byId[match[2]]:topicById[match[2]];if(item)return {href:routeHref(state.lastRead.href),title:item.title};}
+  if(match){const item=match[1]==='learn'?byId[LEGACY_LESSON_IDS[match[2]]||match[2]]:topicById[match[2]];if(item)return {href:routeHref(state.lastRead.href),title:item.title};}
  }
- const l=byId[state.lastLesson];return l&&l.sections?{href:lessonHref(l.id),title:l.title}:null;
+ const l=byId[LEGACY_LESSON_IDS[state.lastLesson]||state.lastLesson];return l&&l.sections?{href:lessonHref(l.id),title:l.title}:null;
 }
 function registerTopicExercises(){topics.forEach((t,ti)=>t.labs.forEach((l,li)=>{const task={...l};byId[topicExerciseId(t,l)]={id:topicExerciseId(t,l),number:'T'+(ti+1)+(li+1),title:l.title,exercise:task,pytorchTask:task,topicId:t.id};}));}
 function canonicalRoute(){
  if(location.hash.startsWith('#/'))history.replaceState(null,'',routeHref(location.hash));
  let {path,params}=parseRoute(),href=null,pendingQuery=null;
  if(path.startsWith('/topics/'))href=routeHref(location.pathname+location.search);
+ if(path.startsWith('/learn/')&&LEGACY_LESSON_IDS[path.split('/')[2]])href=routeHref(location.pathname+location.search);
  if(path==='/learn'||path==='/topics'||path==='/p0')href='#/'+(params.get('module')?'?chapter='+encodeURIComponent(params.get('module')):'');
  if(path==='/reference'){pendingQuery=params.get('q');href='#/';}
  if(path==='/map')href=byId[params.get('node')]?lessonHref(params.get('node')):'#/';
@@ -278,10 +297,11 @@ window.addEventListener('popstate',()=>{if(activeJob)terminateRun();render();win
 $('.skip-link').addEventListener('click',e=>{e.preventDefault();$('#main').focus();$('#main').scrollIntoView();});
 async function init(){
  try{
-  const [courseResponse,catalogResponse,topicResponse]=await Promise.all([fetch(sitePath('/data/lessons.json'),{cache:'no-cache'}),fetch(sitePath('/data/curriculum.json'),{cache:'no-cache'}),fetch(sitePath('/data/topics.json'),{cache:'no-cache'})]);
-  if(!courseResponse.ok||!catalogResponse.ok||!topicResponse.ok)throw new Error('课程文件暂时不可用');
+  const [courseResponse,catalogResponse,topicResponse,overrideResponse]=await Promise.all([fetch(sitePath('/data/lessons.json'),{cache:'no-cache'}),fetch(sitePath('/data/curriculum.json'),{cache:'no-cache'}),fetch(sitePath('/data/topics.json'),{cache:'no-cache'}),fetch(sitePath('/data/lessons-overrides.json'),{cache:'no-cache'})]);
+  if(!courseResponse.ok||!catalogResponse.ok||!topicResponse.ok||!overrideResponse.ok)throw new Error('课程文件暂时不可用');
   curriculum=await catalogResponse.json();MODULES=curriculum.modules;
-  lessons=(await courseResponse.json()).sort((a,b)=>a.number-b.number);byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topics=await topicResponse.json();topicById=Object.fromEntries(topics.map(t=>[t.id,t]));
+  const baseLessons=await courseResponse.json(),overrides=await overrideResponse.json(),overrideById=Object.fromEntries(overrides.map(l=>[l.id,l]));
+  lessons=baseLessons.map(l=>overrideById[l.id]||l).sort((a,b)=>a.number-b.number);byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topics=await topicResponse.json();topicById=Object.fromEntries(topics.map(t=>[t.id,t]));
   registerTopicExercises();buildSearchIndex();render();scrollToSection();
  }catch(error){if(document.querySelector('[data-prerendered]')){console.error(error);return;}$('#main').innerHTML=`<div class="page narrow"><h1>课程暂时无法加载</h1><p>${esc(error.message)}</p><button class="button primary" onclick="location.reload()">重新加载</button></div>`;}
 }

@@ -1,7 +1,148 @@
 {
-  "release": "Embodied ML Lab · 机器学习与具身策略",
-  "reviewedAt": "2026-11-07",
+  "release": "Embodied ML Lab · 具身智能与大模型算法研发",
+  "reviewedAt": "2026-11-23",
   "sourceFiles": [
+    "transformer-multimodal",
+    "generative-modeling",
+    "embodied-policy",
+    "posttraining",
+    "appendix"
+  ],
+  "scope": "学院派理论推导 + PyTorch 工程实现 + 面试手撕训练营。主干 20 节核心课程，基础与训练运维内容折叠至附录。",
+  "criteria": [
+    "公式推导能够对应到张量操作和代码。",
+    "核心算法提供可运行 PyTorch 实现与边界测试。",
+    "课程以现代 Transformer、生成模型、具身策略与后训练为主线。"
+  ],
+  "modules": [
+    {
+      "id": "transformers",
+      "name": "现代 Transformer 与多模态骨干",
+      "short": "Transformer 与多模态骨干",
+      "desc": "张量语义、注意力、位置编码、现代 Transformer 组件、视觉语言对齐与高效推理。",
+      "lessons": [
+        "tensor",
+        "attention",
+        "rope",
+        "norm-ffn",
+        "multimodal",
+        "masking-autoregressive",
+        "kv-cache"
+      ]
+    },
+    {
+      "id": "generative",
+      "name": "生成模型与连续时间建模",
+      "short": "生成模型与连续时间建模",
+      "desc": "潜变量、扩散概率模型、连续时间随机过程、流匹配与扩散 Transformer。",
+      "lessons": [
+        "vae",
+        "diffusion",
+        "score-sde",
+        "flow-matching",
+        "dit-adaln"
+      ]
+    },
+    {
+      "id": "policies",
+      "name": "具身策略架构与动作建模",
+      "short": "具身策略与动作建模",
+      "desc": "行为克隆、动作时间结构、生成式动作策略与 VLA 模型架构。",
+      "lessons": [
+        "behavior-cloning",
+        "action-chunking",
+        "generative-policy",
+        "vla-architecture"
+      ]
+    },
+    {
+      "id": "posttraining",
+      "name": "高效微调与后训练对齐",
+      "short": "高效微调与后训练对齐",
+      "desc": "参数高效微调、策略梯度、PPO 与偏好/组内相对优势优化。",
+      "lessons": [
+        "lora",
+        "policy-gradient",
+        "ppo",
+        "dpo-grpo"
+      ]
+    },
+    {
+      "id": "appendix",
+      "name": "附录：训练工程速查",
+      "short": "训练工程速查",
+      "desc": "按需查阅经典基础、PyTorch 机制与训练工程实践，不计入 20 节核心课程。",
+      "lessons": [
+        "matrix-grad",
+        "mlp",
+        "activation-init",
+        "cnn-receptive-field",
+        "autograd",
+        "optimization",
+        "modules",
+        "dataloader",
+        "training-loop",
+        "checkpoint",
+        "gradient-accumulation",
+        "mixed-precision",
+        "memory-checkpointing",
+        "distributed-training",
+        "training-diagnostics"
+      ]
+    }
+  ],
+  "appendix": {
+    "title": "附录：训练工程速查",
+    "description": "不占据主干学习流的基础与工程参考。",
+    "lessons": [
+      "matrix-grad",
+      "mlp",
+      "activation-init",
+      "cnn-receptive-field",
+      "autograd",
+      "optimization",
+      "modules",
+      "dataloader",
+      "training-loop",
+      "checkpoint",
+      "gradient-accumulation",
+      "mixed-precision",
+      "memory-checkpointing",
+      "distributed-training",
+      "training-diagnostics"
+    ]
+  },
+  "conditional": {},
+  "deferred": [
+    {
+      "topic": "3D 空间几何与运动学",
+      "reason": "不纳入本课程体系。"
+    },
+    {
+      "topic": "物理仿真、Sim2Real 与 WBC",
+      "reason": "不纳入本课程体系。"
+    }
+  ],
+  "researchFindings": [],
+  "resources": [],
+  "canonicalTopics": {
+    "mlp": "mlp",
+    "cnn-receptive-field": "cnn",
+    "attention": "transformer",
+    "flow-matching": "flow-matching"
+  },
+  "moduleAliases": {
+    "training": "appendix",
+    "architecture": "transformers",
+    "vlm": "transformers",
+    "actions": "policies",
+    "rl": "posttraining",
+    "posttraining": "posttraining",
+    "closedloop": "policies",
+    "foundations": "appendix",
+    "neural": "appendix"
+  },
+  "legacySourceFiles": [
     "foundations",
     "architecture",
     "vla",
@@ -11,317 +152,5 @@
     "generative",
     "policy-models",
     "vla-architecture"
-  ],
-  "scope": "面向现代机器学习、生成式策略与具身模型后训练的技术教材，连接数学推导、可验证实现和闭环实验。",
-  "criteria": [
-    "缺少它，会使前向、监督、梯度、数据或执行的含义不清，容易得到能运行但不正确的结果。",
-    "它直接出现在视觉语言模型微调、动作生成、轨迹处理或闭环评估的日常工作中。",
-    "必须能用自己的话解释、完成最小实现、通过测试，并说明实现成立的假设和边界。"
-  ],
-  "modules": [
-    {
-      "id": "foundations",
-      "name": "数学与机器学习基础",
-      "short": "数学与机器学习基础",
-      "desc": "从张量与概率说明模型在计算什么，再用微分、损失和优化解释参数怎样学习；这些工具同时服务于感知、生成与策略课程。",
-      "lessons": [
-        "tensor",
-        "matrix-grad",
-        "probability",
-        "losses",
-        "autograd",
-        "optimization",
-        "numerical",
-        "generalization"
-      ]
-    },
-    {
-      "id": "neural",
-      "name": "神经网络与表示学习",
-      "short": "神经网络与表示学习",
-      "desc": "由 MLP 建立可训练的非线性映射；残差与归一化支持深层组合，CNN 则沿空间局部性形成另一条表示学习分支。",
-      "lessons": [
-        "mlp",
-        "activation-init",
-        "normalization",
-        "residual",
-        "cnn-receptive-field"
-      ]
-    },
-    {
-      "id": "transformers",
-      "name": "Transformer 与多模态模型",
-      "short": "Transformer 与多模态模型",
-      "desc": "把表示学习扩展到序列之间的信息交换：先学注意力与位置，再组合 Transformer；视觉语言融合和自回归推理在此分支展开。",
-      "lessons": [
-        "attention",
-        "embeddings",
-        "transformer",
-        "vision-preprocessing",
-        "multimodal",
-        "contrastive-pretraining",
-        "tokenizer-autoregressive",
-        "conditioning-fusion",
-        "kv-cache-inference"
-      ]
-    },
-    {
-      "id": "generative",
-      "name": "生成模型与连续时间建模",
-      "short": "生成模型与连续时间建模",
-      "desc": "研究怎样生成一个分布。扩散 → Score/SDE 与 Flow Matching 是可以并行学习的路线；后者从概率、MLP 与回归出发，最后再比较二者的概率路径。",
-      "lessons": [
-        "latent-variable-models",
-        "diffusion",
-        "score-sde",
-        "flow-matching"
-      ]
-    },
-    {
-      "id": "policies",
-      "name": "模仿学习、策略模型与 VLA 后训练",
-      "short": "模仿学习、策略模型与 VLA 后训练",
-      "desc": "将观测表示与生成模型接成动作策略：先确定示教目标、动作语义与时间，再读 VLA；监督微调与奖励驱动后训练按任务需要分支学习。",
-      "lessons": [
-        "behavior-cloning",
-        "action-representation",
-        "action-chunk",
-        "partial-observability",
-        "generative-policy",
-        "vla-architecture",
-        "finetuning",
-        "returns-bellman",
-        "policy-gradient"
-      ]
-    },
-    {
-      "id": "engineering",
-      "name": "数据处理与训练工程",
-      "short": "数据处理与训练工程",
-      "desc": "把已学的模型与目标变成可复现的训练过程。可在完成 MLP 和自动微分后开始，与后续模型课程并行，再按资源需求进入混合精度与分布式训练。",
-      "lessons": [
-        "modules",
-        "dataloader",
-        "training-loop",
-        "checkpoint",
-        "data-quality",
-        "gradient-accumulation",
-        "mixed-precision",
-        "memory-checkpointing",
-        "distributed-training",
-        "training-diagnostics",
-        "multitask-gradients"
-      ]
-    },
-    {
-      "id": "execution",
-      "name": "策略执行、评估与泛化",
-      "short": "策略执行、评估与泛化",
-      "desc": "回到策略实际访问的数据与执行时间：连接分布偏移、动作时效和闭环统计，检查离线训练得到的函数是否按约定被部署与评估。",
-      "lessons": [
-        "distribution-shift",
-        "execution-latency",
-        "evaluation",
-        "train-infer-contract"
-      ]
-    }
-  ],
-  "conditional": {
-    "distributed-training": "多卡 / 多进程训练工作流 P0：理解同步与全局统计；分片系统内部实现放进阶。",
-    "returns-bellman": "奖励驱动后训练工作流 P0；先掌握回报、价值与终止边界。",
-    "policy-gradient": "奖励驱动后训练工作流 P0；当前涵盖最小策略梯度与 PPO 目标，完整 on-policy / off-policy 训练回路仍需后续课程。"
-  },
-  "researchFindings": [
-    {
-      "title": "训练更新的粒度必须一致",
-      "body": "有效 batch、有效元素数、累积步、裁剪和精度缩放共同决定实际梯度。新增课程用不等长样本与真实自动微分对照检查。",
-      "lessons": [
-        "gradient-accumulation",
-        "mixed-precision",
-        "distributed-training"
-      ],
-      "sources": [
-        {
-          "title": "PyTorch · AMP examples",
-          "url": "https://docs.pytorch.org/docs/stable/notes/amp_examples.html"
-        },
-        {
-          "title": "PyTorch · DistributedDataParallel",
-          "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html"
-        }
-      ]
-    },
-    {
-      "title": "模型接口会产生无报错的训练推理偏差",
-      "body": "图像范围、相机名称、统计量、动作单位和后处理都属于模型的输入输出约定。要用可逆变换、元数据与故障注入一起验证。",
-      "lessons": [
-        "vision-preprocessing",
-        "train-infer-contract"
-      ],
-      "sources": [
-        {
-          "title": "OpenPI · Normalization statistics",
-          "url": "https://github.com/Physical-Intelligence/openpi/blob/main/docs/norm_stats.md"
-        },
-        {
-          "title": "LeRobot · Adding a policy",
-          "url": "https://huggingface.co/docs/lerobot/en/bring_your_own_policies"
-        }
-      ]
-    },
-    {
-      "title": "理解特征来源，也要理解监督如何进入模型",
-      "body": "CNN、图文预训练、token 移位、条件调制与缓存分别回答不同的代码问题。每一项都增加可运行示例，而不是只增加术语。",
-      "lessons": [
-        "cnn-receptive-field",
-        "contrastive-pretraining",
-        "tokenizer-autoregressive",
-        "conditioning-fusion",
-        "kv-cache-inference"
-      ],
-      "sources": [
-        {
-          "title": "CLIP · Original paper",
-          "url": "https://arxiv.org/abs/2103.00020"
-        },
-        {
-          "title": "Transformers · Cache explanation",
-          "url": "https://huggingface.co/docs/transformers/main/cache_explanation"
-        },
-        {
-          "title": "OpenPI · PyTorch model",
-          "url": "https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models_pytorch/pi0_pytorch.py"
-        }
-      ]
-    },
-    {
-      "title": "机器人会改变下一次见到的数据",
-      "body": "只看离线回归不足以解释闭环行为。新增历史状态、DAgger 数据聚合、动作时效，以及终止 / 截断和策略梯度基础。",
-      "lessons": [
-        "partial-observability",
-        "distribution-shift",
-        "execution-latency",
-        "returns-bellman",
-        "policy-gradient"
-      ],
-      "sources": [
-        {
-          "title": "DAgger · Original paper",
-          "url": "https://proceedings.mlr.press/v15/ross11a.html"
-        },
-        {
-          "title": "Gymnasium · Handling time limits",
-          "url": "https://gymnasium.farama.org/tutorials/gymnasium_basics/handling_time_limits/"
-        }
-      ]
-    }
-  ],
-  "deferred": [
-    {
-      "topic": "PPO / SAC / IQL / CQL 的完整训练系统",
-      "reason": "先掌握首期的回报、价值、优势与策略梯度；具体算法按实际后训练路线选学。"
-    },
-    {
-      "topic": "FSDP / ZeRO、张量并行和 CUDA 内核实现",
-      "reason": "首期覆盖显存组成、激活检查点和 DDP 正确性；系统内部机制按规模需求深化。"
-    },
-    {
-      "topic": "世界模型、视频生成骨干和复杂记忆架构",
-      "reason": "首期提供生成目标、条件注入与历史状态基础，具体模型作为研究专题。"
-    },
-    {
-      "topic": "模型家族与架构史的穷举",
-      "reason": "首期以可迁移的计算机制和代码能力验收，新增架构按项目需要展开。"
-    }
-  ],
-  "resources": [
-    {
-      "id": "playground",
-      "title": "TensorFlow Playground",
-      "url": "https://playground.tensorflow.org/",
-      "repo": "https://github.com/tensorflow/playground",
-      "license": "Apache-2.0",
-      "licenseUrl": "https://github.com/tensorflow/playground/blob/master/LICENSE",
-      "lessons": [
-        "mlp",
-        "activation-init",
-        "generalization"
-      ],
-      "observe": "固定数据集，只改隐藏层宽度、激活或正则化，观察决策边界与训练 / 测试误差。",
-      "boundary": "用于小型分类网络的直觉，不用其结果推断 VLA 泛化。"
-    },
-    {
-      "id": "cnn-explainer",
-      "title": "CNN Explainer",
-      "url": "https://poloclub.github.io/cnn-explainer/",
-      "repo": "https://github.com/poloclub/cnn-explainer",
-      "license": "MIT",
-      "licenseUrl": "https://github.com/poloclub/cnn-explainer/blob/master/LICENSE",
-      "lessons": [
-        "cnn-receptive-field",
-        "multimodal"
-      ],
-      "observe": "从一个输出格子追踪卷积窗口、通道求和、激活和池化。",
-      "boundary": "以图像分类网络为例；先完成本站卷积计算练习，再对照模型。"
-    },
-    {
-      "id": "transformer-explainer",
-      "title": "Transformer Explainer",
-      "url": "https://poloclub.github.io/transformer-explainer/",
-      "repo": "https://github.com/poloclub/transformer-explainer",
-      "license": "MIT",
-      "licenseUrl": "https://github.com/poloclub/transformer-explainer/blob/main/LICENSE",
-      "lessons": [
-        "attention",
-        "transformer",
-        "tokenizer-autoregressive",
-        "kv-cache-inference"
-      ],
-      "observe": "输入一句短文本，追踪 token、Q/K/V、注意力、logits 与采样分布。",
-      "boundary": "展示自回归语言模型；VLA 前缀与双向动作块要对照本站 Mask 课程。"
-    },
-    {
-      "id": "diffusion-explainer",
-      "title": "Diffusion Explainer",
-      "url": "https://poloclub.github.io/diffusion-explainer/",
-      "repo": "https://github.com/poloclub/diffusion-explainer",
-      "license": "MIT",
-      "licenseUrl": "https://github.com/poloclub/diffusion-explainer/blob/main/LICENSE",
-      "lessons": [
-        "diffusion",
-        "conditioning-fusion"
-      ],
-      "observe": "观察文本条件如何进入多步去噪流程，区分噪声预测网络与采样更新。",
-      "boundary": "示例是文生图 Stable Diffusion，不等同于机器人 Diffusion Policy 或 Flow Matching。"
-    },
-    {
-      "id": "reinforcejs",
-      "title": "REINFORCEjs · GridWorld",
-      "url": "https://cs.stanford.edu/people/karpathy/reinforcejs/",
-      "repo": "https://github.com/karpathy/reinforcejs",
-      "license": "MIT",
-      "licenseUrl": "https://cs.stanford.edu/people/karpathy/reinforcejs/",
-      "lessons": [
-        "returns-bellman",
-        "partial-observability"
-      ],
-      "observe": "使用 GridWorld 的 DP / TD 演示，改变奖励并观察价值传播与策略变化。",
-      "boundary": "该例为全观测表格 MDP，不展示 POMDP belief 或历史记忆。只推荐 DP / TD 演示；作者提醒策略梯度部分不稳定，不用作本课程参考答案。"
-    }
-  ],
-  "canonicalTopics": {
-    "mlp": "mlp",
-    "cnn-receptive-field": "cnn",
-    "transformer": "transformer",
-    "flow-matching": "flow-matching"
-  },
-  "moduleAliases": {
-    "training": "engineering",
-    "architecture": "neural",
-    "vlm": "transformers",
-    "actions": "policies",
-    "posttraining": "policies",
-    "closedloop": "execution",
-    "rl": "policies"
-  }
+  ]
 }

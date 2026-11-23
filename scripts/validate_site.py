@@ -114,6 +114,9 @@ for route, page in pages.items():
         target = pages.get(url.path)
         if not target:
             continue
+        # Code and exercise tabs share the canonical course URL and are rendered client-side.
+        if query.get('tab', ['theory'])[0] in ('code', 'exercise'):
+            continue
         anchor = query.get('anchor', [url.fragment or None])[0]
         if 'section' in query:
             section = query['section'][0]

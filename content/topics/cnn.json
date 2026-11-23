@@ -1,8 +1,8 @@
 {
   "id": "cnn",
-  "title": "CNN：卷积、采样与空间表示",
-  "subtitle": "局部连接与权重共享，如何决定表达能力、平移响应和空间信息。",
-  "lead": "卷积神经网络（CNN）通过局部连接与参数共享处理空间数据：卷积与非线性提取、组合特征，读出模块把特征变成分类或空间预测。本章先看 LeNet 的完整流程，再沿同一个 SmallCNN 解释每一步：12×12 RGB 图像 → 两次卷积与 ReLU → 全局平均池化 → 两类输出。",
+  "title": "CNN：卷积计算与感受野",
+  "subtitle": "面向视觉编码器阅读的精简参考：掌握 Conv2d 张量语义、输出尺寸、参数量与感受野，并用 unfold 对照 PyTorch。",
+  "lead": "卷积神经网络（CNN）通过局部连接和参数共享处理空间特征。本速查聚焦 Conv2d 的通道计算、步幅/填充/空洞率、参数与计算量，以及多层感受野递推；通过一个小型 CNN 和 unfold 参考实现核对公式。平移等变、架构演进和空间读出等深入内容放入可选拓展。",
   "minutes": 200,
   "prerequisites": [
     "tensor",
@@ -351,184 +351,6 @@
       "codeExplanation": "输入全零仍有非零导数，因为这里是无激活的线性卷积。全一卷积核让导数直接等于路径数；用非零梯度找支持集，而不是从输出值是否为零推断连接。两层输出只有一个位置，避免混合多个输出的感受野。 后半段用线性坐标输入验证左、右不对称填充导致的采样中心偏移，选择不含补零的窗口，使均值与几何中心可直接对应。",
       "lead": "感受野是一个输出位置可能依赖的原始输入区域。覆盖跨度、实际有路径相连的支持集、以及当前输入下梯度显著的区域是不同对象。先将两层局部窗口的依赖合并，再区分这三种范围。",
       "codeKind": "runnable"
-    },
-    {
-      "id": "activation-pooling",
-      "title": "激活与池化：先看主模型，再比较归一化",
-      "body": [
-        "把一层卷积展成线性算子 \\(C\\)，带偏置的输出为 \\(z=Cx+b\\)。只串联这类操作仍得到仿射函数；逐元素激活得到 \\(h_i=\\phi(z_i)\\)，其局部 Jacobian 为 \\(J=\\operatorname{diag}(\\phi^{\\prime}(z))C\\)。对 ReLU，正预激活的导数为一、负预激活为零，所以不同输入会启用不同局部映射。零点不可导，PyTorch 选择零导数作为实现约定；这不意味着所有框架必须采用同一种折点约定。",
-        "若上游梯度为 \\(g=\\nabla_hL\\)，传回预激活的梯度就是 \\(g\\odot\\mathbf1\\{z>0\\}\\)。负位置的这条路径会被关闭，但同一权重仍可通过其他样本或其他空间位置获得更新；有残差时还可能存在旁路。多层卷积与激活由此形成输入相关的分段仿射结构。滤波器的实际含义由训练决定，不能把每一层机械指定为边缘、纹理或物体检测器。",
-        "池化在每个通道内对窗口集合 \\(\\Omega_u\\) 汇聚，其中 \\(u\\) 是输出位置。无填充且窗口包含 \\(K\\) 个元素时，平均池化为 \\(y_u=K^{-1}\\sum_{j\\in\\Omega_u}x_j\\)，最大池化为 \\(y_u=\\max_{j\\in\\Omega_u}x_j\\)。前者是固定线性组合，后者是由输入选择分支的分段线性函数。两者的步幅都决定输出窗口如何移动，因此需要继续沿用前面感受野与采样间距的分析。",
-        "平均池化满足 \\(\\partial y_u/\\partial x_j=1/K\\)（\\(j\\in\\Omega_u\\)），唯一最大值位于 \\(j_u^*\\) 时，最大池化满足 \\(\\partial y_u/\\partial x_j=\\mathbf1\\{j=j_u^*\\}\\)。如果输入位置被多个窗口覆盖，它的梯度还要将各个窗口贡献相加。并列最大值处不可导，实现会选取一种梯度分配，不能声称平均分给所有并列位置是最大池化的必然行为。",
-        "当池化步幅大于一时，还发生空间下采样。平均池化等价于先用方框核做局部平均再取样，能够衰减部分高频，但这个有限滤波器并非理想带限滤波，不能保证完全消除混叠。最大池化是非线性选择，也不自动满足下采样所需的频率条件。改变输入采样相位后，即使边界使用周期约定，池化结果也可能变化；下一节将用频率和奇偶相位进一步解释。",
-        "全局平均池化（GAP）将整个空间轴变成一个窗口：\\(\\bar F_{b,c}=(HW)^{-1}\\sum_{i,j}F_{b,c,i,j}\\)。特征图 \\([4,0;0,0]\\) 与 \\([0,0;0,4]\\) 的响应位置不同，GAP 却都为一；任何只读取该单通道均值的后续函数都无法区分二者。其反向把同一输出梯度除以 \\(HW\\) 分配给每个位置。这个反例针对当前特征图到均值的映射：若上游已把空间关系写进其他通道，GAP 仍可能保留任务需要的信息，不能仅凭最后一个平均算子判断整网空间能力。",
-        "边界约定也会改变池化的函数。`AvgPool2d` 的 `count_include_pad` 决定补零是否进入平均分母；`MaxPool2d` 的隐式填充值是负无穷，不是普通卷积的零。用全负输入或边界窗口核对这些差异，再根据任务选择保持空间 token、多尺度特征或全局汇聚。代码页的[激活、批次统计与池化的梯度对照](#/learn/cnn-receptive-field?tab=code&anchor=demo-activation-pooling-gradients)将上述公式与 Autograd 逐项比较。",
-        "BatchNorm2d 保持 `[B,C,H,W]` 形状，对每个通道分别在样本、高和宽三个轴上统计。固定通道 \\(c\\)，令 \\(N=BHW\\)，将该通道的元素编号为 \\(x_{c,1},\\ldots,x_{c,N}\\)。训练前向为 \\[\\mu_c=\\frac1N\\sum_nx_{c,n},\\quad v_c=\\frac1N\\sum_n(x_{c,n}-\\mu_c)^2,\\quad z_{c,n}=\\frac{x_{c,n}-\\mu_c}{r_c},\\quad y_{c,n}=\\gamma_cz_{c,n}+\\beta_c,\\quad r_c=\\sqrt{v_c+\\epsilon}.\\]均值和尺度都由当前输入计算，\\(\\gamma_c,\\beta_c\\) 则是每个通道共享的可学习参数。",
-        "BN 的反向不能只把上游梯度除以标准差。记 \\(g_{c,n}=\\partial L/\\partial y_{c,n}\\)、\\(q_{c,n}=\\gamma_cg_{c,n}\\)，沿相同统计集合取平均，有 \\[\\frac{\\partial L}{\\partial x_{c,n}}=\\frac{q_{c,n}-\\operatorname{mean}(q_c)-z_{c,n}\\operatorname{mean}(q_c\\odot z_c)}{r_c}.\\]第一项来自输入直接变化，第二项修正均值的变化，第三项修正方差的变化；完整微分见[归一化的 Jacobian](#/learn/normalization?tab=theory&section=2)。因此某个像素的梯度会依赖同通道其他位置甚至其他样本，BN 不是逐像素的固定缩放。",
-        "训练时使用当前批次的总体式方差，并更新运行统计；默认评估时用保存的运行均值和方差，此时它们对当前输入是常数。PyTorch 更新 `running_var` 使用对应的无偏批次方差，不能把它和训练前向的分母混为一谈。小批次、相关视频帧或分布变化会影响统计估计；冻结 \\(\\gamma,\\beta\\) 并不会停止训练模式下的 Buffer 更新。需要固定视觉编码器时，应分别决定参数冻结、Norm 模式与梯度路径，而不是把 `requires_grad=False` 当作全部冻结。",
-        "贯穿 SmallCNN 没有 BatchNorm，便于直接观察卷积、ReLU 和 GAP 的局部路径。对 logits 的交叉熵梯度先乘分类器权重，得到 `[B,12]` 的汇聚特征梯度；GAP 再将每个通道的该梯度以 \\(1/144\\) 分给 12×12 个位置。代码逐元素验证这一式子，然后观察 ReLU 将哪些位置置零。若加入训练态 BN，样本和空间之间又增加统计依赖，此时不能继续套用“一个局部输出只依赖局部输入”的纯卷积结论。"
-      ],
-      "formula": "\\begin{aligned}\\frac{\\partial L}{\\partial x_j}&=\\sum_{u:j\\in\\Omega_u}g_u\\frac{\\partial y_u}{\\partial x_j},\\\\\\frac{\\partial y_u^{\\rm avg}}{\\partial x_j}&=\\frac1K\\quad(j\\in\\Omega_u),\\\\\\frac{\\partial y_u^{\\rm max}}{\\partial x_j}&=\\mathbf1\\{j=j_u^*\\}\\quad\\text{（唯一最大值）}.\\end{aligned}",
-      "code": "import torch\nimport torch.nn.functional as F\n\ndtype = torch.float64\nx = torch.tensor([[[[1., 4.], [3., 2.]]]], dtype=dtype,\n                 requires_grad=True)\navg = F.avg_pool2d(x, 2)\nmaximum = F.max_pool2d(x, 2)\ng_avg, = torch.autograd.grad(avg.sum(), x)\ng_max, = torch.autograd.grad(maximum.sum(), x)\ntorch.testing.assert_close(g_avg, torch.full_like(x, 0.25))\ntorch.testing.assert_close(g_max, torch.tensor(\n    [[[[0., 1.], [0., 0.]]]], dtype=dtype))\n\n# Same channel mean, different spatial locations.\nmaps = torch.tensor([[[[4., 0.], [0., 0.]]],\n                     [[[0., 0.], [0., 4.]]]], dtype=dtype)\npooled = F.adaptive_avg_pool2d(maps, 1)\nassert not torch.equal(maps[0], maps[1])\ntorch.testing.assert_close(pooled, torch.ones_like(pooled))\nprint(\"平均/最大池化的梯度和 GAP 空间反例均通过。\")\n",
-      "codeExplanation": "先用唯一最大值窗口隔离两种梯度分配，再用两个响应位置不同、均值相同的特征图验证 GAP 的不可区分性。这里没有训练随机模型，断言检验的是明确算子的性质。完整实现进一步检查重叠窗口、BN 反向和运行统计。",
-      "lead": "激活使卷积特征发生非线性变化，池化汇总空间响应，归一化则调整指定集合的统计尺度。主案例使用 ReLU 和全局平均池化，不包含 BatchNorm。先认识这条实际路径，再用归一化作结构对照，分别追踪前向与反向。",
-      "codeKind": "runnable",
-      "example": {
-        "title": "同一个窗口，平均池化与最大池化怎样前传和回传",
-        "afterParagraph": 4,
-        "steps": [
-          "窗口为 \\(\\begin{bmatrix}1&4\\\\3&2\\end{bmatrix}\\)，平均池化得到 \\((1+4+3+2)/4=2.5\\)，最大池化得到 4。输出形状相同，保留的信息不同。",
-          "若该输出的上游梯度为 1，平均池化给四个位置各传回 1/4；最大池化在唯一最大值的右上位置传回 1，其余为零。",
-          "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
-        ],
-        "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
-      },
-      "figures": [
-        {
-          "src": "/assets/figures/pooling-d2l.svg",
-          "alt": "三乘三输入经过窗口二乘二、步幅一的最大池化，得到四、五、七、八组成的二乘二输出。",
-          "afterParagraph": 3,
-          "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html)。",
-          "width": 248,
-          "height": 108
-        }
-      ]
-    },
-    {
-      "id": "equivariance",
-      "title": "平移等变、采样相位与混叠",
-      "body": [
-        "共享卷积在无限网格上对整数平移等变：卷积后再平移，与先平移输入再卷积得到相同结果。有限图像要额外规定边界；stride=1 的内部区域可以检验这一关系，零填充和裁剪的全图结果不能不加条件地套用。等变意味着输出跟着移动，分类所需的不变性与空间预测所需的等变性也应分别讨论。",
-        "stride=s 的卷积相当于先计算稠密响应，再每隔 s 个位置采样。输入移动 s 的整数倍时还能对齐输出网格，移动一个像素通常无法对应整数个输出位置。取周期序列 \\(x[n]=(-1)^n\\)，stride=2 得到全 +1；把输入移动一个位置，得到全 −1。这个例子没有边缘补零，却仍发生剧烈变化，原因就是采样相位。",
-        "混叠描述不同频率在采样后不可区分。对 stride=2，\\(e^{i\\omega(2m)}\\) 与 \\(e^{i(\\omega+\\pi)(2m)}\\) 完全相同；超过新网格可区分频段的内容会折叠进其他频率。下采样前低通滤波可以降低混叠，但会削弱细节，也不能保证有限边界下的任意平移不变。相邻两点平均会将交替的高频序列变成零，这是有信息代价的稳定化。",
-        "实际网络的非线性还可能产生新的高频，因此仅在输入处模糊一次，并不保证后续所有下采样都无混叠。应该明确每次下采样前的操作，并比较奇数、偶数平移与边缘位置。平移图像做数据增强时，空间标签还需遵守相同坐标变换。"
-      ],
-      "formula": "f(T_\\Delta x)=T_\\Delta f(x)\\ \\text{表示等变};\\qquad f(T_\\Delta x)=f(x)\\ \\text{表示不变}",
-      "takeaway": "先定义任务希望保留的几何变化，再决定池化、增强和下采样策略。",
-      "focus": {
-        "kind": "常用",
-        "title": "平移等变的检查要控制 stride 和边界",
-        "explanation": "stride=1的共享卷积在理想无限网格上满足平移等变；有限图像的padding会改变边缘输入，stride>1还固定了采样相位。把图像平移1像素后比较整幅输出，差异可能来自采样与边界，不一定是代码错误。",
-        "check": "先在足够大的图像内部区域比较，再测试与总stride相匹配的平移，并记录padding约定。"
-      },
-      "code": "import torch\n\n# 用循环边界排除 Padding 的干扰。\nx = torch.tensor([1., -1.] * 4, dtype=torch.float64)\nshifted = x.roll(1)\nsample = lambda v: v[::2]\nlowpass = lambda v: (v + v.roll(-1)) / 2\nassert torch.equal(sample(x), torch.ones(4, dtype=x.dtype))\nassert torch.equal(sample(shifted), -torch.ones(4, dtype=x.dtype))\ntorch.testing.assert_close(sample(lowpass(x)), sample(lowpass(shifted)))\nprint(\"直接采样:\", sample(x).tolist(), sample(shifted).tolist())\nprint(\"先平均再采样:\", sample(lowpass(x)).tolist())\n",
-      "codeExplanation": "roll 使用周期边界，因而两次结果的差异来自步幅采样。两点平均在这个特定最高频例子上完全消除振荡；它不是理想低通滤波器，也不证明所有图像平移后结果相同。",
-      "lead": "平移等变指输入平移后，输出按照对应规则一起平移；平移不变则指输出保持不变。卷积共享结构有助于前者，下采样、边界与池化还会改变具体关系。先分清这两个目标，再讨论采样相位与混叠。",
-      "codeKind": "runnable"
-    },
-    {
-      "id": "architecture-design",
-      "title": "CNN 架构演进：如何分配空间混合、通道混合与梯度路径",
-      "body": [
-        "VGG 用连续小核增加深度。假设各层通道数均为 C、stride=dilation=1，两层 3×3 的理论感受野为 5×5，权重数为 \\(18C^2\\)；一层 5×5 为 \\(25C^2\\)。三层 3×3 的感受野为 7×7、参数为 \\(27C^2\\)，而一层 7×7 为 \\(49C^2\\)。中间非线性让堆叠能够按输入改变局部计算区域，因此“同样的感受野”不等于“同一个线性算子”；删掉非线性后也仍存在多层核因式分解的约束，不能仅凭覆盖范围声称任意大核都能等价替换。",
-        "ResNet 同时改变了深层网络的参数化：\\(y=x+F(x)\\) 让块学习增量，并引入恒等梯度项，具体条件与反例见 [残差连接](#/learn/residual)。对于通道 \\(C\\to b\\to b\\to C\\) 的 1×1、3×3、1×1 瓶颈分支，权重数为 \\(2Cb+9b^2\\)。先用 1×1 压缩通道，使空间卷积在较小的 b 上计算，再投影回 C；这会限制分支的中间表示，却不能把整个残差块误认为只剩 b 个通道，因为旁路仍保留原来的 C 维表示。降采样或改通道数时，旁路投影与主分支的几何必须一致。",
-        "MobileNet 的 depthwise 与 pointwise 分工进一步拆开空间和通道计算：一个 k×k depthwise 核先独立处理每个输入通道，再用 1×1 将 \\(C_{\\mathrm{in}}\\) 个通道混合成 \\(C_{\\mathrm{out}}\\) 个通道。权重数从普通卷积的 \\(k^2C_{\\mathrm{in}}C_{\\mathrm{out}}\\) 降为 \\(k^2C_{\\mathrm{in}}+C_{\\mathrm{in}}C_{\\mathrm{out}}\\)，但这个算子族包含怎样的限制，必须结合前面的分组卷积秩推导理解。参数数或乘加次数下降也不保证相同比例的实际延迟下降；内存访问、算子融合、硬件内核和特征图尺寸都会影响执行时间。",
-        "ConvNeXt 的官方块采用 7×7 depthwise 空间混合、沿通道的 LayerNorm、扩张到 4C 的逐位置 Linear、GELU 和投影回 C，再与输入相加。这里 Linear 只混合通道、不混合空间位置；NCHW 与 NHWC 的变换是为使最后一维对应通道，数学上同一逐位置 Linear 可以写成 1×1 卷积。官方实现还包含 LayerScale 和 stochastic depth；下方教学块明确省略这些项、偏置与 Norm 仿射，隔离主要路径，权重数因而恰为 \\(49C+8C^2\\)，不能把它当成完整模型的参数统计。",
-        "阶段式骨干通常逐步降低空间分辨率、增加通道宽度。以两个相邻阶段内部的同宽 3×3 卷积为例，若高宽各减半、C 加倍，单层主要乘加次数 \\(HWC^2\\) 的量级可近似保持，而中间激活元素 HWC 约减半、卷积参数量却增至四倍。这个算式解释了不同资源指标为何变化方向不同；它省略了降采样过渡层、归一化和具体实现成本，也不能推出定位细节已经被无损保留。",
-        "视觉特征如何用于策略，取决于训练目标和保留下来的信息。分类监督下的全局读出、局部空间 token、不同分辨率特征图，提供的是不同观测接口。应检查下采样后的有效分辨率是否支持小物体与接触位置，是否需要多个尺度，以及预训练时的图像标准化和 Norm 模式。骨干名称或“高层语义更强”不能代替这些分析；保留空间位置后的 token 交互可继续阅读 [视觉 token 与多模态融合](#/learn/multimodal)。"
-      ],
-      "formula": "\\begin{aligned}P_{\\rm bottleneck}&=2Cb+9b^2,\\\\ P_{\\rm dw+pw}&=k^2C_{\\rm in}+C_{\\rm in}C_{\\rm out},\\\\ P_{\\rm teaching\\ block}&=49C+8C^2.\\end{aligned}",
-      "code": "import torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(29)\ntorch.set_num_threads(1)\n\nclass SpatialChannelBlock(nn.Module):\n    \"\"\"隔离空间混合和通道混合的教学块，省略仿射 Norm、偏置和 LayerScale。\"\"\"\n    def __init__(self, channels):\n        super().__init__()\n        self.spatial = nn.Conv2d(channels, channels, 7, padding=3, groups=channels, bias=False)\n        self.norm = nn.LayerNorm(channels, eps=1e-6, elementwise_affine=False)\n        self.expand = nn.Linear(channels, 4 * channels, bias=False)\n        self.project = nn.Linear(4 * channels, channels, bias=False)\n\n    def forward(self, x):\n        h = self.spatial(x).permute(0, 2, 3, 1)  # B,H,W,C；Norm 只统计通道。\n        h = self.project(F.gelu(self.expand(self.norm(h))))\n        return x + h.permute(0, 3, 1, 2)\n\nchannels = 8\nblock = SpatialChannelBlock(channels).double()\nx = torch.randn(2, channels, 5, 7, dtype=torch.float64, requires_grad=True)\ny = block(x)\nassert y.shape == x.shape\nassert sum(p.numel() for p in block.parameters()) == 49 * channels + 8 * channels ** 2 == 904\n\n# 逐像素 Linear 与 1×1 Conv2d 的等价依赖布局变换，不能直接 reshape 交换轴。\nh = block.norm(block.spatial(x).permute(0, 2, 3, 1))\nlinear = block.expand(h).permute(0, 3, 1, 2)\npointwise = F.conv2d(h.permute(0, 3, 1, 2), block.expand.weight[:, :, None, None])\ntorch.testing.assert_close(linear, pointwise)\ny.square().mean().backward()\nassert all(p.grad is not None and torch.isfinite(p.grad).all() for p in block.parameters())\n\n# 末端投影置零使分支严格为零，验证残差恒等关系。\nwith torch.no_grad():\n    block.project.weight.zero_()\ntorch.testing.assert_close(block(x), x)\nprint(\"通过：904 个参数、空间/通道接口、Linear/1×1 等价、梯度与零投影恒等。\")\n",
-      "codeExplanation": "C=8 时显式数出 904 个权重；检查 NCHW/NHWC 接口与 Linear/1×1 Conv 等价，核对各参数梯度有限，并以末端投影置零验证恒等旁路。它检验结构关系，不比较各架构的识别准确率或延迟。",
-      "lead": "CNN 架构是卷积、非线性、下采样和旁路等模块的组织方式。不同网络主要改变何时扩大空间上下文、何时混合通道，以及怎样保留梯度路径。下面按这些设计选择理解代表结构，再比较其参数与感受野。",
-      "codeKind": "runnable",
-      "comparison": {
-        "title": "四项代表工作：把结构名称对应到设计问题",
-        "columns": [
-          "代表工作",
-          "主要设计特点",
-          "学习与迁移时关注什么"
-        ],
-        "rows": [
-          [
-            "[VGG（2014）](https://arxiv.org/abs/1409.1556)",
-            "堆叠 3×3 小核，用规则结构研究深度与表示。",
-            "适合理解局部算子的层层组合；同等覆盖跨度不表示与单个大核等价。"
-          ],
-          [
-            "[ResNet（2015）](https://arxiv.org/abs/1512.03385)",
-            "让块学习残差；深层版本用瓶颈控制通道混合成本。",
-            "可作为深层视觉骨干的结构参照；检查旁路投影、降采样与预训练统计，恒等路径不保证任意训练都稳定。"
-          ],
-          [
-            "[MobileNet v1（2017）](https://arxiv.org/abs/1704.04861)",
-            "用 depthwise 与 pointwise 分解空间/通道计算，并以宽度和分辨率调节成本。",
-            "面向移动与嵌入式计算约束；使用时同时检查细节分辨率和实测延迟，不能只按 MAC 推断速度。"
-          ],
-          [
-            "[ConvNeXt（2022）](https://arxiv.org/abs/2201.03545)",
-            "重新组织纯卷积骨干，结合较大 depthwise 核、通道 MLP 与 LayerNorm。",
-            "适合比较卷积空间混合与 ViT 的 token 交互；预训练目标与保留的特征层仍决定具体接口。"
-          ]
-        ]
-      }
-    },
-    {
-      "id": "patch-embedding",
-      "title": "Patch 投影何时可逆",
-      "body": [
-        "一个大小为 P×P 的图像块可以按固定顺序展成长度 \\(C_{\\mathrm{in}}P^2\\) 的向量，再通过共享 Linear 映射成 D 维 token。当 Conv2d 的 kernel_size=P、stride=P、padding=0 且图像尺寸可整除 P 时，它恰好对不重叠图像块做同一件事。卷积输出为 [B,D,H/P,W/P]，把空间轴展平并移到 token 轴后得到 [B,N,D]。",
-        "等价需要对齐展平顺序和权重布局。PyTorch unfold 的窗口通常按输入通道、核高、核宽组织；Conv2d 的权重也可以把后三维展平为 [D,Cin×P×P]。先把图像重排成另一种 HWC patch 顺序，却直接复用原来的卷积权重，会得到不同数值。完整演示比较了所有 token 的输出，并额外用直接切片检查第一块像素顺序。",
-        "这种等价只说明 patch 投影这一层的计算，不代表 CNN 和 Transformer 整体相同。非重叠 patch 的初始投影不在不同 patch 之间混合信息，后续 Attention 与位置表示才决定 token 如何交流。卷积可以使用重叠窗口和多个阶段，也可以输出视觉 token 供 Transformer 使用。理解这些连接有助于读代码：先辨认局部投影、空间下采样、token 重排，再看全局信息交换。",
-        "下采样不必然意味着信息丢失。一个 patch 有 \\(n=C_{\\mathrm{in}}P^2\\) 个输入数，线性投影 \\(W\\in\\mathbb R^{D\\times n}\\) 的秩最多为 \\(\\min(D,n)\\)。\\(D<n\\) 时必有非零零空间，存在不同 patch 得到相同 token；\\(D\\ge n\\) 且列满秩时，单个 patch 的线性映射则可以是单射。若输出通道随空间缩小而增加，也可能只是把空间重排进通道。下面用 stride=2 的卷积分别提取 2×2 的四个像素，再通过 pixel_shuffle 精确重建原输入。它说明应检查总维数和映射秩，而不是看到 stride>1 就断言不可逆。",
-        "共享的局部线性投影把卷积窗口与 Patch Token 联系起来。得到序列后，位置编码负责保留区域身份，Transformer 再建立跨 Patch 交互；这条数据流继续见[Embedding 与位置编码](#/learn/embeddings)和[Transformer](#/learn/transformer)。"
-      ],
-      "formula": "n=C_{\\rm in}P^2,\\quad z=Wp,\\quad \\operatorname{rank}(W)\\le\\min(D,n),\\quad \\ker W=\\{0\\}\\ \\Longleftrightarrow\\ \\operatorname{rank}(W)=n",
-      "takeaway": "Patch embedding 可用卷积实现；等价对象是一层共享局部线性投影。",
-      "focus": {
-        "kind": "易错",
-        "title": "卷积 patch 投影与 Linear 等价需要元素顺序一致",
-        "explanation": "无重叠patch可以用kernel=stride=P的Conv2d实现。与逐patch共享Linear核对时，patch向量必须使用与卷积权重相同的通道、行、列展开顺序；HWC与CHW混用不会改变元素总数，却会改变乘法配对。",
-        "check": "用递增像素值手工取第一个patch，核对展开向量，再比较所有token的数值与梯度。"
-      },
-      "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.arange(16., dtype=torch.float64).reshape(1, 1, 4, 4)\n# 每个输出通道只选取 2×2 窗口中的一个位置。\nw = torch.eye(4, dtype=x.dtype).reshape(4, 1, 2, 2)\npacked = F.conv2d(x, w, stride=2)   # [1,4,2,2]\nrestored = F.pixel_shuffle(packed, upscale_factor=2)\ntorch.testing.assert_close(restored, x, rtol=0, atol=0)\nprint(\"空间缩小、通道增加:\", tuple(x.shape), \"->\", tuple(packed.shape))\nprint(\"重建最大误差:\", (restored - x).abs().max().item())\n",
-      "codeExplanation": "eye(4) 的四行分别选择左上、右上、左下、右下像素。空间位置少了四倍，通道增加四倍，总元素数不变；pixel_shuffle 按对应顺序还原。普通学习到的 patch 投影是否可逆仍取决于秩，后续池化或非线性也可能继续丢失信息。",
-      "lead": "Patch 投影是把每个图像小块映射为一个特征向量、形成视觉 Token 序列的操作。特定配置的卷积可实现同一映射，但压缩后的向量未必保留原小块全部信息。先建立计算等价，再判断何时可逆。",
-      "codeKind": "runnable"
-    },
-    {
-      "id": "spatial-readout",
-      "title": "空间期望的梯度与双峰歧义",
-      "body": [
-        "空间读出要沿用前处理与特征网格的坐标约定。Resize、Crop、Letterbox 会改变像素位置；累计 stride 决定间距，核和 padding 决定中心偏移。将热图坐标直接乘一个缩放常数，仅在这些约定一致时才成立。练习使用像素中心对应的 [0,1] 坐标，并用非方形网格区分 x/y 轴。",
-        "设网格中第 \\(j\\) 个位置的坐标为 \\((x_j,y_j)\\)，模型给出 logits \\(z_j\\)，温度为 \\(\\tau>0\\)。先构造 \\(p_j=\\operatorname{softmax}(z/\\tau)_j\\)，再以 \\(\\hat x=\\sum_jp_jx_j\\)、\\(\\hat y=\\sum_jp_jy_j\\) 读出位置期望。这是一个可微坐标函数；这些归一化权重是否具有校准的物理概率意义，仍取决于目标与训练。",
-        "固定网格坐标，Softmax 导数给出 \\(\\partial p_j/\\partial z_k=p_j(\\delta_{jk}-p_k)/\\tau\\)。代入期望的求和：\\[\\frac{\\partial\\hat x}{\\partial z_k}=\\sum_jx_j\\frac{\\partial p_j}{\\partial z_k}=\\frac{p_kx_k-p_k\\sum_jp_jx_j}{\\tau}=\\frac{p_k(x_k-\\hat x)}\\tau.\\]纵坐标同理。提高当前位置分数，会把期望拉向该格点；这个方向与[注意力的加权读出梯度](#/learn/attention?tab=theory&section=2)具有相同结构。",
-        "降低温度有两种同时发生的作用：显式的 \\(\\frac1\\tau\\) 放大项，以及概率分布变尖后 \\(p_k\\)或 \\(x_k-\\hat x\\) 变小。不能只看 \\(\\frac1\\tau\\) 就断言梯度总会增大。唯一最大值在 \\(\\tau\\to0\\) 时趋向 argmax，分数有并列最大值时却仍在这些位置之间分配概率；两个等高峰的期望可落在没有目标的中间。温度不能自动解决目标本身的多模态歧义。",
-        "期望监督还可能有“不同热图、同一坐标”的不可辨识性：集中在中间的单峰和对称双峰可以有相同均值，因此仅用坐标误差无法保证热图形状正确。是否增加热图监督、分布目标或其他结构约束，应取决于标注和任务，而不是把可微坐标读出当作自动定位机制。",
-        "需要预测图像位置时，可以从保留 [B,C,H,W] 网格的特征生成热图，再进行空间读出。SmallCNN 的 GAP 则把空间轴汇总为 [B,12]，供条纹分类使用；若增设定位分支，应从池化前的特征接出。读出的坐标随后按[视觉预处理](#/learn/vision-preprocessing)保存的 Resize、Crop 与补边变换还原到原图。"
-      ],
-      "formula": "p_j=\\operatorname{softmax}(z/\\tau)_j,\\qquad \\hat x=\\sum_jp_jx_j,\\qquad \\frac{\\partial\\hat x}{\\partial z_k}=\\frac{p_k}{\\tau}(x_k-\\hat x)",
-      "takeaway": "坐标读出需要明确图像处理、特征采样和网格约定；期望位置不等于峰值位置。",
-      "code": "import torch\n\nz = torch.tensor([.2, -.3, 1.0], dtype=torch.float64, requires_grad=True)\ngrid = torch.tensor([0., .5, 1.], dtype=z.dtype)\ntau = .7\np = (z / tau).softmax(-1)\nmean = p @ grid\nactual, = torch.autograd.grad(mean, z)\nmanual = p * (grid - mean) / tau\ntorch.testing.assert_close(actual, manual)\npeaks = torch.tensor([1., -1., 1.], dtype=z.dtype)\nfor temperature in (1., .1, .01):\n    coord = (peaks / temperature).softmax(-1) @ grid\n    torch.testing.assert_close(coord, torch.tensor(.5, dtype=z.dtype))\nprint(\"坐标导数:\", actual.tolist())\nprint(\"两个并列峰在低温下仍读出中点\")\n",
-      "codeExplanation": "第一部分逐项核对坐标对 logits 的导数。第二部分把两侧峰值设成严格相同，使任何温度下的期望都为 0.5；实际训练中的微小不对称可能打破并列，但不能依赖它保证选中正确目标。",
-      "lead": "空间读出是把带位置的特征图转换为坐标或位置分布的操作。空间期望将归一化热图按网格坐标加权求和，因此可微，却可能落在多个峰之间。下面先定义坐标与读出，再推导梯度和双峰歧义。",
-      "codeKind": "runnable",
-      "example": {
-        "title": "两张不同热图，也能读出同一坐标",
-        "steps": [
-          "取一行三个格点，横坐标为 [0,0.5,1]。热图权重 [0.49,0.02,0.49] 是两端高、中间低的双峰，期望为 0×0.49+0.5×0.02+1×0.49=0.5。",
-          "权重 [0.01,0.98,0.01] 则集中在中间，期望仍是 0.5。若真实目标坐标为 0.5，两者的坐标误差都为零。",
-          "坐标损失监督的是均值；如果任务还要求热图集中在真实目标，需要相应的热图或分布监督来区分这两种解。"
-        ],
-        "conclusion": "可微读出连接热图与坐标，监督目标决定模型需要学会哪些空间信息。",
-        "afterParagraph": 5
-      }
-    },
-    {
-      "id": "implementation-checks",
-      "title": "卷积转置、重叠累加与梯度对照",
-      "body": [
-        "验证一个卷积实现时，先选择能暴露错误的输入：非方形图像和核、多输入通道、不相等的步长与 dilation、不同分组数，以及非对称权重。全零、全一或空间对称的数据可能掩盖核翻转、通道遗漏和轴交换错误。除了前向数值，还应给输出施加一个明确的上游梯度，比较输入、权重和偏置的梯度；只检查 shape 不足以证明可训练性。",
-        "unfold 后每列是一个窗口，重叠区域的反向贡献需要相加。Fold 对重叠块也使用累加，因此 Fold(Unfold(x)) 一般等于覆盖计数乘 x，并不自动等于 x。无偏置卷积可写成线性矩阵 C；当边界、步幅和输出形状匹配时，ConvTranspose2d 实现对应的转置算子 \\(C^\\top\\)。它满足内积恒等式 \\(\\langle Cx,z\\rangle=\\langle x,C^\\top z\\rangle\\)，这是反向传播需要的性质，而不是 \\(C^\\top C=I\\)。",
-        "取一维核 [1,2]、输入长度 3，\\(C=\\begin{bmatrix}1&2&0\\\\0&1&2\\end{bmatrix}\\)。输入 [1,2,3] 得到 [5,8]，再转置卷积得到 [5,18,16]，显然没有恢复原输入。向量 [4,−2,1] 又在 C 的零空间里，x 与 \\(x+[4,-2,1]\\) 具有相同卷积输出，任何逆函数都无法从这一输出同时恢复两者。output_padding 解决某些输出尺寸歧义，不会补回已经丢掉的数值信息。",
-        "第二个演示采用无外部依赖的合成条纹分类，完整执行训练切分、前向、交叉熵、反向、更新和留出评价。这能检查示例的训练路径，不代表真实图像或机器人场景的泛化。实际视觉后训练还应检查预训练输入约定、相机遮挡、数据增强与标签同步、轨迹划分和闭环行为。训练失败时，可先检查一个小 Batch 的预测、梯度和参数变化，再判断是否需要调整网络。",
-        "CNN 从局部共享计算开始，经非线性、多层组合和采样得到空间表示，再由读出形成任务输出。核参数、感受野、分辨率与信息可恢复性描述不同层面，只有沿同一图像的数据流才能把它们联系起来。"
-      ],
-      "takeaway": "先证明运算与梯度一致，再证明指定训练任务能优化；两种证据回答不同问题。",
-      "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.tensor([1., 2., 3.], dtype=torch.float64).reshape(1, 1, 1, 3)\nw = torch.tensor([1., 2.], dtype=x.dtype).reshape(1, 1, 1, 2)\ny = F.conv2d(x, w)\nback = F.conv_transpose2d(y, w)\ntorch.testing.assert_close(y.flatten(), torch.tensor([5., 8.], dtype=x.dtype))\ntorch.testing.assert_close(back.flatten(), torch.tensor([5., 18., 16.], dtype=x.dtype))\nnull = torch.tensor([4., -2., 1.], dtype=x.dtype).reshape_as(x)\ntorch.testing.assert_close(F.conv2d(x + null, w), y)\nz = torch.tensor([2., -1.], dtype=x.dtype).reshape_as(y)\ntorch.testing.assert_close((y * z).sum(), (x * F.conv_transpose2d(z, w)).sum())\nprint(\"卷积后再转置卷积:\", back.flatten().tolist())\nprint(\"转置的内积恒等式成立，但它不是逆映射\")\n",
-      "codeExplanation": "用高度为 1 的 Conv2d 表示一维例子，同时覆盖输出值、零空间反例与转置的内积定义。这里 stride=1 且无 padding，输出尺寸唯一；更复杂配置还需对齐 output_padding，才能比较同一线性算子的转置。",
-      "lead": "卷积转置是卷积线性算子的转置所对应的运算，用于理解输出梯度怎样回到输入，通常不是恢复原图的逆运算。重叠窗口的贡献必须在相同输入位置累加。下面用前向、内积关系与梯度对照检验这一点。",
-      "codeKind": "runnable"
     }
   ],
   "implementations": [
@@ -708,41 +530,6 @@
         "不是。理想 stride=1 卷积主要体现平移等变，即特征跟着移动；它并不直接意味着输出不变。有限边界和下采样还会限制理想等变关系。",
         "分类读出可能通过池化获得一定位置鲁棒性，空间定位却要随物体移动改变预测。应先定义任务的几何要求，再测试平移、裁剪和标签同步。"
       ]
-    },
-    {
-      "question": "Conv2d(kernel=P,stride=P) 为什么能替代一层 patch Linear，却不能替代完整 Transformer？",
-      "answer": [
-        "不重叠窗口展平成 \\(C_{\\mathrm{in}}P^2\\) 向量后，卷积在每个窗口复用同一权重，等价于一次共享 Linear，前提是通道与空间的展平顺序一致。",
-        "这种局部投影尚未混合不同 patch。Transformer 后续还有位置表示、Attention、前馈网络等计算，不能由这一层投影等价推导出整个架构等价。"
-      ]
-    },
-    {
-      "question": "坐标误差为零，是否能证明热图已正确锁定一个目标？",
-      "answer": [
-        "不能。空间期望只约束分布的一个矩；中间单峰与对称双峰都可以有同样的均值。坐标正确不意味着概率集中在真实目标上。",
-        "并列峰在温度趋近零时仍可能共享概率，均值落在峰之间。可结合任务需要检查分布形状、局部监督或多目标假设，但不能从坐标 Loss 一个数推断热图正确。"
-      ]
-    },
-    {
-      "question": "为什么“depthwise 后接 1×1 卷积”并不等价于任意普通卷积？",
-      "answer": [
-        "在两层之间没有非线性、depthwise 倍增系数 \\(K=1\\) 时，等效核 \\(W_{ocuv}=P_{oc}D_{cuv}\\)。固定 c，所有输出的空间核都成比例，因此这一 \\(C_{\\mathrm{out}}\\times K_hK_w\\) 切片秩最多为 1。",
-        "若两个输出需要来自同一输入通道的线性独立空间核，如横向和纵向差分，这个结构不能精确表达。K 个独立 depthwise 核将秩上限提高到 K；加入非线性后则不再能用一个固定等效核比较。"
-      ]
-    },
-    {
-      "question": "stride=2 是否必然丢失信息？抗混叠是否能同时保证所有细节和任意平移不变？",
-      "answer": [
-        "不必然。用四个输出通道分别存储每个 2×2 patch 的四个像素，就是可逆的空间到通道重排。一般线性 patch 投影是否单射取决于输入输出维数与矩阵秩。",
-        "同一通道直接降采样会把某些频率混叠。低通滤波能降低混叠，但通过削弱高频实现，不能同时承诺原样保留全部细节。有限边界、后续非线性与新一轮采样还会影响平移响应。"
-      ]
-    },
-    {
-      "question": "两个特征图形状、累计 stride 和感受野都相同，是否可以直接逐位置融合？",
-      "answer": [
-        "还需要检查采样原点与中心偏移。不对称 padding 的左右分配不同，可以保持输出个数、r 和 j 相同，却使 a 不同。逐元素加法在张量维度上合法，不代表对应位置观察同一原图区域。",
-        "为每条分支按相同像素坐标约定记录 r、j、a，并结合 resize、crop 等预处理变换核对。边界补值与真实图像支持不同，理论中心也不等于实际贡献质心。"
-      ]
     }
   ],
   "pitfalls": [
@@ -765,16 +552,6 @@
       "title": "将全局池化用于任何空间任务",
       "detail": "汇总后可能无法区分需要不同坐标输出的空间排列。",
       "fix": "对比空间 token、热图或显式位置读出，并检验不同场景是否被汇成相同表示。"
-    },
-    {
-      "title": "冻结参数却忽略 BatchNorm 运行统计",
-      "detail": "训练模式下 running_mean/variance 仍可能变化，导致冻结编码器实际行为改变。",
-      "fix": "分别核对参数梯度、train/eval 模式、缓冲区和预处理配置。"
-    },
-    {
-      "title": "把恢复图像尺寸当成恢复原图",
-      "detail": "ConvTranspose 或上采样得到相同 H/W，并不保证逆转下采样和信息丢失。",
-      "fix": "区分几何尺寸与信息可逆性，用已知输入和任务相关指标验证重建或定位。"
     }
   ],
   "sources": [
@@ -843,5 +620,272 @@
       "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.MaxPool2d.html"
     }
   ],
-  "mainImplementation": "cnn-training-and-patches"
+  "mainImplementation": "cnn-training-and-patches",
+  "advancedSections": [
+    {
+      "id": "activation-pooling",
+      "title": "激活与池化：先看主模型，再比较归一化",
+      "body": [
+        "把一层卷积展成线性算子 \\(C\\)，带偏置的输出为 \\(z=Cx+b\\)。只串联这类操作仍得到仿射函数；逐元素激活得到 \\(h_i=\\phi(z_i)\\)，其局部 Jacobian 为 \\(J=\\operatorname{diag}(\\phi^{\\prime}(z))C\\)。对 ReLU，正预激活的导数为一、负预激活为零，所以不同输入会启用不同局部映射。零点不可导，PyTorch 选择零导数作为实现约定；这不意味着所有框架必须采用同一种折点约定。",
+        "若上游梯度为 \\(g=\\nabla_hL\\)，传回预激活的梯度就是 \\(g\\odot\\mathbf1\\{z>0\\}\\)。负位置的这条路径会被关闭，但同一权重仍可通过其他样本或其他空间位置获得更新；有残差时还可能存在旁路。多层卷积与激活由此形成输入相关的分段仿射结构。滤波器的实际含义由训练决定，不能把每一层机械指定为边缘、纹理或物体检测器。",
+        "池化在每个通道内对窗口集合 \\(\\Omega_u\\) 汇聚，其中 \\(u\\) 是输出位置。无填充且窗口包含 \\(K\\) 个元素时，平均池化为 \\(y_u=K^{-1}\\sum_{j\\in\\Omega_u}x_j\\)，最大池化为 \\(y_u=\\max_{j\\in\\Omega_u}x_j\\)。前者是固定线性组合，后者是由输入选择分支的分段线性函数。两者的步幅都决定输出窗口如何移动，因此需要继续沿用前面感受野与采样间距的分析。",
+        "平均池化满足 \\(\\partial y_u/\\partial x_j=1/K\\)（\\(j\\in\\Omega_u\\)），唯一最大值位于 \\(j_u^*\\) 时，最大池化满足 \\(\\partial y_u/\\partial x_j=\\mathbf1\\{j=j_u^*\\}\\)。如果输入位置被多个窗口覆盖，它的梯度还要将各个窗口贡献相加。并列最大值处不可导，实现会选取一种梯度分配，不能声称平均分给所有并列位置是最大池化的必然行为。",
+        "当池化步幅大于一时，还发生空间下采样。平均池化等价于先用方框核做局部平均再取样，能够衰减部分高频，但这个有限滤波器并非理想带限滤波，不能保证完全消除混叠。最大池化是非线性选择，也不自动满足下采样所需的频率条件。改变输入采样相位后，即使边界使用周期约定，池化结果也可能变化；下一节将用频率和奇偶相位进一步解释。",
+        "全局平均池化（GAP）将整个空间轴变成一个窗口：\\(\\bar F_{b,c}=(HW)^{-1}\\sum_{i,j}F_{b,c,i,j}\\)。特征图 \\([4,0;0,0]\\) 与 \\([0,0;0,4]\\) 的响应位置不同，GAP 却都为一；任何只读取该单通道均值的后续函数都无法区分二者。其反向把同一输出梯度除以 \\(HW\\) 分配给每个位置。这个反例针对当前特征图到均值的映射：若上游已把空间关系写进其他通道，GAP 仍可能保留任务需要的信息，不能仅凭最后一个平均算子判断整网空间能力。",
+        "边界约定也会改变池化的函数。`AvgPool2d` 的 `count_include_pad` 决定补零是否进入平均分母；`MaxPool2d` 的隐式填充值是负无穷，不是普通卷积的零。用全负输入或边界窗口核对这些差异，再根据任务选择保持空间 token、多尺度特征或全局汇聚。代码页的[激活、批次统计与池化的梯度对照](#/learn/cnn-receptive-field?tab=code&anchor=demo-activation-pooling-gradients)将上述公式与 Autograd 逐项比较。",
+        "BatchNorm2d 保持 `[B,C,H,W]` 形状，对每个通道分别在样本、高和宽三个轴上统计。固定通道 \\(c\\)，令 \\(N=BHW\\)，将该通道的元素编号为 \\(x_{c,1},\\ldots,x_{c,N}\\)。训练前向为 \\[\\mu_c=\\frac1N\\sum_nx_{c,n},\\quad v_c=\\frac1N\\sum_n(x_{c,n}-\\mu_c)^2,\\quad z_{c,n}=\\frac{x_{c,n}-\\mu_c}{r_c},\\quad y_{c,n}=\\gamma_cz_{c,n}+\\beta_c,\\quad r_c=\\sqrt{v_c+\\epsilon}.\\]均值和尺度都由当前输入计算，\\(\\gamma_c,\\beta_c\\) 则是每个通道共享的可学习参数。",
+        "BN 的反向不能只把上游梯度除以标准差。记 \\(g_{c,n}=\\partial L/\\partial y_{c,n}\\)、\\(q_{c,n}=\\gamma_cg_{c,n}\\)，沿相同统计集合取平均，有 \\[\\frac{\\partial L}{\\partial x_{c,n}}=\\frac{q_{c,n}-\\operatorname{mean}(q_c)-z_{c,n}\\operatorname{mean}(q_c\\odot z_c)}{r_c}.\\]第一项来自输入直接变化，第二项修正均值的变化，第三项修正方差的变化；完整微分见[归一化的 Jacobian](#/learn/normalization?tab=theory&section=2)。因此某个像素的梯度会依赖同通道其他位置甚至其他样本，BN 不是逐像素的固定缩放。",
+        "训练时使用当前批次的总体式方差，并更新运行统计；默认评估时用保存的运行均值和方差，此时它们对当前输入是常数。PyTorch 更新 `running_var` 使用对应的无偏批次方差，不能把它和训练前向的分母混为一谈。小批次、相关视频帧或分布变化会影响统计估计；冻结 \\(\\gamma,\\beta\\) 并不会停止训练模式下的 Buffer 更新。需要固定视觉编码器时，应分别决定参数冻结、Norm 模式与梯度路径，而不是把 `requires_grad=False` 当作全部冻结。",
+        "贯穿 SmallCNN 没有 BatchNorm，便于直接观察卷积、ReLU 和 GAP 的局部路径。对 logits 的交叉熵梯度先乘分类器权重，得到 `[B,12]` 的汇聚特征梯度；GAP 再将每个通道的该梯度以 \\(1/144\\) 分给 12×12 个位置。代码逐元素验证这一式子，然后观察 ReLU 将哪些位置置零。若加入训练态 BN，样本和空间之间又增加统计依赖，此时不能继续套用“一个局部输出只依赖局部输入”的纯卷积结论。"
+      ],
+      "formula": "\\begin{aligned}\\frac{\\partial L}{\\partial x_j}&=\\sum_{u:j\\in\\Omega_u}g_u\\frac{\\partial y_u}{\\partial x_j},\\\\\\frac{\\partial y_u^{\\rm avg}}{\\partial x_j}&=\\frac1K\\quad(j\\in\\Omega_u),\\\\\\frac{\\partial y_u^{\\rm max}}{\\partial x_j}&=\\mathbf1\\{j=j_u^*\\}\\quad\\text{（唯一最大值）}.\\end{aligned}",
+      "code": "import torch\nimport torch.nn.functional as F\n\ndtype = torch.float64\nx = torch.tensor([[[[1., 4.], [3., 2.]]]], dtype=dtype,\n                 requires_grad=True)\navg = F.avg_pool2d(x, 2)\nmaximum = F.max_pool2d(x, 2)\ng_avg, = torch.autograd.grad(avg.sum(), x)\ng_max, = torch.autograd.grad(maximum.sum(), x)\ntorch.testing.assert_close(g_avg, torch.full_like(x, 0.25))\ntorch.testing.assert_close(g_max, torch.tensor(\n    [[[[0., 1.], [0., 0.]]]], dtype=dtype))\n\n# Same channel mean, different spatial locations.\nmaps = torch.tensor([[[[4., 0.], [0., 0.]]],\n                     [[[0., 0.], [0., 4.]]]], dtype=dtype)\npooled = F.adaptive_avg_pool2d(maps, 1)\nassert not torch.equal(maps[0], maps[1])\ntorch.testing.assert_close(pooled, torch.ones_like(pooled))\nprint(\"平均/最大池化的梯度和 GAP 空间反例均通过。\")\n",
+      "codeExplanation": "先用唯一最大值窗口隔离两种梯度分配，再用两个响应位置不同、均值相同的特征图验证 GAP 的不可区分性。这里没有训练随机模型，断言检验的是明确算子的性质。完整实现进一步检查重叠窗口、BN 反向和运行统计。",
+      "lead": "激活使卷积特征发生非线性变化，池化汇总空间响应，归一化则调整指定集合的统计尺度。主案例使用 ReLU 和全局平均池化，不包含 BatchNorm。先认识这条实际路径，再用归一化作结构对照，分别追踪前向与反向。",
+      "codeKind": "runnable",
+      "example": {
+        "title": "同一个窗口，平均池化与最大池化怎样前传和回传",
+        "afterParagraph": 4,
+        "steps": [
+          "窗口为 \\(\\begin{bmatrix}1&4\\\\3&2\\end{bmatrix}\\)，平均池化得到 \\((1+4+3+2)/4=2.5\\)，最大池化得到 4。输出形状相同，保留的信息不同。",
+          "若该输出的上游梯度为 1，平均池化给四个位置各传回 1/4；最大池化在唯一最大值的右上位置传回 1，其余为零。",
+          "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
+        ],
+        "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
+      },
+      "figures": [
+        {
+          "src": "/assets/figures/pooling-d2l.svg",
+          "alt": "三乘三输入经过窗口二乘二、步幅一的最大池化，得到四、五、七、八组成的二乘二输出。",
+          "afterParagraph": 3,
+          "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html)。",
+          "width": 248,
+          "height": 108
+        }
+      ]
+    },
+    {
+      "id": "equivariance",
+      "title": "平移等变、采样相位与混叠",
+      "body": [
+        "共享卷积在无限网格上对整数平移等变：卷积后再平移，与先平移输入再卷积得到相同结果。有限图像要额外规定边界；stride=1 的内部区域可以检验这一关系，零填充和裁剪的全图结果不能不加条件地套用。等变意味着输出跟着移动，分类所需的不变性与空间预测所需的等变性也应分别讨论。",
+        "stride=s 的卷积相当于先计算稠密响应，再每隔 s 个位置采样。输入移动 s 的整数倍时还能对齐输出网格，移动一个像素通常无法对应整数个输出位置。取周期序列 \\(x[n]=(-1)^n\\)，stride=2 得到全 +1；把输入移动一个位置，得到全 −1。这个例子没有边缘补零，却仍发生剧烈变化，原因就是采样相位。",
+        "混叠描述不同频率在采样后不可区分。对 stride=2，\\(e^{i\\omega(2m)}\\) 与 \\(e^{i(\\omega+\\pi)(2m)}\\) 完全相同；超过新网格可区分频段的内容会折叠进其他频率。下采样前低通滤波可以降低混叠，但会削弱细节，也不能保证有限边界下的任意平移不变。相邻两点平均会将交替的高频序列变成零，这是有信息代价的稳定化。",
+        "实际网络的非线性还可能产生新的高频，因此仅在输入处模糊一次，并不保证后续所有下采样都无混叠。应该明确每次下采样前的操作，并比较奇数、偶数平移与边缘位置。平移图像做数据增强时，空间标签还需遵守相同坐标变换。"
+      ],
+      "formula": "f(T_\\Delta x)=T_\\Delta f(x)\\ \\text{表示等变};\\qquad f(T_\\Delta x)=f(x)\\ \\text{表示不变}",
+      "takeaway": "先定义任务希望保留的几何变化，再决定池化、增强和下采样策略。",
+      "focus": {
+        "kind": "常用",
+        "title": "平移等变的检查要控制 stride 和边界",
+        "explanation": "stride=1的共享卷积在理想无限网格上满足平移等变；有限图像的padding会改变边缘输入，stride>1还固定了采样相位。把图像平移1像素后比较整幅输出，差异可能来自采样与边界，不一定是代码错误。",
+        "check": "先在足够大的图像内部区域比较，再测试与总stride相匹配的平移，并记录padding约定。"
+      },
+      "code": "import torch\n\n# 用循环边界排除 Padding 的干扰。\nx = torch.tensor([1., -1.] * 4, dtype=torch.float64)\nshifted = x.roll(1)\nsample = lambda v: v[::2]\nlowpass = lambda v: (v + v.roll(-1)) / 2\nassert torch.equal(sample(x), torch.ones(4, dtype=x.dtype))\nassert torch.equal(sample(shifted), -torch.ones(4, dtype=x.dtype))\ntorch.testing.assert_close(sample(lowpass(x)), sample(lowpass(shifted)))\nprint(\"直接采样:\", sample(x).tolist(), sample(shifted).tolist())\nprint(\"先平均再采样:\", sample(lowpass(x)).tolist())\n",
+      "codeExplanation": "roll 使用周期边界，因而两次结果的差异来自步幅采样。两点平均在这个特定最高频例子上完全消除振荡；它不是理想低通滤波器，也不证明所有图像平移后结果相同。",
+      "lead": "平移等变指输入平移后，输出按照对应规则一起平移；平移不变则指输出保持不变。卷积共享结构有助于前者，下采样、边界与池化还会改变具体关系。先分清这两个目标，再讨论采样相位与混叠。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "architecture-design",
+      "title": "CNN 架构演进：如何分配空间混合、通道混合与梯度路径",
+      "body": [
+        "VGG 用连续小核增加深度。假设各层通道数均为 C、stride=dilation=1，两层 3×3 的理论感受野为 5×5，权重数为 \\(18C^2\\)；一层 5×5 为 \\(25C^2\\)。三层 3×3 的感受野为 7×7、参数为 \\(27C^2\\)，而一层 7×7 为 \\(49C^2\\)。中间非线性让堆叠能够按输入改变局部计算区域，因此“同样的感受野”不等于“同一个线性算子”；删掉非线性后也仍存在多层核因式分解的约束，不能仅凭覆盖范围声称任意大核都能等价替换。",
+        "ResNet 同时改变了深层网络的参数化：\\(y=x+F(x)\\) 让块学习增量，并引入恒等梯度项，具体条件与反例见 [残差连接](#/learn/residual)。对于通道 \\(C\\to b\\to b\\to C\\) 的 1×1、3×3、1×1 瓶颈分支，权重数为 \\(2Cb+9b^2\\)。先用 1×1 压缩通道，使空间卷积在较小的 b 上计算，再投影回 C；这会限制分支的中间表示，却不能把整个残差块误认为只剩 b 个通道，因为旁路仍保留原来的 C 维表示。降采样或改通道数时，旁路投影与主分支的几何必须一致。",
+        "MobileNet 的 depthwise 与 pointwise 分工进一步拆开空间和通道计算：一个 k×k depthwise 核先独立处理每个输入通道，再用 1×1 将 \\(C_{\\mathrm{in}}\\) 个通道混合成 \\(C_{\\mathrm{out}}\\) 个通道。权重数从普通卷积的 \\(k^2C_{\\mathrm{in}}C_{\\mathrm{out}}\\) 降为 \\(k^2C_{\\mathrm{in}}+C_{\\mathrm{in}}C_{\\mathrm{out}}\\)，但这个算子族包含怎样的限制，必须结合前面的分组卷积秩推导理解。参数数或乘加次数下降也不保证相同比例的实际延迟下降；内存访问、算子融合、硬件内核和特征图尺寸都会影响执行时间。",
+        "ConvNeXt 的官方块采用 7×7 depthwise 空间混合、沿通道的 LayerNorm、扩张到 4C 的逐位置 Linear、GELU 和投影回 C，再与输入相加。这里 Linear 只混合通道、不混合空间位置；NCHW 与 NHWC 的变换是为使最后一维对应通道，数学上同一逐位置 Linear 可以写成 1×1 卷积。官方实现还包含 LayerScale 和 stochastic depth；下方教学块明确省略这些项、偏置与 Norm 仿射，隔离主要路径，权重数因而恰为 \\(49C+8C^2\\)，不能把它当成完整模型的参数统计。",
+        "阶段式骨干通常逐步降低空间分辨率、增加通道宽度。以两个相邻阶段内部的同宽 3×3 卷积为例，若高宽各减半、C 加倍，单层主要乘加次数 \\(HWC^2\\) 的量级可近似保持，而中间激活元素 HWC 约减半、卷积参数量却增至四倍。这个算式解释了不同资源指标为何变化方向不同；它省略了降采样过渡层、归一化和具体实现成本，也不能推出定位细节已经被无损保留。",
+        "视觉特征如何用于策略，取决于训练目标和保留下来的信息。分类监督下的全局读出、局部空间 token、不同分辨率特征图，提供的是不同观测接口。应检查下采样后的有效分辨率是否支持小物体与接触位置，是否需要多个尺度，以及预训练时的图像标准化和 Norm 模式。骨干名称或“高层语义更强”不能代替这些分析；保留空间位置后的 token 交互可继续阅读 [视觉 token 与多模态融合](#/learn/multimodal)。"
+      ],
+      "formula": "\\begin{aligned}P_{\\rm bottleneck}&=2Cb+9b^2,\\\\ P_{\\rm dw+pw}&=k^2C_{\\rm in}+C_{\\rm in}C_{\\rm out},\\\\ P_{\\rm teaching\\ block}&=49C+8C^2.\\end{aligned}",
+      "code": "import torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(29)\ntorch.set_num_threads(1)\n\nclass SpatialChannelBlock(nn.Module):\n    \"\"\"隔离空间混合和通道混合的教学块，省略仿射 Norm、偏置和 LayerScale。\"\"\"\n    def __init__(self, channels):\n        super().__init__()\n        self.spatial = nn.Conv2d(channels, channels, 7, padding=3, groups=channels, bias=False)\n        self.norm = nn.LayerNorm(channels, eps=1e-6, elementwise_affine=False)\n        self.expand = nn.Linear(channels, 4 * channels, bias=False)\n        self.project = nn.Linear(4 * channels, channels, bias=False)\n\n    def forward(self, x):\n        h = self.spatial(x).permute(0, 2, 3, 1)  # B,H,W,C；Norm 只统计通道。\n        h = self.project(F.gelu(self.expand(self.norm(h))))\n        return x + h.permute(0, 3, 1, 2)\n\nchannels = 8\nblock = SpatialChannelBlock(channels).double()\nx = torch.randn(2, channels, 5, 7, dtype=torch.float64, requires_grad=True)\ny = block(x)\nassert y.shape == x.shape\nassert sum(p.numel() for p in block.parameters()) == 49 * channels + 8 * channels ** 2 == 904\n\n# 逐像素 Linear 与 1×1 Conv2d 的等价依赖布局变换，不能直接 reshape 交换轴。\nh = block.norm(block.spatial(x).permute(0, 2, 3, 1))\nlinear = block.expand(h).permute(0, 3, 1, 2)\npointwise = F.conv2d(h.permute(0, 3, 1, 2), block.expand.weight[:, :, None, None])\ntorch.testing.assert_close(linear, pointwise)\ny.square().mean().backward()\nassert all(p.grad is not None and torch.isfinite(p.grad).all() for p in block.parameters())\n\n# 末端投影置零使分支严格为零，验证残差恒等关系。\nwith torch.no_grad():\n    block.project.weight.zero_()\ntorch.testing.assert_close(block(x), x)\nprint(\"通过：904 个参数、空间/通道接口、Linear/1×1 等价、梯度与零投影恒等。\")\n",
+      "codeExplanation": "C=8 时显式数出 904 个权重；检查 NCHW/NHWC 接口与 Linear/1×1 Conv 等价，核对各参数梯度有限，并以末端投影置零验证恒等旁路。它检验结构关系，不比较各架构的识别准确率或延迟。",
+      "lead": "CNN 架构是卷积、非线性、下采样和旁路等模块的组织方式。不同网络主要改变何时扩大空间上下文、何时混合通道，以及怎样保留梯度路径。下面按这些设计选择理解代表结构，再比较其参数与感受野。",
+      "codeKind": "runnable",
+      "comparison": {
+        "title": "四项代表工作：把结构名称对应到设计问题",
+        "columns": [
+          "代表工作",
+          "主要设计特点",
+          "学习与迁移时关注什么"
+        ],
+        "rows": [
+          [
+            "[VGG（2014）](https://arxiv.org/abs/1409.1556)",
+            "堆叠 3×3 小核，用规则结构研究深度与表示。",
+            "适合理解局部算子的层层组合；同等覆盖跨度不表示与单个大核等价。"
+          ],
+          [
+            "[ResNet（2015）](https://arxiv.org/abs/1512.03385)",
+            "让块学习残差；深层版本用瓶颈控制通道混合成本。",
+            "可作为深层视觉骨干的结构参照；检查旁路投影、降采样与预训练统计，恒等路径不保证任意训练都稳定。"
+          ],
+          [
+            "[MobileNet v1（2017）](https://arxiv.org/abs/1704.04861)",
+            "用 depthwise 与 pointwise 分解空间/通道计算，并以宽度和分辨率调节成本。",
+            "面向移动与嵌入式计算约束；使用时同时检查细节分辨率和实测延迟，不能只按 MAC 推断速度。"
+          ],
+          [
+            "[ConvNeXt（2022）](https://arxiv.org/abs/2201.03545)",
+            "重新组织纯卷积骨干，结合较大 depthwise 核、通道 MLP 与 LayerNorm。",
+            "适合比较卷积空间混合与 ViT 的 token 交互；预训练目标与保留的特征层仍决定具体接口。"
+          ]
+        ]
+      }
+    },
+    {
+      "id": "patch-embedding",
+      "title": "Patch 投影何时可逆",
+      "body": [
+        "一个大小为 P×P 的图像块可以按固定顺序展成长度 \\(C_{\\mathrm{in}}P^2\\) 的向量，再通过共享 Linear 映射成 D 维 token。当 Conv2d 的 kernel_size=P、stride=P、padding=0 且图像尺寸可整除 P 时，它恰好对不重叠图像块做同一件事。卷积输出为 [B,D,H/P,W/P]，把空间轴展平并移到 token 轴后得到 [B,N,D]。",
+        "等价需要对齐展平顺序和权重布局。PyTorch unfold 的窗口通常按输入通道、核高、核宽组织；Conv2d 的权重也可以把后三维展平为 [D,Cin×P×P]。先把图像重排成另一种 HWC patch 顺序，却直接复用原来的卷积权重，会得到不同数值。完整演示比较了所有 token 的输出，并额外用直接切片检查第一块像素顺序。",
+        "这种等价只说明 patch 投影这一层的计算，不代表 CNN 和 Transformer 整体相同。非重叠 patch 的初始投影不在不同 patch 之间混合信息，后续 Attention 与位置表示才决定 token 如何交流。卷积可以使用重叠窗口和多个阶段，也可以输出视觉 token 供 Transformer 使用。理解这些连接有助于读代码：先辨认局部投影、空间下采样、token 重排，再看全局信息交换。",
+        "下采样不必然意味着信息丢失。一个 patch 有 \\(n=C_{\\mathrm{in}}P^2\\) 个输入数，线性投影 \\(W\\in\\mathbb R^{D\\times n}\\) 的秩最多为 \\(\\min(D,n)\\)。\\(D<n\\) 时必有非零零空间，存在不同 patch 得到相同 token；\\(D\\ge n\\) 且列满秩时，单个 patch 的线性映射则可以是单射。若输出通道随空间缩小而增加，也可能只是把空间重排进通道。下面用 stride=2 的卷积分别提取 2×2 的四个像素，再通过 pixel_shuffle 精确重建原输入。它说明应检查总维数和映射秩，而不是看到 stride>1 就断言不可逆。",
+        "共享的局部线性投影把卷积窗口与 Patch Token 联系起来。得到序列后，位置编码负责保留区域身份，Transformer 再建立跨 Patch 交互；这条数据流继续见[Embedding 与位置编码](#/learn/embeddings)和[Transformer](#/learn/transformer)。"
+      ],
+      "formula": "n=C_{\\rm in}P^2,\\quad z=Wp,\\quad \\operatorname{rank}(W)\\le\\min(D,n),\\quad \\ker W=\\{0\\}\\ \\Longleftrightarrow\\ \\operatorname{rank}(W)=n",
+      "takeaway": "Patch embedding 可用卷积实现；等价对象是一层共享局部线性投影。",
+      "focus": {
+        "kind": "易错",
+        "title": "卷积 patch 投影与 Linear 等价需要元素顺序一致",
+        "explanation": "无重叠patch可以用kernel=stride=P的Conv2d实现。与逐patch共享Linear核对时，patch向量必须使用与卷积权重相同的通道、行、列展开顺序；HWC与CHW混用不会改变元素总数，却会改变乘法配对。",
+        "check": "用递增像素值手工取第一个patch，核对展开向量，再比较所有token的数值与梯度。"
+      },
+      "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.arange(16., dtype=torch.float64).reshape(1, 1, 4, 4)\n# 每个输出通道只选取 2×2 窗口中的一个位置。\nw = torch.eye(4, dtype=x.dtype).reshape(4, 1, 2, 2)\npacked = F.conv2d(x, w, stride=2)   # [1,4,2,2]\nrestored = F.pixel_shuffle(packed, upscale_factor=2)\ntorch.testing.assert_close(restored, x, rtol=0, atol=0)\nprint(\"空间缩小、通道增加:\", tuple(x.shape), \"->\", tuple(packed.shape))\nprint(\"重建最大误差:\", (restored - x).abs().max().item())\n",
+      "codeExplanation": "eye(4) 的四行分别选择左上、右上、左下、右下像素。空间位置少了四倍，通道增加四倍，总元素数不变；pixel_shuffle 按对应顺序还原。普通学习到的 patch 投影是否可逆仍取决于秩，后续池化或非线性也可能继续丢失信息。",
+      "lead": "Patch 投影是把每个图像小块映射为一个特征向量、形成视觉 Token 序列的操作。特定配置的卷积可实现同一映射，但压缩后的向量未必保留原小块全部信息。先建立计算等价，再判断何时可逆。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "spatial-readout",
+      "title": "空间期望的梯度与双峰歧义",
+      "body": [
+        "空间读出要沿用前处理与特征网格的坐标约定。Resize、Crop、Letterbox 会改变像素位置；累计 stride 决定间距，核和 padding 决定中心偏移。将热图坐标直接乘一个缩放常数，仅在这些约定一致时才成立。练习使用像素中心对应的 [0,1] 坐标，并用非方形网格区分 x/y 轴。",
+        "设网格中第 \\(j\\) 个位置的坐标为 \\((x_j,y_j)\\)，模型给出 logits \\(z_j\\)，温度为 \\(\\tau>0\\)。先构造 \\(p_j=\\operatorname{softmax}(z/\\tau)_j\\)，再以 \\(\\hat x=\\sum_jp_jx_j\\)、\\(\\hat y=\\sum_jp_jy_j\\) 读出位置期望。这是一个可微坐标函数；这些归一化权重是否具有校准的物理概率意义，仍取决于目标与训练。",
+        "固定网格坐标，Softmax 导数给出 \\(\\partial p_j/\\partial z_k=p_j(\\delta_{jk}-p_k)/\\tau\\)。代入期望的求和：\\[\\frac{\\partial\\hat x}{\\partial z_k}=\\sum_jx_j\\frac{\\partial p_j}{\\partial z_k}=\\frac{p_kx_k-p_k\\sum_jp_jx_j}{\\tau}=\\frac{p_k(x_k-\\hat x)}\\tau.\\]纵坐标同理。提高当前位置分数，会把期望拉向该格点；这个方向与[注意力的加权读出梯度](#/learn/attention?tab=theory&section=2)具有相同结构。",
+        "降低温度有两种同时发生的作用：显式的 \\(\\frac1\\tau\\) 放大项，以及概率分布变尖后 \\(p_k\\)或 \\(x_k-\\hat x\\) 变小。不能只看 \\(\\frac1\\tau\\) 就断言梯度总会增大。唯一最大值在 \\(\\tau\\to0\\) 时趋向 argmax，分数有并列最大值时却仍在这些位置之间分配概率；两个等高峰的期望可落在没有目标的中间。温度不能自动解决目标本身的多模态歧义。",
+        "期望监督还可能有“不同热图、同一坐标”的不可辨识性：集中在中间的单峰和对称双峰可以有相同均值，因此仅用坐标误差无法保证热图形状正确。是否增加热图监督、分布目标或其他结构约束，应取决于标注和任务，而不是把可微坐标读出当作自动定位机制。",
+        "需要预测图像位置时，可以从保留 [B,C,H,W] 网格的特征生成热图，再进行空间读出。SmallCNN 的 GAP 则把空间轴汇总为 [B,12]，供条纹分类使用；若增设定位分支，应从池化前的特征接出。读出的坐标随后按[视觉预处理](#/learn/vision-preprocessing)保存的 Resize、Crop 与补边变换还原到原图。"
+      ],
+      "formula": "p_j=\\operatorname{softmax}(z/\\tau)_j,\\qquad \\hat x=\\sum_jp_jx_j,\\qquad \\frac{\\partial\\hat x}{\\partial z_k}=\\frac{p_k}{\\tau}(x_k-\\hat x)",
+      "takeaway": "坐标读出需要明确图像处理、特征采样和网格约定；期望位置不等于峰值位置。",
+      "code": "import torch\n\nz = torch.tensor([.2, -.3, 1.0], dtype=torch.float64, requires_grad=True)\ngrid = torch.tensor([0., .5, 1.], dtype=z.dtype)\ntau = .7\np = (z / tau).softmax(-1)\nmean = p @ grid\nactual, = torch.autograd.grad(mean, z)\nmanual = p * (grid - mean) / tau\ntorch.testing.assert_close(actual, manual)\npeaks = torch.tensor([1., -1., 1.], dtype=z.dtype)\nfor temperature in (1., .1, .01):\n    coord = (peaks / temperature).softmax(-1) @ grid\n    torch.testing.assert_close(coord, torch.tensor(.5, dtype=z.dtype))\nprint(\"坐标导数:\", actual.tolist())\nprint(\"两个并列峰在低温下仍读出中点\")\n",
+      "codeExplanation": "第一部分逐项核对坐标对 logits 的导数。第二部分把两侧峰值设成严格相同，使任何温度下的期望都为 0.5；实际训练中的微小不对称可能打破并列，但不能依赖它保证选中正确目标。",
+      "lead": "空间读出是把带位置的特征图转换为坐标或位置分布的操作。空间期望将归一化热图按网格坐标加权求和，因此可微，却可能落在多个峰之间。下面先定义坐标与读出，再推导梯度和双峰歧义。",
+      "codeKind": "runnable",
+      "example": {
+        "title": "两张不同热图，也能读出同一坐标",
+        "steps": [
+          "取一行三个格点，横坐标为 [0,0.5,1]。热图权重 [0.49,0.02,0.49] 是两端高、中间低的双峰，期望为 0×0.49+0.5×0.02+1×0.49=0.5。",
+          "权重 [0.01,0.98,0.01] 则集中在中间，期望仍是 0.5。若真实目标坐标为 0.5，两者的坐标误差都为零。",
+          "坐标损失监督的是均值；如果任务还要求热图集中在真实目标，需要相应的热图或分布监督来区分这两种解。"
+        ],
+        "conclusion": "可微读出连接热图与坐标，监督目标决定模型需要学会哪些空间信息。",
+        "afterParagraph": 5
+      }
+    },
+    {
+      "id": "implementation-checks",
+      "title": "卷积转置、重叠累加与梯度对照",
+      "body": [
+        "验证一个卷积实现时，先选择能暴露错误的输入：非方形图像和核、多输入通道、不相等的步长与 dilation、不同分组数，以及非对称权重。全零、全一或空间对称的数据可能掩盖核翻转、通道遗漏和轴交换错误。除了前向数值，还应给输出施加一个明确的上游梯度，比较输入、权重和偏置的梯度；只检查 shape 不足以证明可训练性。",
+        "unfold 后每列是一个窗口，重叠区域的反向贡献需要相加。Fold 对重叠块也使用累加，因此 Fold(Unfold(x)) 一般等于覆盖计数乘 x，并不自动等于 x。无偏置卷积可写成线性矩阵 C；当边界、步幅和输出形状匹配时，ConvTranspose2d 实现对应的转置算子 \\(C^\\top\\)。它满足内积恒等式 \\(\\langle Cx,z\\rangle=\\langle x,C^\\top z\\rangle\\)，这是反向传播需要的性质，而不是 \\(C^\\top C=I\\)。",
+        "取一维核 [1,2]、输入长度 3，\\(C=\\begin{bmatrix}1&2&0\\\\0&1&2\\end{bmatrix}\\)。输入 [1,2,3] 得到 [5,8]，再转置卷积得到 [5,18,16]，显然没有恢复原输入。向量 [4,−2,1] 又在 C 的零空间里，x 与 \\(x+[4,-2,1]\\) 具有相同卷积输出，任何逆函数都无法从这一输出同时恢复两者。output_padding 解决某些输出尺寸歧义，不会补回已经丢掉的数值信息。",
+        "第二个演示采用无外部依赖的合成条纹分类，完整执行训练切分、前向、交叉熵、反向、更新和留出评价。这能检查示例的训练路径，不代表真实图像或机器人场景的泛化。实际视觉后训练还应检查预训练输入约定、相机遮挡、数据增强与标签同步、轨迹划分和闭环行为。训练失败时，可先检查一个小 Batch 的预测、梯度和参数变化，再判断是否需要调整网络。",
+        "CNN 从局部共享计算开始，经非线性、多层组合和采样得到空间表示，再由读出形成任务输出。核参数、感受野、分辨率与信息可恢复性描述不同层面，只有沿同一图像的数据流才能把它们联系起来。"
+      ],
+      "takeaway": "先证明运算与梯度一致，再证明指定训练任务能优化；两种证据回答不同问题。",
+      "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.tensor([1., 2., 3.], dtype=torch.float64).reshape(1, 1, 1, 3)\nw = torch.tensor([1., 2.], dtype=x.dtype).reshape(1, 1, 1, 2)\ny = F.conv2d(x, w)\nback = F.conv_transpose2d(y, w)\ntorch.testing.assert_close(y.flatten(), torch.tensor([5., 8.], dtype=x.dtype))\ntorch.testing.assert_close(back.flatten(), torch.tensor([5., 18., 16.], dtype=x.dtype))\nnull = torch.tensor([4., -2., 1.], dtype=x.dtype).reshape_as(x)\ntorch.testing.assert_close(F.conv2d(x + null, w), y)\nz = torch.tensor([2., -1.], dtype=x.dtype).reshape_as(y)\ntorch.testing.assert_close((y * z).sum(), (x * F.conv_transpose2d(z, w)).sum())\nprint(\"卷积后再转置卷积:\", back.flatten().tolist())\nprint(\"转置的内积恒等式成立，但它不是逆映射\")\n",
+      "codeExplanation": "用高度为 1 的 Conv2d 表示一维例子，同时覆盖输出值、零空间反例与转置的内积定义。这里 stride=1 且无 padding，输出尺寸唯一；更复杂配置还需对齐 output_padding，才能比较同一线性算子的转置。",
+      "lead": "卷积转置是卷积线性算子的转置所对应的运算，用于理解输出梯度怎样回到输入，通常不是恢复原图的逆运算。重叠窗口的贡献必须在相同输入位置累加。下面用前向、内积关系与梯度对照检验这一点。",
+      "codeKind": "runnable"
+    }
+  ],
+  "advancedImplementationIds": [
+    "unfold-convolution",
+    "activation-pooling-gradients"
+  ],
+  "advancedLabIds": [
+    "spatial-expectation"
+  ],
+  "advancedQuestions": [
+    {
+      "question": "Conv2d(kernel=P,stride=P) 为什么能替代一层 patch Linear，却不能替代完整 Transformer？",
+      "answer": [
+        "不重叠窗口展平成 \\(C_{\\mathrm{in}}P^2\\) 向量后，卷积在每个窗口复用同一权重，等价于一次共享 Linear，前提是通道与空间的展平顺序一致。",
+        "这种局部投影尚未混合不同 patch。Transformer 后续还有位置表示、Attention、前馈网络等计算，不能由这一层投影等价推导出整个架构等价。"
+      ]
+    },
+    {
+      "question": "坐标误差为零，是否能证明热图已正确锁定一个目标？",
+      "answer": [
+        "不能。空间期望只约束分布的一个矩；中间单峰与对称双峰都可以有同样的均值。坐标正确不意味着概率集中在真实目标上。",
+        "并列峰在温度趋近零时仍可能共享概率，均值落在峰之间。可结合任务需要检查分布形状、局部监督或多目标假设，但不能从坐标 Loss 一个数推断热图正确。"
+      ]
+    },
+    {
+      "question": "为什么“depthwise 后接 1×1 卷积”并不等价于任意普通卷积？",
+      "answer": [
+        "在两层之间没有非线性、depthwise 倍增系数 \\(K=1\\) 时，等效核 \\(W_{ocuv}=P_{oc}D_{cuv}\\)。固定 c，所有输出的空间核都成比例，因此这一 \\(C_{\\mathrm{out}}\\times K_hK_w\\) 切片秩最多为 1。",
+        "若两个输出需要来自同一输入通道的线性独立空间核，如横向和纵向差分，这个结构不能精确表达。K 个独立 depthwise 核将秩上限提高到 K；加入非线性后则不再能用一个固定等效核比较。"
+      ]
+    },
+    {
+      "question": "stride=2 是否必然丢失信息？抗混叠是否能同时保证所有细节和任意平移不变？",
+      "answer": [
+        "不必然。用四个输出通道分别存储每个 2×2 patch 的四个像素，就是可逆的空间到通道重排。一般线性 patch 投影是否单射取决于输入输出维数与矩阵秩。",
+        "同一通道直接降采样会把某些频率混叠。低通滤波能降低混叠，但通过削弱高频实现，不能同时承诺原样保留全部细节。有限边界、后续非线性与新一轮采样还会影响平移响应。"
+      ]
+    },
+    {
+      "question": "两个特征图形状、累计 stride 和感受野都相同，是否可以直接逐位置融合？",
+      "answer": [
+        "还需要检查采样原点与中心偏移。不对称 padding 的左右分配不同，可以保持输出个数、r 和 j 相同，却使 a 不同。逐元素加法在张量维度上合法，不代表对应位置观察同一原图区域。",
+        "为每条分支按相同像素坐标约定记录 r、j、a，并结合 resize、crop 等预处理变换核对。边界补值与真实图像支持不同，理论中心也不等于实际贡献质心。"
+      ]
+    }
+  ],
+  "advancedPitfalls": [
+    {
+      "title": "冻结参数却忽略 BatchNorm 运行统计",
+      "detail": "训练模式下 running_mean/variance 仍可能变化，导致冻结编码器实际行为改变。",
+      "fix": "分别核对参数梯度、train/eval 模式、缓冲区和预处理配置。"
+    },
+    {
+      "title": "把恢复图像尺寸当成恢复原图",
+      "detail": "ConvTranspose 或上采样得到相同 H/W，并不保证逆转下采样和信息丢失。",
+      "fix": "区分几何尺寸与信息可逆性，用已知输入和任务相关指标验证重建或定位。"
+    }
+  ],
+  "quickReference": {
+    "coreSections": [
+      "先看完整网络，再理解局部卷积",
+      "步幅、填充、空洞率与输出尺寸",
+      "参数共享、参数量与计算量",
+      "分组与深度可分离卷积的秩限制",
+      "感受野跨度、支持集与路径数"
+    ],
+    "advancedSections": [
+      "激活与池化：先看主模型，再比较归一化",
+      "平移等变、采样相位与混叠",
+      "CNN 架构演进：如何分配空间混合、通道混合与梯度路径",
+      "Patch 投影何时可逆",
+      "空间期望的梯度与双峰歧义",
+      "卷积转置、重叠累加与梯度对照"
+    ],
+    "coreImplementations": [
+      "cnn-training-and-patches"
+    ],
+    "advancedImplementations": [
+      "unfold-convolution",
+      "activation-pooling-gradients"
+    ],
+    "coreLabs": [
+      "geometry-and-receptive-field",
+      "grouped-convolution"
+    ],
+    "advancedLabs": [
+      "spatial-expectation"
+    ]
+  }
 }
