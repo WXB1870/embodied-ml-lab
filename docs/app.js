@@ -39,14 +39,26 @@ const LEGACY_LESSON_IDS={
  embeddings:'rope',normalization:'norm-ffn','tokenizer-autoregressive':'masking-autoregressive','kv-cache-inference':'kv-cache',
  'latent-variable-models':'vae','action-chunk':'action-chunking',finetuning:'lora',transformer:'attention',
  'action-representation':'behavior-cloning','partial-observability':'behavior-cloning','distribution-shift':'behavior-cloning',
- 'returns-bellman':'policy-gradient',vision-preprocessing:'multimodal','conditioning-fusion':'dit-adaln',
- 'matrix-grad':'matrix-grad','cnn-receptive-field':'cnn-receptive-field',mlp:'mlp',activation-init:'activation-init',
+ 'returns-bellman':'policy-gradient','vision-preprocessing':'multimodal','conditioning-fusion':'dit-adaln',
+ 'matrix-grad':'matrix-grad','cnn-receptive-field':'cnn-receptive-field',mlp:'mlp','activation-init':'activation-init',
  probability:'tensor',losses:'tensor',numerical:'tensor',generalization:'tensor',residual:'norm-ffn',
  'data-quality':'behavior-cloning',evaluation:'generative-policy','execution-latency':'generative-policy',
  'train-infer-contract':'vla-architecture',modules:'autograd',dataloader:'training-loop',checkpoint:'training-loop',
  'mixed-precision':'training-diagnostics','gradient-accumulation':'training-loop','memory-checkpointing':'training-loop',
  'distributed-training':'training-loop','multitask-gradients':'training-diagnostics'
 };
+for(const [oldId,newId] of Object.entries(LEGACY_LESSON_IDS)){
+ for(const bucket of ['drafts','notes','passed','viewed']){
+  for(const key of Object.keys(state[bucket])){
+   if(key===oldId||key.startsWith(oldId+':')){
+    const target=newId+key.slice(oldId.length);
+    if(!(target in state[bucket]))state[bucket][target]=state[bucket][key];
+    delete state[bucket][key];
+   }
+  }
+ }
+ if(state.lastLesson===oldId)state.lastLesson=newId;
+}
 const lessonHref=(id,tab='theory',mode)=>sitePath('/learn/'+id+'/'+(tab==='theory'?'':tab+'/'))+'?tab='+tab+(mode?'&mode='+mode:'');
 const topicHref=(id,tab='guide',extra='')=>lessonHref(Object.keys(CORE_LESSON_TOPIC).find(k=>CORE_LESSON_TOPIC[k]===id)||id,({guide:'theory',labs:'exercise'}[tab]||tab))+extra;
 const topicExerciseId=(t,l)=>'topic-'+t.id+'-'+l.id;
