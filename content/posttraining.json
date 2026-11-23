@@ -1013,7 +1013,7 @@
     ],
     "code": {
       "title": "PPO clipped objective 的最小实现",
-      "source": "import torch\\n\\ndef ppo_actor_loss(new_logp, old_logp, advantage, eps=0.2):\\n    ratio = (new_logp - old_logp).exp()\\n    raw = ratio * advantage\\n    clipped = ratio.clamp(1-eps, 1+eps) * advantage\\n    return -torch.minimum(raw, clipped).mean()\\n\\nnew=torch.tensor([0.2,-0.3],requires_grad=True)\\nold=torch.tensor([0.0,-0.2])\\nadv=torch.tensor([1.0,-1.0])\\nloss=ppo_actor_loss(new,old,adv); loss.backward()\\nassert torch.isfinite(loss) and torch.isfinite(new.grad).all()\\nprint('loss',loss.item(),'grad',new.grad) ",
+      "source": "import torch\n\ndef ppo_actor_loss(new_logp, old_logp, advantage, eps=0.2):\n    ratio = (new_logp - old_logp).exp()\n    raw = ratio * advantage\n    clipped = ratio.clamp(1-eps, 1+eps) * advantage\n    return -torch.minimum(raw, clipped).mean()\n\nnew=torch.tensor([0.2,-0.3],requires_grad=True)\nold=torch.tensor([0.0,-0.2])\nadv=torch.tensor([1.0,-1.0])\nloss=ppo_actor_loss(new,old,adv); loss.backward()\nassert torch.isfinite(loss) and torch.isfinite(new.grad).all()\nprint('loss',loss.item(),'grad',new.grad) ",
       "explanations": [
         {
           "lines": "1–7",
@@ -1237,7 +1237,7 @@
     ],
     "code": {
       "title": "DPO 与 GRPO 关键张量计算",
-      "source": "import torch\\nimport torch.nn.functional as F\\n\\ndef dpo_loss(policy_w, policy_l, ref_w, ref_l, beta=0.1):\\n    margin = beta*((policy_w-ref_w)-(policy_l-ref_l))\\n    return -F.logsigmoid(margin).mean()\\n\\ndef group_advantage(rewards, eps=1e-6):\\n    mean=rewards.mean(dim=-1,keepdim=True)\\n    std=rewards.std(dim=-1,keepdim=True,unbiased=False)\\n    return (rewards-mean)/(std+eps)\\n\\nw=torch.tensor([ -2.0, -1.0 ],requires_grad=True); l=torch.tensor([-3.0,-2.0],requires_grad=True)\\nloss=dpo_loss(w,l,torch.tensor([-2.5,-2.5]),torch.tensor([-2.5,-2.5])); loss.backward()\\nr=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\\na=group_advantage(r)\\nassert a[0,0]<0 and a[0,2]>0 and torch.isfinite(a).all()\\nprint('DPO loss',loss.item(),'group advantages',a)",
+      "source": "import torch\nimport torch.nn.functional as F\n\ndef dpo_loss(policy_w, policy_l, ref_w, ref_l, beta=0.1):\n    margin = beta*((policy_w-ref_w)-(policy_l-ref_l))\n    return -F.logsigmoid(margin).mean()\n\ndef group_advantage(rewards, eps=1e-6):\n    mean=rewards.mean(dim=-1,keepdim=True)\n    std=rewards.std(dim=-1,keepdim=True,unbiased=False)\n    return (rewards-mean)/(std+eps)\n\nw=torch.tensor([ -2.0, -1.0 ],requires_grad=True); l=torch.tensor([-3.0,-2.0],requires_grad=True)\nloss=dpo_loss(w,l,torch.tensor([-2.5,-2.5]),torch.tensor([-2.5,-2.5])); loss.backward()\nr=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\na=group_advantage(r)\nassert a[0,0]<0 and a[0,2]>0 and torch.isfinite(a).all()\nprint('DPO loss',loss.item(),'group advantages',a)",
       "explanations": [
         {
           "lines": "1–8",
