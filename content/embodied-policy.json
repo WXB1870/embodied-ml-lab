@@ -685,7 +685,7 @@
     "module": "policies",
     "title": "生成式动作策略演进：ACT、Diffusion Policy 与 Flow Policy",
     "subtitle": "围绕生成式动作策略演进：ACT、Diffusion Policy 与 Flow Policy，完成理论推导、PyTorch 实现与面试手撕训练。",
-    "minutes": 65,
+    "minutes": 60,
     "tags": [
       "ACT",
       "Diffusion Policy",
@@ -1058,7 +1058,7 @@
         ]
       }
     ],
-    "lead": "生成式动作策略学习的是给定观测条件下整段动作的分布，而不只输出一个确定动作均值。动作块定义预测对象，ACT 的条件潜变量、Diffusion 的去噪过程和 Flow 的速度场则以不同方式表达和采样这个分布。本章先认识共同的条件与动作接口，再分别解释三类方法，最后将采样结果接到重新观察、重新规划的执行过程。"
+    "lead": "本章从策略层面对比 ACT、Diffusion Policy 与 Flow Policy：它们怎样表示条件动作分布、怎样生成动作块、又怎样接入 Receding Horizon 执行。VAE、DDPM 和 Flow Matching 的完整数学推导分别见对应课程，本章不重复展开。"
   },
   {
     "id": "vla-architecture",
