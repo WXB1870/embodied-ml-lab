@@ -297,10 +297,11 @@ window.addEventListener('popstate',()=>{if(activeJob)terminateRun();render();win
 $('.skip-link').addEventListener('click',e=>{e.preventDefault();$('#main').focus();$('#main').scrollIntoView();});
 async function init(){
  try{
-  const [courseResponse,catalogResponse,topicResponse]=await Promise.all([fetch(sitePath('/data/lessons.json'),{cache:'no-cache'}),fetch(sitePath('/data/curriculum.json'),{cache:'no-cache'}),fetch(sitePath('/data/topics.json'),{cache:'no-cache'})]);
-  if(!courseResponse.ok||!catalogResponse.ok||!topicResponse.ok)throw new Error('课程文件暂时不可用');
+  const [courseResponse,catalogResponse,topicResponse,overrideResponse]=await Promise.all([fetch(sitePath('/data/lessons.json'),{cache:'no-cache'}),fetch(sitePath('/data/curriculum.json'),{cache:'no-cache'}),fetch(sitePath('/data/topics.json'),{cache:'no-cache'}),fetch(sitePath('/data/lessons-overrides.json'),{cache:'no-cache'})]);
+  if(!courseResponse.ok||!catalogResponse.ok||!topicResponse.ok||!overrideResponse.ok)throw new Error('课程文件暂时不可用');
   curriculum=await catalogResponse.json();MODULES=curriculum.modules;
-  lessons=(await courseResponse.json()).sort((a,b)=>a.number-b.number);byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topics=await topicResponse.json();topicById=Object.fromEntries(topics.map(t=>[t.id,t]));
+  const baseLessons=await courseResponse.json(),overrides=await overrideResponse.json(),overrideById=Object.fromEntries(overrides.map(l=>[l.id,l]));
+  lessons=baseLessons.map(l=>overrideById[l.id]||l).sort((a,b)=>a.number-b.number);byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topics=await topicResponse.json();topicById=Object.fromEntries(topics.map(t=>[t.id,t]));
   registerTopicExercises();buildSearchIndex();render();scrollToSection();
  }catch(error){if(document.querySelector('[data-prerendered]')){console.error(error);return;}$('#main').innerHTML=`<div class="page narrow"><h1>课程暂时无法加载</h1><p>${esc(error.message)}</p><button class="button primary" onclick="location.reload()">重新加载</button></div>`;}
 }
