@@ -35,6 +35,18 @@ function inline(value){
 const pad=v=>String(v).padStart(2,'0');
 const cleanTitle=t=>String(t).replace(/^\d+[.、．]\s*/,'');
 const moduleFor=l=>MODULES.find(m=>m.id===l.module)||MODULES[0];
+const LEGACY_LESSON_IDS={
+ embeddings:'rope',normalization:'norm-ffn','tokenizer-autoregressive':'masking-autoregressive','kv-cache-inference':'kv-cache',
+ 'latent-variable-models':'vae','action-chunk':'action-chunking',finetuning:'lora',transformer:'attention',
+ 'action-representation':'behavior-cloning','partial-observability':'behavior-cloning','distribution-shift':'behavior-cloning',
+ 'returns-bellman':'policy-gradient',vision-preprocessing:'multimodal','conditioning-fusion':'dit-adaln',
+ 'matrix-grad':'matrix-grad','cnn-receptive-field':'cnn-receptive-field',mlp:'mlp',activation-init:'activation-init',
+ probability:'tensor',losses:'tensor',numerical:'tensor',generalization:'tensor',residual:'norm-ffn',
+ 'data-quality':'behavior-cloning',evaluation:'generative-policy','execution-latency':'generative-policy',
+ 'train-infer-contract':'vla-architecture',modules:'autograd',dataloader:'training-loop',checkpoint:'training-loop',
+ 'mixed-precision':'training-diagnostics','gradient-accumulation':'training-loop','memory-checkpointing':'training-loop',
+ 'distributed-training':'training-loop','multitask-gradients':'training-diagnostics'
+};
 const lessonHref=(id,tab='theory',mode)=>sitePath('/learn/'+id+'/'+(tab==='theory'?'':tab+'/'))+'?tab='+tab+(mode?'&mode='+mode:'');
 const topicHref=(id,tab='guide',extra='')=>lessonHref(Object.keys(CORE_LESSON_TOPIC).find(k=>CORE_LESSON_TOPIC[k]===id)||id,({guide:'theory',labs:'exercise'}[tab]||tab))+extra;
 const topicExerciseId=(t,l)=>'topic-'+t.id+'-'+l.id;
@@ -109,9 +121,9 @@ function markReading(kind,item,tab){
 function lastReading(){
  if(state.lastRead){
   const match=state.lastRead.href.match(/(?:#)?\/(learn|topics)\/([a-z0-9-]+)/);
-  if(match){const item=match[1]==='learn'?byId[match[2]]:topicById[match[2]];if(item)return {href:routeHref(state.lastRead.href),title:item.title};}
+  if(match){const item=match[1]==='learn'?byId[LEGACY_LESSON_IDS[match[2]]||match[2]]:topicById[match[2]];if(item)return {href:routeHref(state.lastRead.href),title:item.title};}
  }
- const l=byId[state.lastLesson];return l&&l.sections?{href:lessonHref(l.id),title:l.title}:null;
+ const l=byId[LEGACY_LESSON_IDS[state.lastLesson]||state.lastLesson];return l&&l.sections?{href:lessonHref(l.id),title:l.title}:null;
 }
 function registerTopicExercises(){topics.forEach((t,ti)=>t.labs.forEach((l,li)=>{const task={...l};byId[topicExerciseId(t,l)]={id:topicExerciseId(t,l),number:'T'+(ti+1)+(li+1),title:l.title,exercise:task,pytorchTask:task,topicId:t.id};}));}
 function canonicalRoute(){
