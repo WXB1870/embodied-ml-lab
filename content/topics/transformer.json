@@ -587,6 +587,119 @@
       ],
       "takeaway": "从任务条件到代码证据逐层核对，比只记住 Attention 公式更接近独立修改模型的能力。",
       "lead": "VLA 是将视觉与语言条件用于动作预测的模型家族，Transformer 可以承担其观测编码或动作计算。位置、Mask、条件流与损失决定具体接口。下面用本章已定义的机制阅读这些连接，不预设所有 VLA 都有同一架构。"
+    },
+    {
+      "id": "vla-architecture-patterns",
+      "title": "现代 VLA 的 Transformer 架构：单流、双流与 Action Expert",
+      "lead": "VLA 不是一种固定的 Transformer 拓扑，而是一组把视觉、语言、机器人状态与动作连接起来的架构选择。读模型时先辨认哪些 Token 共享主干、哪些模块独立、条件通过哪条路径进入动作计算。",
+      "body": [
+        "先区分三种常见组织方式。单流架构把多模态 Token 投影到兼容的表示空间，按约定拼成一个序列，再由同一组 Transformer Block 进行信息交互；双流架构保留不同模态或任务流的独立参数路径，在指定层通过 Cross-Attention、联合注意力或投影接口交换信息；VLM + Action Expert 则让预训练视觉语言骨干提供语义条件，另一个动作网络负责连续动作建模。它们不是能力等级，而是参数共享、信息交换、训练成本和任务适配之间的不同取舍。",
+        "以 π0 一类 VLA 为例，重点不是背诵“用了两个 Transformer”，而是追踪视觉语言前缀与动作后缀如何进入联合计算：图像和指令经预训练视觉语言路径形成前缀表示，带噪动作序列与生成时间进入动作专家；动作位置读取条件前缀，动作块内部是否双向交互由训练目标和 Mask 约定决定。具体实现会随版本变化，必须以论文、配置和当前源码为准，不能把示意图当成所有 π0.5 或后续模型的逐层结构。",
+        "读代码时为每个流建立接口表：输入来源、Token 数、隐藏宽度、参数归属、位置编码、Mask、输出头和梯度是否启用。若两条流隐藏宽度不同，投影层可以映射到公共注意力维度；若头数不同，则检查 Q/K 维度与 KV 头布局。张量最后一维相等，不代表共享权重；参数冻结，也不代表其输出不能向上游可训练模块传播梯度。",
+        "注意力可见性要与生成目标匹配。已知观测前缀通常可以在内部双向读取；动作区若是同一生成时间下的整段噪声动作，块内双向读取是合理选择，因为目标是同时估计整块速度，而不是逐个动作 Token 做自回归预测。若任务改成离散动作自回归，动作区就需要按生成顺序屏蔽未来位置。关键是训练输入、监督目标和推理时可用信息一致，而不是机械地把所有 Decoder 都设成下三角 Mask。",
+        "下图是接口级概念示意，不承诺某个仓库的具体层数、权重共享方式或 Mask 实现。真正阅读 OpenPI 时，从模型入口追踪 image/text/state/action 的预处理，再定位 prefix/suffix 构造、注意力掩码、Action Expert 前向、速度输出和 ODE 采样器。记录具体 commit 或版本，避免把不同代模型的实现细节混在一起。"
+      ],
+      "formula": "\\text{VLA}=\\text{observation representation}+\\text{conditioning interface}+\\text{action model}",
+      "figures": [
+        {
+          "src": "/assets/figures/vla-action-expert-flow.svg",
+          "title": "视觉语言前缀与动作后缀的条件动作生成",
+          "alt": "图像、语言和状态形成视觉语言前缀，带噪动作 Token 形成动作后缀；Action Expert Transformer 输出速度，再由 ODE 求解器生成动作块。",
+          "caption": "接口级示意：前缀编码观测条件，动作专家处理整段噪声动作。实际模型的权重共享、注意力布局和模块边界应以对应版本源码为准。",
+          "afterParagraph": 1
+        }
+      ],
+      "comparison": {
+        "title": "读 VLA 架构时先问哪条路径在工作",
+        "columns": [
+          "组织方式",
+          "参数与 Token 组织",
+          "主要优点",
+          "需要核对"
+        ],
+        "rows": [
+          [
+            "单流",
+            "多模态 Token 进入同一主干",
+            "跨模态交互直接、实现路径统一",
+            "投影兼容性、序列长度、区域 Mask"
+          ],
+          [
+            "双流",
+            "不同流保留独立模块，在指定位置交换信息",
+            "可保留模态专长与独立容量",
+            "Cross-Attention / 联合注意力、梯度边界"
+          ],
+          [
+            "VLM + Action Expert",
+            "预训练语义骨干提供条件，动作专家预测连续动作",
+            "复用语义能力，动作建模可独立适配",
+            "Prefix/Suffix 接口、动作块 Mask、条件注入与 FM 目标"
+          ]
+        ]
+      },
+      "takeaway": "读 VLA 源码时，不要先问“它是不是 Decoder-only”，而要先问每种 Token 从哪里来、能读谁、由谁处理、梯度更新到哪里。"
+    },
+    {
+      "id": "conditioning-and-zero-gated-adapters",
+      "title": "条件如何进入 Transformer：Prefix、Cross-Attention 与零初始化门控",
+      "lead": "条件注入决定条件在哪一层、以什么粒度、通过哪条梯度路径改变动作表示。不同注入方式保留的信息和计算成本并不相同。",
+      "body": [
+        "Prefix Conditioning 把条件编码成一组 Token，放在目标序列前面，再由注意力 Mask 决定目标 Token 能否读取它们。优点是接口直观、条件可保留多个位置；代价是序列变长，且必须严格定义前缀与目标区的可见性。Cross-Attention 则让动作 Query 显式读取条件 Key/Value，条件长度不必与动作长度相同，适合需要按动作位置选择不同条件内容的场景。",
+        "FiLM、AdaLN 和 AdaRMS 不通过增加条件 Token 来交换信息，而是由条件生成缩放、偏置或门控参数，调制某层已有特征。它们计算开销通常较小，适合把全局状态、任务阶段或生成时间注入多个 Block；但单个全局向量不天然保留空间对应关系。如果条件包含多个物体位置或局部航点，过早池化成一个向量可能丢失后续需要检索的结构。",
+        "一个常见的残差式适配器写作 \\(h'=h+\\tanh(\\alpha)f_\\phi(c)\\)。当 \\(\\alpha=0\\) 时，前向函数严格等于原来的 h，因此可以从预训练模型的原行为开始；但在精确零门控的第一步，适配器参数 \\(\\phi\\) 的梯度也乘上了零，门控参数 \\(\\alpha\\) 可以先收到梯度，门控打开后适配器才开始收到梯度。零初始化保证函数起点，不代表所有新参数在第一步都获得非零梯度。",
+        "条件注入还要区分添加信息和替换信息。把条件直接加到动作特征可能改变预训练表示的尺度；AdaLN/AdaRMS 通过归一化后的调制改变特征分布；Cross-Attention 让不同动作位置选择条件内容；门控残差则限制新增分支对原函数的初始影响。没有哪一种方式普遍最好，应通过同参数预算、相同数据和固定训练配方做消融。",
+        "对于参考轨迹或空间航点，不应只把整段轨迹压成一个全局向量。可将相对当前位置的局部航点编码成若干条件 Token，或提取当前进度与有限前瞻位移，再通过门控调制或 Cross-Attention 注入动作专家。训练时还应加入合理的参考噪声与条件丢弃，避免部署时对不准确参考过度依赖。"
+      ],
+      "formula": "h'=h+\\tanh(\\alpha)f_\\phi(c),\\qquad \\left.h'\\right|_{\\alpha=0}=h",
+      "code": "import torch\nfrom torch import nn\n\nclass ZeroGatedAdapter(nn.Module):\n    def __init__(self, cond_dim, hidden_dim):\n        super().__init__()\n        self.proj = nn.Sequential(nn.Linear(cond_dim, hidden_dim), nn.SiLU(),\n                                   nn.Linear(hidden_dim, hidden_dim))\n        self.alpha = nn.Parameter(torch.zeros(()))\n\n    def forward(self, h, condition):\n        delta = self.proj(condition).unsqueeze(1)\n        return h + torch.tanh(self.alpha) * delta\n\ntorch.manual_seed(7)\nh = torch.ones(2, 4, 8, requires_grad=True)\nc = torch.randn(2, 5)\nadapter = ZeroGatedAdapter(cond_dim=5, hidden_dim=8)\nout = adapter(h, c)\ntorch.testing.assert_close(out, h)\n\n# 精确零门控：门控先获得梯度，适配器权重此时梯度为零。\ntarget = adapter.proj(c).detach().unsqueeze(1).expand_as(out)\n(out * target).sum().backward()\nassert adapter.alpha.grad is not None and adapter.alpha.grad.abs() > 0\nassert all(p.grad is not None and torch.count_nonzero(p.grad) == 0\n           for p in adapter.proj.parameters())\nprint('function preserved; gate grad:', adapter.alpha.grad.item())",
+      "codeKind": "runnable",
+      "codeExplanation": "完整可运行的最小实现。测试同时验证初始函数严格不变，以及精确零门控时适配器权重梯度为零、门控参数可以先更新。真实网络还需考虑门控打开速度、条件归一化和多层注入位置。",
+      "figures": [
+        {
+          "src": "/assets/figures/film-overview-distill.svg",
+          "title": "条件调制的基本形式",
+          "alt": "条件向量生成缩放和偏置，调制中间特征。",
+          "caption": "FiLM 展示条件生成通道级仿射调制的基本思路；AdaLN/AdaRMS 会与归一化层组合使用。",
+          "afterParagraph": 1
+        }
+      ],
+      "comparison": {
+        "title": "四类条件接口的差异",
+        "columns": [
+          "方式",
+          "信息粒度",
+          "主要代价",
+          "适用场景"
+        ],
+        "rows": [
+          [
+            "Prefix Tokens",
+            "多位置条件 Token",
+            "增加序列长度与注意力成本",
+            "文本、图像 Patch、多视角条件"
+          ],
+          [
+            "Cross-Attention",
+            "每个 Query 动态读取条件集合",
+            "额外 Q/K/V 与注意力计算",
+            "局部空间条件、长条件序列"
+          ],
+          [
+            "AdaLN / AdaRMS",
+            "通常按通道调制整层特征",
+            "条件投影与调制参数",
+            "全局状态、任务阶段、生成时间"
+          ],
+          [
+            "Gated Residual",
+            "控制新增分支对原表示的影响",
+            "额外分支与门控训练动态",
+            "预训练模型适配、参考轨迹残差注入"
+          ]
+        ]
+      },
+      "takeaway": "零初始化门控的价值是保持初始函数，而不是自动保证训练更稳定；必须同时检查门控和适配器各自的梯度。"
     }
   ],
   "implementations": [
@@ -1014,6 +1127,18 @@
     {
       "title": "GPT-2 官方实现：学习式位置、Pre-LN 与历史 K/V",
       "url": "https://github.com/openai/gpt-2/blob/master/src/model.py"
+    },
+    {
+      "title": "Physical Intelligence：π0 技术报告",
+      "url": "https://www.physicalintelligence.company/blog/pi0"
+    },
+    {
+      "title": "OpenPI：π0 / π0.5 开源实现",
+      "url": "https://github.com/Physical-Intelligence/openpi"
+    },
+    {
+      "title": "DiT：Scalable Diffusion Models with Transformers",
+      "url": "https://arxiv.org/abs/2212.09748"
     }
   ],
   "mainImplementation": "tiny-causal-lm"
