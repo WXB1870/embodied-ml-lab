@@ -1247,8 +1247,7 @@
     ],
     "prerequisites": [
       "matrix-grad",
-      "autograd",
-      "losses"
+      "autograd"
     ],
     "objectives": [
       "说明梯度下降、动量与自适应缩放分别改变什么",
@@ -1860,8 +1859,7 @@
       "Sampler"
     ],
     "prerequisites": [
-      "tensor",
-      "losses"
+      "tensor"
     ],
     "objectives": [
       "区分 Dataset、Sampler 与 collate_fn 的责任。",
@@ -2159,8 +2157,7 @@
     "prerequisites": [
       "modules",
       "dataloader",
-      "optimization",
-      "losses"
+      "optimization"
     ],
     "objectives": [
       "独立实现清零、前向、反向和更新的完整循环。",
@@ -2855,7 +2852,6 @@
     ],
     "prerequisites": [
       "autograd",
-      "losses",
       "optimization"
     ],
     "objectives": [
@@ -3129,7 +3125,6 @@
       "GradScaler"
     ],
     "prerequisites": [
-      "numerical",
       "gradient-accumulation"
     ],
     "objectives": [
