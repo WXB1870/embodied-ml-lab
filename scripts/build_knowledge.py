@@ -99,8 +99,10 @@ def build_knowledge(root):
         for field, collection in [('advancedImplementationIds','implementations'),('advancedLabIds','labs')]:
             valid = {entry['id'] for entry in topic[collection]}
             assert set(topic.get(field, [])) <= valid, (topic_id, field, 'unknown item')
-        assert set(topic.get('advancedQuestions', [])) <= set(topic.get('questions', []) + topic.get('advancedQuestions', []))
-        assert set(topic.get('advancedPitfalls', [])) <= set(topic.get('pitfalls', []) + topic.get('advancedPitfalls', []))
+        for question in topic.get('questions', []) + topic.get('advancedQuestions', []):
+            assert question.get('question') and question.get('answer'), (topic_id, 'invalid question')
+        for pitfall in topic.get('pitfalls', []) + topic.get('advancedPitfalls', []):
+            assert pitfall.get('title') and pitfall.get('detail'), (topic_id, 'invalid pitfall')
         topics.append(topic)
     (root / 'dist' / 'data' / 'topics.json').write_text(json.dumps(topics, ensure_ascii=False, indent=2) + '\n')
     return topics
