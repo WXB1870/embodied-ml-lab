@@ -6,7 +6,7 @@ const TOPIC_META={
  transformer:{name:'Transformer',description:'注意力、信息流与训练推理接口'},
  'flow-matching':{name:'Flow Matching',description:'概率路径、条件期望与 ODE 生成'}
 };
-const CORE_LESSON_TOPIC={mlp:'mlp','cnn-receptive-field':'cnn',transformer:'transformer','flow-matching':'flow-matching'};
+const CORE_LESSON_TOPIC={mlp:'mlp','cnn-receptive-field':'cnn',attention:'transformer','flow-matching':'flow-matching'};
 const TOPIC_VISUAL_SECTION={
  mlp:{id:'mlp',section:'shapes-parameters'},
  cnn:{id:'cnn',section:'spatial-shape'},
@@ -32,8 +32,11 @@ function topicIllustration(id){
  return `<svg class="topic-illustration" viewBox="0 0 112 64" aria-hidden="true" stroke="currentColor" stroke-width="1.2">${shapes}</svg>`;
 }
 function renderCatalog(){
- const last=lastReading();
- return `<div class="page catalog-page"><header class="catalog-heading"><p class="catalog-kicker">Embodied ML Lab</p><h1>机器学习、生成模型与具身策略</h1><p>个人自用的机器学习与具身智能学习网站。</p></header>${last?`<p class="resume-line">继续阅读 <a href="${esc(last.href)}">${esc(last.title)} →</a></p>`:''}<p class="start-reading">第一次使用？从 <a href="${lessonHref('tensor')}">张量与轴语义</a> 开始，或查看 <a href="/guide/?anchor=reading-guide">学习顺序与练习方法 →</a></p><section class="core-topics" aria-labelledby="core-heading"><h2 id="core-heading">核心课程</h2><div class="topic-grid">${topics.map(t=>`<a class="topic-card topic-${t.id}" href="${topicHref(t.id)}"><div class="topic-card-copy"><h3>${esc(TOPIC_META[t.id].name)}</h3><p>${esc(TOPIC_META[t.id].description)}</p></div>${topicIllustration(t.id)}<span class="topic-card-arrow" aria-hidden="true">↗</span></a>`).join('')}</div></section><section class="course-catalog" aria-labelledby="catalog-heading"><div class="section-heading"><h2 id="catalog-heading">课程目录</h2><a href="/practice/">课程练习 →</a></div><div class="chapter-list">${MODULES.map((m,i)=>`<section class="chapter" id="chapter-${m.id}"><header class="chapter-heading"><span class="chapter-number">${pad(i+1)}</span><h3>${esc(m.name)}</h3><p>${esc(m.desc)}</p></header><ul>${lessons.filter(l=>l.module===m.id).map(l=>`<li><a href="${lessonHref(l.id)}">${esc(l.title)}<span aria-hidden="true">→</span></a></li>`).join('')}</ul></section>`).join('')}</div></section></div>`;
+ const last=lastReading(),coreModules=MODULES.filter(m=>m.id!=='appendix'),appendix=MODULES.find(m=>m.id==='appendix');
+ const visualIds=['mlp','transformer','cnn','flow-matching'];
+ const cards=coreModules.map((m,i)=>{const first=lessons.find(l=>l.module===m.id);return `<a class="topic-card topic-${visualIds[i]}" href="${first?lessonHref(first.id):'/practice/'}"><div class="topic-card-copy"><h3>${esc(m.name)}</h3><p>${esc(m.desc)}</p></div>${topicIllustration(visualIds[i])}<span class="topic-card-arrow" aria-hidden="true">↗</span></a>`;}).join('');
+ const chapter=m=>`<section class="chapter" id="chapter-${m.id}"><header class="chapter-heading"><span class="chapter-number">${pad(MODULES.indexOf(m)+1)}</span><h3>${esc(m.name)}</h3><p>${esc(m.desc)}</p></header><ul>${lessons.filter(l=>l.module===m.id).map(l=>`<li><a href="${lessonHref(l.id)}">${esc(l.title)}<span aria-hidden="true">→</span></a></li>`).join('')}</ul></section>`;
+ return `<div class="page catalog-page"><header class="catalog-heading"><p class="catalog-kicker">Embodied ML Lab</p><h1>具身智能与大模型算法研发</h1><p>学院派理论推导 · PyTorch 工程实现 · 面试手撕训练营</p></header>${last?`<p class="resume-line">继续阅读 <a href="${esc(last.href)}">${esc(last.title)} →</a></p>`:''}<p class="start-reading">从 <a href="${lessonHref('tensor')}">张量操作</a> 开始，沿四大模块完成 20 节核心课程；基础与训练工程内容收录于附录。</p><section class="core-topics" aria-labelledby="core-heading"><h2 id="core-heading">核心课程</h2><div class="topic-grid">${cards}</div></section><section class="course-catalog" aria-labelledby="catalog-heading"><div class="section-heading"><h2 id="catalog-heading">课程目录</h2><a href="/practice/">课程练习 →</a></div><div class="chapter-list">${coreModules.map(chapter).join('')}</div></section>${appendix?`<section class="course-catalog appendix-catalog" aria-labelledby="appendix-heading"><div class="section-heading"><h2 id="appendix-heading">附录：训练工程速查</h2></div><div class="chapter-list">${chapter(appendix)}</div></section>`:''}</div>`;
 }
 
 function sectionHref(kind,item,section,index){return kind==='topic'?topicHref(item.id,'guide','&section='+section.id):lessonHref(item.id)+'&section='+(section.id??index);}
