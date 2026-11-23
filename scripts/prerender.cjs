@@ -41,11 +41,9 @@ function page(route,title,description,expression,{noindex=false,redirect}={}){
 for(const name of ['learn','topics','practice','guide'])fs.rmSync(path.join(dist,name),{recursive:true,force:true});
 page('/','机器学习、生成模型与具身策略','个人自用的机器学习与具身智能学习网站，整理原理笔记、代码示例和练习。','renderCatalog()');
 for(const lesson of lessons){
- for(const [tab,suffix] of [['theory',''],['code','code/'],['exercise','exercise/']]){
-  const route='/learn/'+lesson.id+'/'+suffix;
-  page(route,lesson.title+(tab==='theory'?'':tab==='code'?' · 代码':' · 练习'),lesson.subtitle,
-   `renderLesson(byId[${JSON.stringify(lesson.id)}],${JSON.stringify(tab)},'python',new URLSearchParams())`);
- }
+ const route='/learn/'+lesson.id+'/';
+ page(route,lesson.title,lesson.subtitle,
+  `renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
 }
 page('/practice/','课程练习','结合数学推导、手工计算、反例分析与可运行实现，检验对课程的理解。','renderPractice()');
 page('/guide/','下载与运行','下载完整讲义、PyTorch 代码及练习，配置本地运行环境。','renderGuide()');
