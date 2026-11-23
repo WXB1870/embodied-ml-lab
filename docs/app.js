@@ -59,7 +59,7 @@ for(const [oldId,newId] of Object.entries(LEGACY_LESSON_IDS)){
  }
  if(state.lastLesson===oldId)state.lastLesson=newId;
 }
-const lessonHref=(id,tab='theory',mode)=>sitePath('/learn/'+id+'/'+(tab==='theory'?'':tab+'/'))+'?tab='+tab+(mode?'&mode='+mode:'');
+const lessonHref=(id,tab='theory',mode)=>sitePath('/learn/'+id+'/')+'?tab='+tab+(mode?'&mode='+mode:'');
 const topicHref=(id,tab='guide',extra='')=>lessonHref(Object.keys(CORE_LESSON_TOPIC).find(k=>CORE_LESSON_TOPIC[k]===id)||id,({guide:'theory',labs:'exercise'}[tab]||tab))+extra;
 const topicExerciseId=(t,l)=>'topic-'+t.id+'-'+l.id;
 const normalize=t=>String(t).toLowerCase().replace(/[\s_-]+/g,'');
