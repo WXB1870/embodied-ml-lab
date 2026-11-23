@@ -444,6 +444,17 @@
         ],
         "id": "7",
         "lead": "融合注意力实现是将若干计算步骤合并或分块组织，以减少中间存储与数据搬运的实现方式。它可以计算同一个稠密注意力函数，却不因此自动消除成对匹配的工作量。比较时应先固定函数与 Mask 语义。"
+      },
+      {
+        "id": "mqa-gqa-kv-sharing",
+        "title": "MQA 与 GQA：Query 头和 KV 头分离",
+        "lead": "MHA 为每个 Query 头配置独立 Key/Value 头；MQA 让所有 Query 头共享一组 KV；GQA 则将 Query 头分成若干组，每组共享一个 KV 头。",
+        "body": [
+          "设 Query 头数为 Hq，KV 头数为 Hkv，要求 Hq 能被 Hkv 整除。每个 Query 头映射到一个 KV 头组，注意力计算的 Query 维度仍是 Hq，而 K/V 缓存只需存储 Hkv 份。",
+          "MHA 对应 Hkv=Hq，MQA 对应 Hkv=1，GQA 位于二者之间。减少 KV 头数主要降低 K/V 投影参数、缓存容量与 decode 时的访存压力；它不会自动减少 Query 头的数量。",
+          "实现时可将 K/V 沿头维按组广播或显式 repeat_interleave。显式复制便于教学但可能增加临时显存；高效内核会尽量避免物理复制。必须检查 head_dim、头数整除关系与输出投影的布局。"
+        ],
+        "formula": "H_{KV}\\le H_Q,\\qquad g=H_Q/H_{KV},\\qquad K_i=K_{\\lfloor i/g\\rfloor}^{KV}"
       }
     ],
     "shapes": [
@@ -594,7 +605,22 @@
       "多头拆分需要换轴；Key Padding Mask 不会自动清零无效 Query。",
       "全遮蔽行、缓存偏移和 Dropout 是必须显式测试的边界。"
     ],
-    "lead": "注意力（Attention）是一种按当前内容分配权重、再汇总候选信息的计算机制。它用 Query 与 Key 计算匹配程度，把分数归一化后读取对应的 Value，因此同一组候选可以对不同查询产生不同结果。它是可组合的算子，Transformer 则是包含它的完整网络架构。本章先完成一次读取，再解释缩放、梯度、多头与可见性，最后核对实现。"
+    "lead": "注意力（Attention）是一种按当前内容分配权重、再汇总候选信息的计算机制。它用 Query 与 Key 计算匹配程度，把分数归一化后读取对应的 Value，因此同一组候选可以对不同查询产生不同结果。它是可组合的算子，Transformer 则是包含它的完整网络架构。本章先完成一次读取，再解释缩放、梯度、多头与可见性，最后核对实现。",
+    "extraImplementations": [
+      {
+        "id": "gqa-reference",
+        "title": "GQA 的显式参考实现",
+        "description": "用 repeat_interleave 将 KV 头映射到 Query 头，作为正确性基线；实际高性能实现可避免显式复制。",
+        "source": "import torch\\nimport torch.nn.functional as F\\n\\ndef gqa(q, k, v):\\n    # q: [B,Hq,Tq,D], k/v: [B,Hkv,Tk,D] / [B,Hkv,Tk,Dv]\\n    b, hq, tq, d = q.shape\\n    hkv = k.shape[1]\\n    assert hq % hkv == 0\\n    groups = hq // hkv\\n    kq = k.repeat_interleave(groups, dim=1)\\n    vq = v.repeat_interleave(groups, dim=1)\\n    return F.scaled_dot_product_attention(q, kq, vq)\\n\\nq=torch.randn(2,8,5,16); k=torch.randn(2,2,7,16); v=torch.randn(2,2,7,16)\\ny=gqa(q,k,v)\\nassert y.shape==(2,8,5,16)\\nprint('GQA output:', y.shape)\\n",
+        "explanations": [
+          {
+            "lines": "1–11",
+            "text": "按 Query/KV 头数比显式扩展 K/V，建立可验证的参考计算。"
+          }
+        ],
+        "expected": "输出保留 8 个 Query 头，KV 头数为 2。"
+      }
+    ]
   },
   {
     "id": "rope",
@@ -1033,28 +1059,28 @@
       "expected": "LN 的三组导数和 RMS 的输入 VJP 与独立公式一致；常量行 Jacobian 为 \\(\\frac{P}{\\sqrt\\epsilon}\\)；BN 前向、运行方差更新和 eval 方程分别通过断言。"
     },
     "exercise": {
-      "title": "手写按行 LayerNorm",
-      "prompt": "实现 layer_norm_rows(rows, eps)。每行独立计算均值与总体方差，不使用 NumPy。输入行不能为空；不加可学习仿射参数。返回新的二维列表。",
+      "title": "手写 SwiGLU 前向",
+      "prompt": "实现 swiglu(x,w_gate,w_value,w_out)，使用 SiLU(x @ w_gate) * (x @ w_value) 再投影。输入为二维列表，矩阵维度合法；返回二维列表。",
       "runtime": "python",
-      "starter": "def layer_norm_rows(rows, eps=1e-5):\n    # TODO: 对每一行独立计算均值、方差和归一化结果\n    raise NotImplementedError(\"请完成按行 LayerNorm\")\n",
-      "solution": "import math\n\ndef layer_norm_rows(rows, eps=1e-5):\n    result = []\n    for row in rows:\n        if not row:\n            raise ValueError(\"不能归一化空行\")\n        mean = sum(row) / len(row)\n        var = sum((value - mean) ** 2 for value in row) / len(row)\n        scale = math.sqrt(var + eps)\n        result.append([(value - mean) / scale for value in row])\n    return result\n",
-      "tests": "a = layer_norm_rows([[1.0, 2.0, 3.0], [8.0, 8.0, 8.0]])\nassert abs(sum(a[0])) < 1e-10\nassert a[1] == [0.0, 0.0, 0.0]\nb = layer_norm_rows([[11.0, 12.0, 13.0]])[0]\nassert all(abs(x-y) < 1e-10 for x, y in zip(a[0], b))\nassert abs(a[0][0] + (1.0 / (2.0/3.0 + 1e-5) ** 0.5)) < 1e-10\ntry:\n    layer_norm_rows([[]])\n    raise AssertionError(\"空行应被拒绝\")\nexcept ValueError:\n    pass\nprint(\"通过：统计维度、平移不变性、常量行和空行检查\")\n",
+      "starter": "def swiglu(x, w_gate, w_value, w_out):\\n    # TODO: 两路投影、SiLU 门控和输出投影\\n    raise NotImplementedError\\n",
+      "solution": "import math\\ndef matmul(a,b):\\n    return [[sum(a[i][k]*b[k][j] for k in range(len(b))) for j in range(len(b[0]))] for i in range(len(a))]\\ndef swiglu(x,w_gate,w_value,w_out):\\n    gate=matmul(x,w_gate); value=matmul(x,w_value)\\n    hidden=[[ (g/(1+math.exp(-g)))*v for g,v in zip(gr,vr)] for gr,vr in zip(gate,value)]\\n    return matmul(hidden,w_out)\\n",
+      "tests": "out=swiglu([[1.0,0.0]],[[1.0,0.0],[0.0,1.0]],[[0.0,1.0],[1.0,0.0]],[[1.0],[1.0]])\\nassert len(out)==1 and len(out[0])==1\\nassert out[0][0]>0\\nprint('SwiGLU forward test passed')\\n",
       "hints": [
-        "每行需要自己的均值，不能先把所有行展平。",
-        "总体方差除以 len(row)，\\(\\epsilon\\) 位于平方根内。"
+        "先分别计算 gate 与 value 两路线性投影。",
+        "SiLU(x)=x·sigmoid(x)，再逐元素相乘。"
       ],
-      "explanation": "检查平移不变性可以发现漏减均值的错误；常量行检查能发现缺少 \\(\\epsilon\\) 的除零问题。"
+      "explanation": "本题只实现 SwiGLU 前向；参数初始化、反向传播和残差结构由 PyTorch 课程代码验证。"
     },
     "pytorchTask": {
-      "prompt": "完成 last_dim_norm(x,gamma,beta,eps)：只沿最后一维做 LayerNorm，再应用形状为 [D] 的 gamma 和 beta。输入为有限浮点张量且 D>0、eps>0；不能调用 nn.LayerNorm 或 F.layer_norm，也不能 detach 均值、方差或输入。测试同时核对前向和 x、gamma、beta 的导数。",
-      "starter": "import torch\n\ndef last_dim_norm(x, gamma, beta, eps=1e-5):\n    # TODO: 保留被统计的维度以便广播\n    raise NotImplementedError(\"请实现 LayerNorm\")\n",
-      "solution": "import torch\n\ndef last_dim_norm(x, gamma, beta, eps=1e-5):\n    mean = x.mean(dim=-1, keepdim=True)\n    var = x.var(dim=-1, keepdim=True, unbiased=False)\n    normalized = (x - mean) * torch.rsqrt(var + eps)\n    return normalized * gamma + beta\n",
-      "tests": "torch.manual_seed(1)\ndtype = torch.float64\nfor scale, offset in ((1., 0.), (1e-6, 4.), (0., 3.)):\n    x = (scale * torch.randn(2, 3, 4, dtype=dtype) + offset).requires_grad_()\n    gamma = torch.randn(4, dtype=dtype, requires_grad=True)\n    beta = torch.randn(4, dtype=dtype, requires_grad=True)\n    upstream = torch.randn_like(x)\n    y = last_dim_norm(x, gamma, beta, 1e-4)\n    ref = torch.nn.functional.layer_norm(x, (4,), gamma, beta, 1e-4)\n    torch.testing.assert_close(y, ref, rtol=1e-8, atol=1e-10)\n    actual = torch.autograd.grad((y * upstream).sum(), (x, gamma, beta))\n    expected = torch.autograd.grad((ref * upstream).sum(), (x, gamma, beta))\n    for a, b in zip(actual, expected):\n        torch.testing.assert_close(a, b, rtol=1e-7, atol=1e-8)\n    torch.testing.assert_close(actual[0].sum(-1), torch.zeros(2, 3, dtype=dtype), rtol=0, atol=1e-8)\n    changed = x.detach().clone()\n    changed[1] += 7.\n    torch.testing.assert_close(last_dim_norm(changed, gamma, beta, 1e-4)[0], y[0])\nprint(\"通过：普通/小方差/常量行、三组梯度、平移方向与批次独立性\")\n",
+      "prompt": "实现 RMSNorm：对最后一维计算均方根并乘以可学习缩放 gamma，不减均值。",
+      "starter": "import torch\\ndef rms_norm(x, gamma, eps=1e-6):\\n    # TODO\\n    raise NotImplementedError\\n",
+      "solution": "import torch\\ndef rms_norm(x,gamma,eps=1e-6):\\n    if x.shape[-1]==0 or gamma.shape!=(x.shape[-1],) or eps<=0: raise ValueError('invalid shape or eps')\\n    scale=torch.rsqrt(x.square().mean(dim=-1,keepdim=True)+eps)\\n    return x*scale*gamma\\n",
+      "tests": "x=torch.tensor([[3.,4.]],requires_grad=True); g=torch.ones(2,requires_grad=True)\\ny=rms_norm(x,g); torch.testing.assert_close(y,torch.tensor([[0.8485281,1.1313708]]),atol=1e-5,rtol=1e-5)\\ny.sum().backward(); assert x.grad is not None and g.grad is not None\\nprint('RMSNorm forward/backward passed')\\n",
       "hints": [
-        "mean 和 var 都只沿 dim=-1 计算，并设置 keepdim=True 以便广播。",
-        "使用总体方差 unbiased=False，\\(\\epsilon\\) 加在方差内；gamma 与 beta 应按最后的 D 维作用。"
+        "RMS 是 sqrt(mean(x**2)+eps)。",
+        "用 rsqrt 避免先 sqrt 再除法；保留 gamma 的梯度。"
       ],
-      "explanation": "参考解保留均值和方差对输入的依赖。测试用独立上游张量对 x、\\(\\gamma\\)、\\(\\beta\\) 分别求导，与官方实现对照，可识别前向相同却 detach 统计量的错误；常量行和小方差行验证 \\(\\epsilon\\) 的位置及局部导数，而跨样本干预检查归约轴。"
+      "explanation": "RMSNorm 不做中心化；eps 放在均方根的平方根内部。"
     },
     "pitfalls": [
       {
