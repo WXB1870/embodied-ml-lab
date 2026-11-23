@@ -37,14 +37,8 @@ const cleanTitle=t=>String(t).replace(/^\d+[.、．]\s*/,'');
 const moduleFor=l=>MODULES.find(m=>m.id===l.module)||(l.module==='legacy'?{name:'历史课程归档'}:MODULES[0]);
 const LEGACY_LESSON_IDS={
  embeddings:'rope',normalization:'norm-ffn','tokenizer-autoregressive':'masking-autoregressive','kv-cache-inference':'kv-cache',
- 'latent-variable-models':'vae','action-chunk':'action-chunking',finetuning:'lora',transformer:'attention',
- 'action-representation':'behavior-cloning','partial-observability':'behavior-cloning','distribution-shift':'behavior-cloning',
- 'returns-bellman':'policy-gradient','vision-preprocessing':'multimodal','contrastive-pretraining':'multimodal','conditioning-fusion':'dit-adaln',
- probability:'tensor',losses:'tensor',numerical:'tensor',generalization:'tensor',residual:'norm-ffn',
- 'data-quality':'behavior-cloning',evaluation:'generative-policy','execution-latency':'generative-policy',
- 'train-infer-contract':'vla-architecture',modules:'autograd',dataloader:'training-loop',checkpoint:'training-loop',
- 'mixed-precision':'training-diagnostics','gradient-accumulation':'training-loop','memory-checkpointing':'training-loop',
- 'distributed-training':'training-loop','multitask-gradients':'training-diagnostics'
+ 'latent-variable-models':'vae','action-chunk':'action-chunking',finetuning:'lora',
+ 'contrastive-pretraining':'multimodal','conditioning-fusion':'dit-adaln'
 };
 for(const [oldId,newId] of Object.entries(LEGACY_LESSON_IDS)){
  for(const bucket of ['drafts','notes','passed','viewed']){
