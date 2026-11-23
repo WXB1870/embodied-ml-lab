@@ -1688,5 +1688,2525 @@
         "explanation": "均匀热图检查期望居中，非方形双关键点检查 x/y 与 K 是否混淆，双峰案例展示均值不一定是可行目标。这个读出保留梯度，但并不保证热图具有正确几何语义；仍需适当监督和坐标逆变换。"
       }
     ]
+  },
+  {
+    "id": "diffusion",
+    "number": 24,
+    "module": "generative",
+    "title": "扩散模型基础：DDPM 目标推导与 DDIM 加速采样",
+    "subtitle": "围绕扩散模型基础：DDPM 目标推导与 DDIM 加速采样，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 75,
+    "tags": [
+      "DDPM",
+      "Diffusion Policy",
+      "噪声预测",
+      "采样",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "vae"
+    ],
+    "objectives": [
+      "逐项推导前向边际、高斯后验与 epsilon 参数化的反向均值",
+      "解释变分 KL 如何转成带噪声等级权重的回归目标",
+      "实现并区分 DDPM 相邻步、DDIM 非相邻步及其边界约定"
+    ],
+    "why": "扩散模型通过不同噪声等级上的回归学习动作分布。理解训练目标与采样器的连接，需要同时跟踪累计信号、输出参数化和反向更新。",
+    "sections": [
+      {
+        "title": "前向加噪、先验与索引约定",
+        "body": [
+          "扩散模型规定一个不含可学习参数的前向过程，逐步衰减干净样本并加入高斯噪声，再学习反向生成。记干净样本为 \\(a\\in\\mathbb R^D\\)；它也可以是展开后的图像或动作块 [H,D_action]，网络仍可建模相应空间或时间结构。扩散步 k 表示噪声等级，与图像位置、Token 序号或机器人执行步不同。从[潜变量与 VAE](#/learn/latent-variable-models?tab=theory)的视角看，整条加噪轨迹构成一组潜变量，这里的前向推断过程通常由固定 Gaussian 核给定。",
+          "贯穿本章代码与后续 Score、Flow Matching 的数据固定为二维条件混合分布：\\(Y\\mid c\\sim\\sum_{j=1}^2w_{cj}\\mathcal N(\\mu_{cj},s_d^2I)\\)，\\(c\\in\\{0,1\\}\\)、\\(s_d=0.28\\)。条件 0 的两个中心为 \\((-1.6,-0.6)\\)、\\((1.6,0.6)\\)，权重为 \\((0.35,0.65)\\)；条件 1 的中心为 \\((-0.6,1.6)\\)、\\((0.6,-1.6)\\)，权重为 \\((0.65,0.35)\\)。选择有解析密度的同一数据，是为了改变生成机制时仍能独立核对目标，绝不意味着几种方法的中间路径相同。",
+          "令 \\(\\beta_k\\) 为每步噪声方差比例，\\(\\alpha_k=1-\\beta_k\\)。采用零起始索引 \\(k=0,\\ldots,K-1\\)：\\(x_0\\) 是第一次加噪后的状态，转移公式的干净边界定义为 \\(x_{-1}=a\\)。这里的 \\(x_0\\) 与文献中常用来表示干净样本的 \\(x_0\\) 含义不同。\\(\\beta\\) 的范围与顺序必须明确，越界会使平方根或方差失去含义。",
+          "反向采样通常从标准高斯出发，因此前向最终分布应足够接近这个起始分布。需要检查最终累计信号系数 \\(\\bar\\alpha_{K-1}\\)；若它仍很大，训练末端还包含明显动作信号，推理起点就与训练分布不同。步数、日程和终端信噪比需要一起记录。"
+        ],
+        "formula": "q(x_k\\mid x_{k-1})=\\mathcal N(\\sqrt{\\alpha_k}x_{k-1},\\beta_k I),\\qquad \\alpha_k=1-\\beta_k",
+        "focus": {
+          "kind": "常用",
+          "title": "先固定噪声等级的索引约定",
+          "explanation": "论文常用 1…K，数组常用 0…K−1；二者混用会影响累计乘积、前一系数与最后一步。",
+          "check": "列出 \\(k=0\\)、k=1、k=K−1 对应的 \\(\\alpha\\)、\\(\\bar\\alpha\\)、前一 \\(\\bar\\alpha\\)，并说明干净端如何表示。"
+        },
+        "id": "0",
+        "lead": "前向加噪是一个预先规定的过程，将干净样本逐步衰减并加入已知随机噪声。噪声等级标记数据被破坏的阶段，而不是机器人执行时刻。先定义这个过程、终端先验和索引，再讨论反向生成。",
+        "figures": [
+          {
+            "src": "/assets/figures/diffusion-definition-v2.svg",
+            "alt": "扩散模型固定的前向链从干净样本 a 走向带噪状态，学习的反向链从高斯先验逐步生成数据。",
+            "caption": "前向链逐步加噪，反向链逐步生成；训练抽取一个等级拟合噪声，生成从新噪声出发反复更新。机制参考 [Ho et al., Figure 2](https://arxiv.org/abs/2006.11239)。",
+            "afterParagraph": 1,
+            "width": 1120,
+            "height": 530
+          }
+        ]
+      },
+      {
+        "title": "为什么可以一步构造任意噪声等级",
+        "body": [
+          "设前一级可写为 \\(x_{k-1}=\\sqrt{\\bar\\alpha_{k-1}}\\,a+\\sqrt{1-\\bar\\alpha_{k-1}}\\,\\epsilon'\\)，其中 \\(\\epsilon'\\) 为标准高斯。代入 \\(x_k=\\sqrt{\\alpha_k}\\,x_{k-1}+\\sqrt{\\beta_k}\\,\\xi\\)，且 \\(\\xi\\) 与 \\(\\epsilon'\\) 独立，得到信号系数 \\(\\sqrt{\\alpha_k\\bar\\alpha_{k-1}}\\)。两个噪声项的方差相加为 \\(\\alpha_k(1-\\bar\\alpha_{k-1})+\\beta_k=1-\\alpha_k\\bar\\alpha_{k-1}\\)。从干净边界 \\(\\bar\\alpha_{-1}=1\\) 归纳，得到 \\(\\bar\\alpha_k=\\prod_{j=0}^k\\alpha_j\\) 以及 \\(q(x_k\\mid a)=\\mathcal N\\!\\left(\\sqrt{\\bar\\alpha_k}\\,a,(1-\\bar\\alpha_k)I\\right)\\)。因此训练时可以直接抽一个噪声等级构造 \\(x_k\\)，无需实际模拟整条前向链。",
+          "对 [B,H,D] 动作块，可以给每个样本采一个 k:[B]，查表得到 \\(\\bar\\alpha\\):[B]，再变成 [B,1,1] 广播。若不增加这两个单例轴，在 B 恰好等于 D 时，错误代码可能沿动作维广播而没有报错。需要用 B、H、D 不相等的样例验证，不能只测试形状凑巧相同的方阵。",
+          "噪声 \\(\\epsilon\\) 与干净动作 a 的配对、所采等级 k，共同决定训练目标。计算 \\(x_k\\) 之后重新采一份 \\(\\epsilon\\) 当标签，会破坏同一个前向样本的关系。固定随机三元组并做端点检查，是排查这一类错误的有效方法。\\(\\bar\\alpha=1\\) 应还原干净动作，\\(\\bar\\alpha=0\\) 应只剩噪声；内部调度器不一定实际包含这两个端点，但测试公式时可以检查。"
+        ],
+        "formula": "x_k=\\sqrt{\\bar\\alpha_k}\\,a+\\sqrt{1-\\bar\\alpha_k}\\,\\varepsilon,\\qquad \\bar\\alpha_k=\\prod_{j=0}^{k}(1-\\beta_j)",
+        "example": {
+          "title": "同一二维样本经过两级加噪",
+          "steps": [
+            "取 \\(\\beta_0=\\beta_1=0.2\\)，则 \\(\\alpha_0=\\alpha_1=0.8\\)，累计系数 \\(\\bar\\alpha_1=0.64\\)。",
+            "从条件 0 的一个分量中心取确定性探针 \\(a=(1.6,0.6)\\)，噪声取 \\(\\epsilon=(-1,2)\\)。直接构造 \\(x_1=\\sqrt{0.64}a+\\sqrt{0.36}\\epsilon=(0.68,1.68)\\)。",
+            "训练网络读取 \\(x_1,k=1,c=0\\)，预测这份隐藏噪声 \\(\\epsilon\\)。将单步 \\(\\alpha_1=0.8\\) 误作累计系数，会构造不同的中间分布。"
+          ],
+          "conclusion": "这对固定向量随后用于恢复干净值；训练时仍抽取新的数据、噪声与等级。",
+          "afterParagraph": 1
+        },
+        "id": "1",
+        "lead": "累计信号系数记录经过多级加噪后仍保留多少原始信号。高斯转移的组合允许直接构造任意等级的带噪样本，无需逐步模拟整个前向链。下面推导这项捷径，再跟踪同一二维探针。"
+      },
+      {
+        "title": "噪声回归目标与条件的作用",
+        "body": [
+          "常见训练目标是预测构造 \\(x_k\\) 时用到的 \\(\\epsilon\\)，并最小化预测与真实噪声之间的平方误差。网络输入包括 \\(x_k\\)、等级 k 及观测条件 c。只给 \\(x_k\\) 不给 k，会让同一个数值在不同信噪比下需要不同解释；只给 k 不给 c，则无法根据图像、状态或指令选择条件动作分布。采样时进一步调节条件作用的 [Classifier-Free Guidance（CFG）](#/learn/conditioning-fusion?tab=theory&section=6)，需要训练支持空条件路径；本章先采用单次条件预测。",
+          "固定 \\(x_k\\)、k、c 时，可能有多组干净动作与噪声产生同一个中间状态。MSE 最优预测是 \\(\\mathbb E[\\epsilon\\mid x_k,k,c]\\)，不是逐个记住所有隐藏配对的那一份噪声。因此持续重采样下的损失不一定趋于零，不能看到非零训练误差就认定训练管线有问题。固定有限三元组的最小过拟合测试与真实随机训练目标是两种实验。",
+          "原始变分目标可导出不同等级的权重，常用简化噪声 MSE 是具体选择；完整来源在后文[回看训练目标](#/learn/diffusion?section=variational-objective)中推导。改变等级采样分布或时间权重，会改变有限模型更关注的区域；比较实验应记录这些设定。动作有效位、各维尺度与归约方式同样参与目标定义，只报告一个总噪声 MSE 可能掩盖关键动作维或某个噪声区间失效。",
+          "在这份混合数据上，`oracle_noise` 可以显式计算 \\(\\mathbb E[\\epsilon\\mid x_k,k,c]\\)，因此完整训练示例同时报告“网络对采样噪声的误差”和“网络对解析最优预测的误差”。两者分别包含不同误差来源；前者不应被要求降到零。解析计算及与速度场的转换见 [同一二维分布上的两条路径](#/learn/score-sde?tab=theory&section=shared-mixture)。"
+        ],
+        "formula": "L_\\epsilon=\\mathbb E_{a,c,k,\\varepsilon}\\big[\\|\\varepsilon_\\theta(x_k,k,c)-\\varepsilon\\|^2\\big]",
+        "focus": {
+          "kind": "易错",
+          "title": "把随机噪声回归的残余误差当作必然欠拟合",
+          "explanation": "中间状态可能对应多个隐藏端点配对，条件方差构成不可消除的回归误差。",
+          "check": "分别检查固定三元组拟合和重采样验证，并按噪声等级分桶报告误差。"
+        },
+        "id": "2",
+        "lead": "噪声回归是让网络从带噪状态、噪声等级和可用条件，预测构造该状态时加入的噪声。训练端知道这份噪声，所以可以建立监督；推理端再用预测构造反向更新。先认识这个输入输出任务，再解释其概率依据。"
+      },
+      {
+        "title": "epsilon、干净动作与 v 预测不能混用",
+        "body": [
+          "已知当前 \\(x_k\\) 与预测噪声 \\(\\hat\\epsilon\\)，可以解出干净动作估计 \\(\\hat a=\\frac{x_k-\\sqrt{1-\\bar\\alpha_k}\\,\\hat\\epsilon}{\\sqrt{\\bar\\alpha_k}}\\)。它是估计值，不是直接执行噪声输出；\\(\\bar\\alpha\\) 很小时，这个代数恢复还可能放大噪声预测误差。训练目标、网络输出和采样器的 prediction_type 必须一致，即使三者张量形状相同。",
+          "有些模型直接预测干净样本，有些使用特定日程定义的 v 参数化。对于常见 VP 记法，\\(v=\\sqrt{\\bar\\alpha}\\,\\epsilon-\\sqrt{1-\\bar\\alpha}\\,a\\)；它与本网站线性 Flow Matching 路径的速度 \\(a-\\mathrm{noise}\\) 不是同一个量。变量都叫 velocity 并不保证可互换，必须从路径系数与导数重新推导转换。",
+          "用已知噪声恢复干净动作，是检查公式的测试夹具：先人为加噪，再使用同一噪声解码，结果应还原原值。这个测试不依赖神经网络预测，检验的是参数化变换与广播是否正确，不能宣称网络已学会去噪。之后还需检查真实预测输出，并用与训练匹配的采样器生成完整动作分布。"
+        ],
+        "formula": "\\hat a=\\frac{x_k-\\sqrt{1-\\bar\\alpha_k}\\hat\\varepsilon}{\\sqrt{\\bar\\alpha_k}},\\qquad v=\\sqrt{\\bar\\alpha_k}\\varepsilon-\\sqrt{1-\\bar\\alpha_k}a",
+        "example": {
+          "title": "从同一个带噪点恢复数据，而非直接执行噪声",
+          "steps": [
+            "沿用 \\(\\bar\\alpha=0.64,a=(1.6,0.6),\\epsilon=(-1,2)\\)，带噪点是 \\(x=(0.68,1.68)\\)。",
+            "若噪声预测恰为 \\((-1,2)\\)，则 \\(\\hat a=(x-0.6\\hat\\epsilon)/0.8=(1.6,0.6)\\)。实际网络有预测误差，采样器仍需按声明的转移继续更新。",
+            "直接输出 \\(\\hat\\epsilon=(-1,2)\\) 或 \\(x=(0.68,1.68)\\)，虽然同为二维，却没有得到干净样本。若生成变量是动作，之后还要进行对应的反归一化与动作解码。"
+          ],
+          "conclusion": "输出参数化决定数值的含义；恢复关系不等于单步采样已经完成。",
+          "afterParagraph": 1
+        },
+        "id": "3",
+        "lead": "扩散输出参数化规定网络预测的是噪声、干净样本，还是两者的某种线性组合。它们具有相同形状，却要用不同公式进入采样器。下面用同一个带噪点说明怎样恢复数据，以及误读输出会产生什么。"
+      },
+      {
+        "title": "输出可以换算，损失权重却不会自动相同",
+        "body": [
+          "在某个固定噪声等级，简写 \\(\\alpha=\\sqrt{\\bar\\alpha}\\)、\\(\\sigma=\\sqrt{1-\\bar\\alpha}\\)，于是 \\(x=\\alpha a+\\sigma\\epsilon\\)，且 \\(\\alpha^2+\\sigma^2=1\\)。VP 的 v 参数化定义为 \\(v=\\alpha\\epsilon-\\sigma a\\)。把这两式看成一个二维旋转，可以直接反解 \\(a=\\alpha x-\\sigma v\\)、\\(\\epsilon=\\sigma x+\\alpha v\\)，从而得到相应的恢复公式。这里 a 是干净动作，不能与当前噪声状态 x 混用。",
+          "可代数转换不等于训练等价。若 \\(\\hat a\\) 与 \\(\\hat\\epsilon\\) 用同一个 x 按公式相互转换，则 \\(\\hat\\epsilon-\\epsilon=-\\frac{\\alpha}{\\sigma}(\\hat a-a)\\)。所以固定等级上的噪声平方误差等于 \\(\\mathrm{SNR}=\\frac{\\alpha^2}{\\sigma^2}\\) 倍的干净样本平方误差。类似地，由 \\(\\hat a=\\alpha x-\\sigma\\hat v\\) 得到 \\(\\lVert\\hat v-v\\rVert^2=\\frac{\\lVert\\hat a-a\\rVert^2}{\\sigma^2}\\)。对等级均匀采样且都使用无权重 MSE，会给同一干净样本误差不同的时间权重。",
+          "当 \\(\\sigma\\) 很小，噪声 MSE 对干净样本误差的等效权重很大；当 \\(\\alpha\\) 很小，从噪声恢复干净值中的除 \\(\\alpha\\) 又会放大预测误差。这些是不同方向的变换，不能笼统说某种输出“更稳定”。上述比值只在分母非零的等级使用，端点应由原始方程或极限处理。",
+          "v 的名字还有一个容易混淆的来源。令 \\(\\alpha=\\cos\\phi\\)、\\(\\sigma=\\sin\\phi\\)，固定端点时 \\(\\frac{dx}{d\\phi}=-\\sin\\phi\\,a+\\cos\\phi\\,\\epsilon=v\\)。它是关于角度 \\(\\phi\\) 的导数；若实际时间是 t，则 \\(\\frac{dx}{dt}=\\phi'(t)v\\)。线性 FM 的 \\(a-\\mathrm{noise}\\) 来自另一条路径与时间方向，不能直接替换这个 v。"
+        ],
+        "formula": "\\begin{aligned}a&=\\alpha x-\\sigma v,&\\varepsilon&=\\sigma x+\\alpha v\\\\L_\\varepsilon&=\\frac{\\alpha^2}{\\sigma^2}L_a,&L_v&=\\frac{1}{\\sigma^2}L_a\\end{aligned}",
+        "code": "import math\n\nalpha, sigma = 0.8, 0.6\nclean, noise = 2.0, -1.0\nx = alpha * clean + sigma * noise\nv = alpha * noise - sigma * clean\nassert math.isclose(alpha * x - sigma * v, clean)\nassert math.isclose(sigma * x + alpha * v, noise)\n\nclean_hat = clean + 0.3\nnoise_hat = (x - alpha * clean_hat) / sigma\nv_hat = (alpha * x - clean_hat) / sigma\nloss_clean = (clean_hat - clean) ** 2\nloss_noise = (noise_hat - noise) ** 2\nloss_v = (v_hat - v) ** 2\nassert math.isclose(loss_noise / loss_clean, alpha ** 2 / sigma ** 2)\nassert math.isclose(loss_v / loss_clean, 1 / sigma ** 2)\nprint('x, v:', x, v)\nprint('clean / noise / v losses:', loss_clean, loss_noise, loss_v)",
+        "codeExplanation": "先用真实 a、\\(\\epsilon\\) 验证正反变换，再人为给 \\(\\hat a\\) 一个相同的 0.3 误差。由同一 \\(\\hat a\\) 推出的 \\(\\hat\\epsilon\\)、v̂ 描述一致的预测，但三个 MSE 分别为 0.09、0.16、0.25。换到其他噪声等级，比例会再次变化，因此单纯切换 prediction_type 并不保留训练目标。",
+        "id": "4",
+        "lead": "VP 的 v 参数化是按当前信号与噪声系数组合噪声和干净数据的预测目标。它不是仅凭名字就等同于任意 Flow 速度。固定等级下可作代数换算，误差权重却会随系数改变；下面分别推导。"
+      },
+      {
+        "title": "反向一步的均值、方差与最后一步",
+        "body": [
+          "在 epsilon 参数化的标准 DDPM 形式中，反向均值由当前 \\(x_k\\) 与预测噪声组成：\\(\\mu_\\theta=\\frac{1}{\\sqrt{\\alpha_k}}\\left[x_k-\\frac{\\beta_k\\hat\\epsilon}{\\sqrt{1-\\bar\\alpha_k}}\\right]\\)。若采用前向后验方差，\\(\\tilde\\beta_k=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}\\)。以下采用这一方差选择，其他实现还可能使用不同固定方差或学习方差，不能仅凭“DDPM”名称假设完全相同。 均值与方差的来源将在后文[给定干净样本的高斯后验](#/learn/diffusion?section=posterior-derivation)中推导，先把它们接成一次完整生成更新。",
+          "随后从 \\(\\mu_\\theta+\\sqrt{\\tilde\\beta_k}\\,z\\) 得到下一个状态，其中 z 是新的标准高斯噪声；它不是训练时的那份 \\(\\epsilon\\)，也不是网络输出。对于数组的最后生成一步 \\(k=0\\)，把前一累计系数视为 1，后验方差为零，直接返回均值，不再添加噪声。若在这一点仍加随机项，得到的是被重新污染的终端输出。",
+          "需要同时核对平方根、累计乘积和边界索引。把 \\(\\tilde\\beta\\) 当标准差直接乘 z，会把方差缩小一次；读取数组 [-1] 来表示干净端，会错误取到最高噪声端。最后一步应写成明确分支，并用任意巨大 noise 输入验证其结果完全不受影响。"
+        ],
+        "formula": "\\mu_\\theta=\\frac1{\\sqrt{\\alpha_k}}\\left(x_k-\\frac{\\beta_k}{\\sqrt{1-\\bar\\alpha_k}}\\hat\\varepsilon\\right),\\quad \\tilde\\beta_k=\\beta_k\\frac{1-\\bar\\alpha_{k-1}}{1-\\bar\\alpha_k},\\quad \\bar\\alpha_{-1}=1",
+        "focus": {
+          "kind": "易错",
+          "title": "把上一等级的数组索引写成无条件 k−1",
+          "explanation": "\\(k=0\\) 时 Python 的 −1 是数组尾部，不是理论中的干净边界。",
+          "check": "分别测试 \\(k=0\\) 与 k>0：前者应忽略 noise，后者在给定噪声与系数后应有可手算结果。"
+        },
+        "id": "5",
+        "lead": "反向转移是从当前噪声等级采到前一级状态的条件分布，包含预测均值和采样方差。DDPM 的一次生成更新据此组合当前状态、网络预测与新噪声。最后一步的边界也属于这个分布定义。"
+      },
+      {
+        "title": "采样日程不能任意删步",
+        "body": [
+          "推理从最高噪声状态出发，按所选反向日程逐步更新，条件 c 通常在这一动作块的生成期间保持固定。前面给出的一步公式对应特定相邻等级；如果只保留每十个训练等级，却继续使用相邻等级的 \\(\\beta\\) 和 \\(\\tilde\\beta\\)，并没有正确实现跳步采样。减少步数需要采用与间隔一致的系数或对应采样算法。",
+          "DDIM、不同 ODE/SDE 采样器以及蒸馏模型提供不同速度与误差取舍，它们不是在 for 循环里简单改 range 就等价。比较时除步数外，还需记录网络调用次数、实际延迟、噪声随机性和任务成功率。固定初始噪声只固定了起点；随机 DDPM 的中间噪声也必须固定，才能获得可重复对照。",
+          "采样通常使用 eval 和 no_grad，避免 Dropout 或梯度图带来额外变化及内存开销，但两者处理不同问题。模型架构里若含需要模式切换的模块，只有 no_grad 并不能切换其行为。任何采样优化都应先通过公式和数值对照，再到真实条件上评估生成质量。"
+        ],
+        "id": "6",
+        "lead": "训练噪声日程规定各等级的数据分布，采样网格规定推理选择哪些等级与跨度。跳过中间等级会改变所需转移，不能只删循环而沿用相邻系数。下面先区分这两份日程，再介绍跨等级更新。"
+      },
+      {
+        "title": "确定性 DDIM 的非相邻步更新",
+        "body": [
+          "确定性 DDIM 对应 \\(\\eta=0\\)。设当前噪声等级为 t，目标等级 s 更接近干净端点；使用累计系数 \\(\\bar\\alpha\\)，而不是某个相邻步的 \\(\\alpha\\) 或 \\(\\beta\\)。对常见的前向加噪索引，\\(s<t\\) 对应 \\(\\bar\\alpha_s>\\bar\\alpha_t\\)。先由当前噪声预测恢复干净动作估计，再用目标累计系数重组这个估计和同一份预测噪声，就可以直接到达一个非相邻等级。",
+          "下面公式假设模型输出 \\(\\epsilon\\)，且不对干净动作估计做裁剪、动态阈值或投影，也不注入额外随机噪声。若模型输出干净动作或 v，需要先按前文关系转换，不能直接代入 \\(\\epsilon\\) 的位置。\\(\\bar\\alpha_t\\) 必须大于零；\\(\\bar\\alpha_s=1\\) 是干净端点，此时返回干净动作估计。相同累计系数对应恒等更新，可以用于检查实现。",
+          "对 \\(0<\\bar\\alpha_t\\le\\bar\\alpha_s\\le1\\) 且 \\(\\bar\\alpha_t<1\\) 的带噪起点，更一般的 DDIM 更新可加入标准差 \\(\\rho_{t\\to s}=\\eta\\sqrt{\\frac{1-\\bar\\alpha_s}{1-\\bar\\alpha_t}}\\sqrt{1-\\frac{\\bar\\alpha_t}{\\bar\\alpha_s}}\\)：\\(x_s=\\sqrt{\\bar\\alpha_s}\\,\\hat a+\\sqrt{1-\\bar\\alpha_s-\\rho^2}\\,\\hat\\epsilon+\\rho z\\)，其中 z 是新抽的单位高斯，\\(0\\le\\eta\\le1\\)。\\(\\eta=0\\) 恢复下面的确定性公式；\\(\\eta=1\\) 且 s 是相邻前一等级时，\\(\\rho^2\\) 等于前向后验方差，均值也可化简成相应 DDPM 均值。这种联系依赖同一累计系数、epsilon 参数化和未额外裁剪的设置。",
+          "采样时要在所选日程的每个当前等级重新计算模型输出，再使用该步的两个累计系数更新。固定初始噪声、条件和确定性的模型计算后，\\(\\eta=0\\) 的过程是确定的；减少步数仍可能放大模型预测误差。它不能被解释为把相邻 DDPM 公式中的索引直接跳过，也不保证任意少的步数具有相同的生成质量。",
+          "代码用已知干净动作和噪声构造一个 oracle：只要 \\(\\epsilon\\) 预测准确，跨步结果就应落在由这两者定义的目标噪声等级。它验证公式、方向及端点约定，不验证神经网络是否学会了正确的条件分布。实际调度器若启用了裁剪等选项，还需要检查其噪声重计算约定。"
+        ],
+        "formula": "\\hat a=\\frac{x_t-\\sqrt{1-\\bar\\alpha_t}\\,\\hat\\epsilon_\\theta(x_t,t,c)}{\\sqrt{\\bar\\alpha_t}},\\qquad x_s=\\sqrt{\\bar\\alpha_s}\\,\\hat a+\\sqrt{1-\\bar\\alpha_s}\\,\\hat\\epsilon_\\theta(x_t,t,c),\\qquad 0<\\bar\\alpha_t\\le\\bar\\alpha_s\\le1\\quad(\\eta=0).",
+        "code": "import math\nimport torch\n\n\ndef ddim_step(x_t, eps_hat, alpha_bar_t, alpha_bar_s):\n    \"\"\"eta=0；epsilon 参数化；累计系数是标量；不做裁剪或额外加噪。\"\"\"\n    if x_t.shape != eps_hat.shape:\n        raise ValueError(\"x_t and eps_hat must have the same shape\")\n    if not x_t.is_floating_point() or x_t.dtype != eps_hat.dtype or x_t.device != eps_hat.device:\n        raise ValueError(\"inputs must share a floating dtype and device\")\n    at, as_ = float(alpha_bar_t), float(alpha_bar_s)\n    if not (math.isfinite(at) and math.isfinite(as_) and 0.0 < at <= as_ <= 1.0):\n        raise ValueError(\"require 0 < alpha_bar_t <= alpha_bar_s <= 1\")\n    # sqrt 使用同一设备和精度；alpha_bar_t=0 不允许除法恢复干净动作。\n    at = x_t.new_tensor(at)\n    as_ = x_t.new_tensor(as_)\n    clean_hat = (x_t - (1 - at).sqrt() * eps_hat) / at.sqrt()\n    return as_.sqrt() * clean_hat + (1 - as_).sqrt() * eps_hat\n\n\n# Oracle 验证：已知干净动作与噪声，检查跨步公式能否恢复同一条路径。\nclean = torch.tensor([[-0.8, 0.2], [0.5, 1.1]], dtype=torch.float64)\nnoise = torch.tensor([[0.3, -0.7], [1.2, -0.4]], dtype=torch.float64)\nat, as_ = 0.16, 0.64\nx_t = math.sqrt(at) * clean + math.sqrt(1 - at) * noise\nexpected_s = math.sqrt(as_) * clean + math.sqrt(1 - as_) * noise\nx_s = ddim_step(x_t, noise, at, as_)\ntorch.testing.assert_close(x_s, expected_s, rtol=1e-12, atol=1e-12)\n# 干净端点 alpha_bar_s=1；相同系数对应恒等更新。\ntorch.testing.assert_close(ddim_step(x_t, noise, at, 1.0), clean, rtol=1e-12, atol=1e-12)\ntorch.testing.assert_close(ddim_step(x_t, noise, at, at), x_t, rtol=1e-12, atol=1e-12)\nfor bad_at, bad_as in [(0.0, 0.64), (0.64, 0.16), (0.16, 1.1)]:\n    try:\n        ddim_step(x_t, noise, bad_at, bad_as)\n        raise AssertionError(\"invalid coefficients were accepted\")\n    except ValueError:\n        pass\nprint(\"DDIM checks passed; max error:\", (x_s - expected_s).abs().max().item())\n",
+        "codeExplanation": "ddim_step 只负责 \\(\\eta=0\\) 的单步代数更新，输入的 alpha_bar_t 与 alpha_bar_s 是累计系数。Oracle 检查跨越非相邻噪声等级、到达干净端点、恒等更新及非法系数；容差采用 float64 精度。真实采样循环中，eps_hat 应由模型使用当前 \\(x_t\\)、当前时间与条件重新预测。",
+        "id": "added-0",
+        "lead": "DDIM 是一类与扩散噪声预测配套的采样构造，确定性版本在给定初始噪声后不再每步加入新随机量。它通过干净样本估计重新组合目标等级状态，因此可以明确处理非相邻等级。下面核对两端系数。"
+      },
+      {
+        "id": "representative-diffusion-designs",
+        "title": "DDPM、LDM、DiT 与采样器分别改变什么",
+        "lead": "生成空间、网络架构、训练目标和采样器是扩散系统的不同组成。LDM 改变扩散发生的表示空间，DiT 采用 Transformer 去噪骨干，DDPM/DDIM 则涉及生成过程与采样构造。先定位层次，再理解哪些设计可以组合。",
+        "body": [
+          "以图像为例，[Latent Diffusion Models（LDM）](https://arxiv.org/abs/2112.10752) 先学习图像编码器与解码器，再在压缩后的表示上训练扩散模型。计算主要转移到较小的空间网格，条件可通过 Cross-Attention 注入。这里改变的是生成空间：最终图像还要经过解码，重建质量与压缩保留的信息成为额外边界。机器人动作本身通常已是低维向量，因此是否再学习潜空间，应由动作结构和表示需求决定，不能照搬图像方案。",
+          "[DiT](https://arxiv.org/abs/2212.09748) 将潜表示切为 patch，并用 Transformer 代替常见的 U-Net 去噪骨干；其原始工作研究类别条件图像生成，使用包含 AdaLN-Zero 的条件注入设计。DiT 首先描述骨干选择，不自动规定采用 Flow Matching、文本条件或自回归输出。图像 DiT、时间轴上的动作 Transformer 和 VLA 的动作专家可以共享组件，但输入轴、条件路径和输出目标仍要逐一辨认。条件缩放与门控见[条件融合](#/learn/conditioning-fusion)。",
+          "[DPM-Solver](https://arxiv.org/abs/2206.00927) 属于采样算法：它利用扩散 ODE 的半线性结构，解析处理线性部分，并近似涉及网络预测的积分。它不需要把原去噪模型重新训练为一个新的骨干；实际使用仍需与噪声日程、输出参数化及时间变量匹配。高阶收敛描述的是相应条件下的数值误差，不是对任意模型、任意少步数的生成质量保证。通用 Euler、Heun 与专用扩散求解器的差别，可接续[Score 与概率流 ODE](#/learn/score-sde)。",
+          "因此，一个模型可以同时是潜空间生成模型、采用 Transformer 骨干，并使用特定 ODE 采样器。阅读配置时分别确认“生成变量、路径与训练目标、骨干、采样更新”；比较实验也应固定其余选择。图像中的名称迁移到[动作策略](#/learn/generative-policy)后，仍须检查动作单位、时间轴和闭环执行协议。"
+        ],
+        "comparison": {
+          "title": "代表工作与模型中的位置",
+          "columns": [
+            "工作",
+            "主要特点",
+            "在实现中定位",
+            "什么时候考虑"
+          ],
+          "rows": [
+            [
+              "[DDPM](https://arxiv.org/abs/2006.11239)",
+              "离散前向 Gaussian 链与学习到的反向转移，常用噪声回归训练。",
+              "加噪分布、训练损失及反向更新；本章前半部分逐项推导。",
+              "需要理解离散加噪与随机反向生成，或建立逐项可核对的扩散基线。"
+            ],
+            [
+              "[DDIM](https://arxiv.org/abs/2010.02502)",
+              "与相同前向边际及训练目标兼容的另一类生成过程，可使用非相邻等级；零随机项时采样确定。",
+              "主要在采样更新中体现；不能仅删除 DDPM 循环中的若干索引。",
+              "复用兼容的噪声预测模型，并研究非相邻步与确定性采样。"
+            ],
+            [
+              "LDM（2022）",
+              "先编码，再在压缩表示中生成，最后解码。",
+              "改变建模空间；额外检查编码尺度、压缩误差与解码器。",
+              "高维图像的空间网格构成主要计算成本，且已有可用的编码器与解码器。"
+            ],
+            [
+              "DiT（2022/2023）",
+              "以 patch Transformer 构建去噪骨干；原论文研究潜空间类别条件生成。",
+              "在网络结构中定位，不据此推断训练目标或采样器。",
+              "希望用统一的 token / Transformer 组件组织生成网络。"
+            ],
+            [
+              "DPM-Solver（2022）",
+              "利用扩散 ODE 特殊结构的高阶数值求解。",
+              "在 sampler / scheduler 中定位；核对预测类型、时间与日程。",
+              "已有兼容的扩散模型，希望在给定网络调用预算内选择更合适的数值积分。"
+            ]
+          ]
+        }
+      },
+      {
+        "title": "动作块中的尺度、约束与监督边界",
+        "body": [
+          "连续动作通常先按训练统计量归一化，再进入扩散空间。平移、旋转和夹爪等分量若尺度相差很大，噪声日程对它们的相对破坏程度也不同。采样完成后按固定顺序反变换为控制接口；不能把标准高斯噪声的数值范围直接当成机器人动作范围。",
+          "动作 Padding 与无效维要在训练损失中明确排除，模型输入也需对应有效性协议。直接在每个去噪步把无效位置置零，改变了这些坐标的实际过程；这可能是某个设计的一部分，但必须与训练一致。若采用动作前缀条件或 inpainting，还需定义已知部分如何随等级加噪与固定，不能把原始动作强塞进任意噪声层。",
+          "欧氏噪声不自动保持旋转流形、关节限位或接触约束。最终裁剪限制了数值，同时也改变生成分布；去噪误差无法代替动作表示、控制后处理和闭环效果的检验。"
+        ],
+        "id": "7",
+        "lead": "扩散动作块是将一段未来命令作为联合生成变量的策略表示。噪声与回归发生在模型采用的坐标中，执行却需要恢复物理单位与动作含义。下面把前面的概率过程接回有效监督、归一化和控制接口。"
+      },
+      {
+        "title": "定位生成失败",
+        "body": [
+          "按四个边界逐项核对：原始动作如何标准化，训练怎样构造 \\(x_k\\) 和 \\(\\epsilon\\)，网络预测是什么，采样器怎样恢复与执行。先跳过网络使用已知噪声验证参数化；再检查固定三元组的梯度与拟合；最后恢复随机训练并检查按等级、条件和动作维分组的误差。这样能够区分公式错误、学习失败与动作接口问题。",
+          "完整示例使用与 FM 相同的二维条件混合分布，输出独立探针误差、解析最优噪声预测误差与生成样本。有限训练、离散采样和末端分布近似都会影响生成误差。固定网络比较步进配置，可以观察数值求解的影响；同时改变日程、优化器与尺度，则很难解释误差来自哪一项。",
+          "排错时给 eps_hat、alpha_bar、mean 和 noise 标出随机变量、形状与等级。错误版本也提供明确反例：把累计系数换成单步系数、反向日程升序、最后一步加噪，分别破坏不同计算关系。",
+          "有关噪声预测与边际 score 的精确关系，以及 DDPM 连续极限、反向 SDE 和概率流 ODE 的区别，见[Score、SDE 与概率流 ODE](#/learn/score-sde?tab=theory)。这些联系解释了为何“Diffusion 随机、Flow 确定”不足以区分方法。",
+          "本章 DDPM 和 [Flow Matching 的多峰训练](#/learn/flow-matching?tab=code&anchor=demo-conditional-mixture)采用相同的数据参数和条件含义，分别训练噪声与速度预测器。比较时应固定数据、模型预算和评价口径，再分别记录采样随机性与网络调用次数；两份训练 MSE 不是同一度量。本次用途是追踪数据如何进入不同目标与采样步骤，不据一次合成训练宣称算法优劣。",
+          "扩散生成的主线是固定加噪过程、从可计算噪声建立监督、再以匹配的反向规则采样。参数化、损失权重与求解日程各有定义；生成动作时还要完成单位与执行语义的还原。"
+        ],
+        "id": "8",
+        "lead": "生成失败可能来自加噪、网络学习、采样器或动作解码，单个训练损失无法区分这些原因。有效诊断应逐步替换未知环节，用已知噪声与固定样本建立参照。每一步只恢复一类不确定性，才能把观察结果对应到具体机制。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "clean / noisy / noise prediction",
+        "shape": "[B,H,D]",
+        "meaning": "动作块、带噪动作块和噪声预测同形状；演示简化成 [B,1]"
+      },
+      {
+        "name": "noise index",
+        "shape": "[B]",
+        "meaning": "每个样本的噪声等级，独立于 H 个控制时刻"
+      },
+      {
+        "name": "cumulative alpha",
+        "shape": "[B,1,1]",
+        "meaning": "选取当前等级后广播到动作块"
+      }
+    ],
+    "code": {
+      "title": "同一二维条件混合分布：DDPM 训练与 64 步生成",
+      "source": "\"\"\"Conditional DDPM on the same 2D mixture used by the Flow Matching course.\"\"\"\nimport json\nfrom pathlib import Path\nimport torch\nfrom torch import nn\n\nSEED = 20261106\nMEANS = torch.tensor([[[-1.6, -0.6], [1.6, 0.6]],\n                      [[-0.6, 1.6], [0.6, -1.6]]])\nWEIGHTS = torch.tensor([[0.35, 0.65], [0.65, 0.35]])\nDATA_STD = 0.28\n\n\ndef sample_data(condition, generator=None):\n    first = torch.rand(len(condition), generator=generator) < WEIGHTS[condition, 0]\n    component = (~first).long()\n    return MEANS[condition, component] + DATA_STD * torch.randn(\n        len(condition), 2, generator=generator)\n\n\nclass NoisePredictor(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.net = nn.Sequential(nn.Linear(7, 64), nn.SiLU(),\n                                 nn.Linear(64, 64), nn.SiLU(), nn.Linear(64, 2))\n\n    def forward(self, x, k, condition, levels):\n        tau = k.to(x.dtype)[:, None] / (levels - 1)\n        clock = torch.cat((tau, torch.sin(torch.pi*tau), torch.cos(torch.pi*tau)), -1)\n        context = nn.functional.one_hot(condition, 2).to(x.dtype)\n        return self.net(torch.cat((x, clock, context), -1))  # [B,7] -> [B,2]\n\n\ndef oracle_noise(x, alpha_bar, condition):\n    alpha, sigma = alpha_bar.sqrt(), (1-alpha_bar).sqrt()  # [B,1]\n    q = alpha.square()*DATA_STD**2 + sigma.square()\n    residual = x[:, None, :] - alpha[:, :, None]*MEANS.to(x)[condition]\n    logits = WEIGHTS.to(x)[condition].log() - residual.square().sum(-1)/(2*q)\n    posterior = logits.softmax(-1)  # p(component | x,k,c)\n    return (posterior[:, :, None]*(sigma/q)[:, :, None]*residual).sum(1)\n\n\ndef run(output=\"ddpm_mixture_results.json\", train_steps=1800):\n    torch.manual_seed(SEED)\n    torch.set_num_threads(1)\n    levels = 64\n    beta = torch.linspace(0.001, 0.2, levels)\n    alpha = 1-beta\n    alpha_bar = alpha.cumprod(0)\n    previous = torch.cat((torch.ones(1), alpha_bar[:-1]))\n    posterior_variance = beta*(1-previous)/(1-alpha_bar)\n    assert posterior_variance[0] == 0\n    assert torch.all((beta > 0) & (beta < 1))\n    model = NoisePredictor()\n    optimizer = torch.optim.Adam(model.parameters(), lr=0.002)\n\n    def batch(size, generator=None):\n        condition = torch.randint(2, (size,), generator=generator)\n        clean = sample_data(condition, generator)\n        k = torch.randint(levels, (size,), generator=generator)\n        noise = torch.randn(size, 2, generator=generator)\n        ab = alpha_bar[k, None]  # coefficients broadcast across D=2, not B\n        noisy = ab.sqrt()*clean + (1-ab).sqrt()*noise\n        return noisy, k, condition, noise\n\n    probe = batch(4096, torch.Generator().manual_seed(SEED+1))\n    with torch.no_grad():\n        before = (model(*probe[:3], levels)-probe[3]).square().mean().item()\n    for _ in range(train_steps):\n        noisy, k, condition, noise = batch(256)\n        loss = (model(noisy, k, condition, levels)-noise).square().mean()\n        assert torch.isfinite(loss)\n        optimizer.zero_grad(set_to_none=True)\n        loss.backward()\n        nn.utils.clip_grad_norm_(model.parameters(), 5.0)\n        optimizer.step()\n\n    model.eval()\n    with torch.no_grad():\n        estimate = model(*probe[:3], levels)\n        oracle = oracle_noise(probe[0], alpha_bar[probe[1], None], probe[2])\n        after = (estimate-probe[3]).square().mean().item()\n        oracle_target_mse = (oracle-probe[3]).square().mean().item()\n        model_oracle_mse = (estimate-oracle).square().mean().item()\n        assert after < before  # this fixed experiment; not a general convergence theorem\n        generator = torch.Generator().manual_seed(SEED+2)\n        condition = torch.arange(1024) % 2\n        initial = torch.randn(1024, 2, generator=generator)\n        target = sample_data(condition, generator)\n        x = initial.clone()\n        for k in reversed(range(levels)):\n            index = torch.full((len(x),), k, dtype=torch.long)\n            eps_hat = model(x, index, condition, levels)\n            mean = (x-beta[k]/(1-alpha_bar[k]).sqrt()*eps_hat)/alpha[k].sqrt()\n            # No fresh noise at k=0; the terminal clean estimate is the mean.\n            x = mean if k == 0 else mean + posterior_variance[k].sqrt()*torch.randn(\n                x.shape, generator=generator)\n        assert x.shape == (1024, 2) and torch.isfinite(x).all()\n\n    result = {\"seed\": SEED, \"torch\": torch.__version__, \"device\": \"cpu\",\n              \"dtype\": \"float32\", \"levels\": levels, \"train_steps\": train_steps,\n              \"terminal_alpha_bar\": alpha_bar[-1].item(),\n              \"probe\": {\"before_mse\": before, \"after_mse\": after,\n                        \"oracle_target_mse\": oracle_target_mse,\n                        \"learned_to_oracle_mse\": model_oracle_mse},\n              \"data_std\": DATA_STD, \"means\": MEANS.tolist(), \"weights\": WEIGHTS.tolist(),\n              \"conditions\": [],\n              \"limits\": [\"One fixed-seed teaching experiment, not a policy benchmark.\",\n                         \"The finite schedule has a small, nonzero terminal signal.\",\n                         \"DDPM's finite Gaussian reverse steps are approximations.\",\n                         \"Noise and velocity MSE have different units and time weights.\"]}\n    for c in (0, 1):\n        select = condition == c\n        nearest = (x[select, None, :]-MEANS[c]).square().sum(-1).argmin(-1)\n        result[\"conditions\"].append({\"id\": c, \"noise\": initial[select][:200].tolist(),\n                                     \"data\": target[select][:200].tolist(),\n                                     \"generated\": x[select][:200].tolist(),\n                                     \"nearest_mode_fractions\": torch.bincount(\n                                         nearest, minlength=2).div(select.sum()).tolist()})\n    Path(output).write_text(json.dumps(result, indent=2)+\"\\n\")\n    print(json.dumps({\"probe\": result[\"probe\"], \"generated_shape\": list(x.shape),\n                      \"terminal_alpha_bar\": result[\"terminal_alpha_bar\"]}, indent=2))\n    return result\n\n\nif __name__ == \"__main__\":\n    run()\n",
+      "explanations": [
+        {
+          "lines": "7–18",
+          "text": "两个条件各包含两个 Gaussian 模式，与 Flow Matching 的 conditional-mixture 使用相同均值、混合比例和标准差；每次重新抽取分量与局部噪声。"
+        },
+        {
+          "lines": "21–40",
+          "text": "网络接收 [B,2] 带噪样本、三维时间编码和二维 one-hot 条件。oracle_noise 用混合分量的后验权重计算 E[ε|x,k,c]，不是将本次采样标签交给网络。"
+        },
+        {
+          "lines": "43–64",
+          "text": "保留零起始 DDPM 索引；用累计 alpha 一步生成训练样本。固定独立探针用于区分训练批次波动与实际探针误差。"
+        },
+        {
+          "lines": "66–86",
+          "text": "训练噪声回归网络，再分别测预测到采样标签和解析条件均值的误差；总体平方误差分解不意味着有限探针的两项会精确相加。"
+        },
+        {
+          "lines": "87–101",
+          "text": "从标准 Gaussian 开始反向迭代，k=0 不添加新噪声。有限日程的末端仍有很小信号，先验近似和 Gaussian 反向一步近似都明确保留。"
+        },
+        {
+          "lines": "100–123",
+          "text": "导出实际参数与样本。最近模式比例仅作诊断；噪声 MSE 与 FM 速度 MSE 的单位和时间权重不同，不能据大小排序算法。"
+        }
+      ],
+      "expected": "固定种子的本次 CPU 实验中，独立探针噪声 MSE 从 1.01124 降到 0.22395，解析最优预测对同一探针标签的 MSE 为 0.21076；输出 [1024,2] 样本与 ddpm_mixture_results.json。终端累计 alpha 约 0.000994，因此从标准 Gaussian 开始仍是一项近似。这些是合成实验观察，不是普遍收敛或机器人表现的保证。"
+    },
+    "exercise": {
+      "title": "亲手实现一步直接加噪",
+      "prompt": "实现 add_noise(clean, noise, alpha_bar)，返回同长度列表。alpha_bar 必须位于 [0,1]；长度不一致要报错。端点分别应该恢复 clean 和 noise。",
+      "runtime": "python",
+      "starter": "import math\n\ndef add_noise(clean, noise, alpha_bar):\n    # TODO: 使用累计 alpha，而不是直接用 beta\n    raise NotImplementedError\n",
+      "solution": "import math\n\ndef add_noise(clean, noise, alpha_bar):\n    if not 0 <= alpha_bar <= 1 or len(clean) != len(noise):\n        raise ValueError('invalid coefficient or shape')\n    a, b = math.sqrt(alpha_bar), math.sqrt(1-alpha_bar)\n    return [a*x + b*z for x,z in zip(clean,noise)]\n",
+      "tests": "assert add_noise([2.,-1.],[0.5,0.2],1.) == [2.,-1.]\nassert add_noise([2.,-1.],[0.5,0.2],0.) == [0.5,0.2]\ny = add_noise([2.],[0.],0.25)\nassert abs(y[0]-1.) < 1e-12\ntry:\n    add_noise([1.],[0.],1.1)\n    raise AssertionError('非法系数应报错')\nexcept ValueError:\n    pass\nprint('加噪公式及两个端点检查通过。')\n",
+      "hints": [
+        "系数是 alpha_bar 的平方根与 1−alpha_bar 的平方根。",
+        "先验证两列表长度，避免 zip 静默截断。"
+      ],
+      "explanation": "当 alpha_bar 接近 1，样本保留更多原始动作；接近 0 时更接近高斯噪声。实际日程的最后一步是否足够接近 0，需要直接检查。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 ddpm_reverse_step(x, eps_hat, k, betas, noise)。采用后验方差 beta_tilde，\\(k=0\\) 返回均值且忽略 noise。x、eps_hat、noise 形状相同，k 是 Python 整数。",
+      "starter": "import torch\n\ndef ddpm_reverse_step(x, eps_hat, k, betas, noise):\n    # TODO: 累计系数、反向均值、后验方差和边界\n    raise NotImplementedError\n",
+      "solution": "import torch\n\ndef ddpm_reverse_step(x, eps_hat, k, betas, noise):\n    if not 0 <= k < len(betas) or not ((betas > 0) & (betas < 1)).all():\n        raise ValueError('invalid step or schedule')\n    alphas = 1-betas\n    abar = torch.cumprod(alphas, dim=0)\n    mean = (x-betas[k]/(1-abar[k]).sqrt()*eps_hat) / alphas[k].sqrt()\n    if k == 0:\n        return mean\n    variance = betas[k]*(1-abar[k-1])/(1-abar[k])\n    return mean + variance.sqrt()*noise\n",
+      "tests": "betas = torch.tensor([0.1,0.2])\nx = torch.tensor([[1.,2.]])\neps = torch.zeros_like(x)\none = torch.ones_like(x)\na = ddpm_reverse_step(x,eps,0,betas,one)\nb = ddpm_reverse_step(x,eps,0,betas,-one)\ntorch.testing.assert_close(a,b)\ntorch.testing.assert_close(a,x/torch.tensor(0.9).sqrt())\nc = ddpm_reverse_step(x,eps,1,betas,one)\nexpected = x/torch.tensor(0.8).sqrt() + torch.tensor(0.2*0.1/0.28).sqrt()\ntorch.testing.assert_close(c,expected)\n\n# 非零 eps_hat：最后一步应精确反演已知的单步加噪\nclean = torch.tensor([[0.4, -0.6]])\nknown_eps = torch.tensor([[0.7, -1.2]])\nalpha0 = 1 - betas[0]\nnoisy0 = alpha0.sqrt() * clean + (1 - alpha0).sqrt() * known_eps\nrecovered = ddpm_reverse_step(noisy0, known_eps, 0, betas, one)\ntorch.testing.assert_close(recovered, clean, atol=1e-6, rtol=1e-5)\n# k=1 也必须使用噪声预测，系数中的累计 alpha 是 0.9*0.8=0.72\nnonzero_eps = torch.tensor([[0.5, -0.25]])\nexpected_nonzero = (x - (0.2 / (0.28 ** 0.5)) * nonzero_eps) / (0.8 ** 0.5)\nexpected_nonzero = expected_nonzero + (0.2 * 0.1 / 0.28) ** 0.5 * one\nactual_nonzero = ddpm_reverse_step(x, nonzero_eps, 1, betas, one)\ntorch.testing.assert_close(actual_nonzero, expected_nonzero, atol=1e-6, rtol=1e-5)\n\nprint('DDPM 后验方差和最后一步检查通过。')\n",
+      "hints": [
+        "先对 1−betas 做 cumprod，反向均值同时使用当前 alpha 和累计 alpha。",
+        "\\(k=0\\) 应在添加随机噪声前返回；k>0 的方差使用 alpha_bar[k−1]。"
+      ],
+      "explanation": "DDPM 的当前噪声系数 alpha、累计系数 alpha_bar 和反向后验方差承担不同作用。均值中的 epsilon 预测需要按 beta/sqrt(1−alpha_bar) 换算，不能直接减去网络输出。对于相邻反向步，posterior variance=beta*(1−alpha_bar_previous)/(1−alpha_bar)。\\(k=0\\) 最后一步仍更新均值，但不注入新噪声。本练习只适用于给定相邻步日程。"
+    },
+    "pitfalls": [
+      {
+        "title": "用每步 alpha 代替累计 alpha_bar",
+        "detail": "两者控制不同噪声量。将两个 \\(\\beta\\) 的累计乘积手算后，与查表及广播后的张量核对。"
+      },
+      {
+        "title": "输出形状相同就共用采样器",
+        "detail": "epsilon、sample 与特定 v 参数化需要不同恢复公式。检查训练 target、模型配置及调度器的声明是否一致。"
+      },
+      {
+        "title": "采样步数减少但仍套相邻一步公式",
+        "detail": "跳步的系数必须匹配真实等级间隔。使用实现明确支持的日程，并做固定模型、固定随机性的数值对照。"
+      },
+      {
+        "title": "最后一步仍加入噪声",
+        "detail": "采用上述后验方差时，\\(k=0\\) 直接返回均值。用不同 noise 输入检查最后输出不变。"
+      },
+      {
+        "title": "扩散 loss 下降就意味着动作可执行",
+        "detail": "损失发生在生成空间，几何与控制约束另有含义。核对反归一化、动作接口并进行闭环评估。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "DDPM 原论文",
+        "url": "https://arxiv.org/abs/2006.11239"
+      },
+      {
+        "title": "Diffusion Policy 原论文与代码",
+        "url": "https://diffusion-policy.cs.columbia.edu/"
+      },
+      {
+        "title": "PyTorch cumprod 官方文档",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.cumprod.html"
+      },
+      {
+        "title": "Diffusers · DDPM 调度器、方差与输出参数化",
+        "url": "https://huggingface.co/docs/diffusers/en/api/schedulers/ddpm"
+      },
+      {
+        "title": "Salimans & Ho · Progressive Distillation：v 参数化与时间权重",
+        "url": "https://arxiv.org/abs/2202.00512"
+      },
+      {
+        "title": "DDIM 原论文 · 非相邻采样与 \\(\\eta=0\\) 的确定性更新",
+        "url": "https://arxiv.org/abs/2010.02502"
+      },
+      {
+        "title": "Kingma & Welling · Auto-Encoding Variational Bayes（轨迹变分界的基础）",
+        "url": "https://arxiv.org/abs/1312.6114"
+      },
+      {
+        "title": "Song et al. · Score-Based Generative Modeling through SDEs",
+        "url": "https://arxiv.org/abs/2011.13456"
+      },
+      {
+        "title": "Rombach et al. · Latent Diffusion Models：压缩表示中的生成",
+        "url": "https://arxiv.org/abs/2112.10752"
+      },
+      {
+        "title": "Peebles & Xie · DiT：潜空间 Transformer 去噪骨干",
+        "url": "https://arxiv.org/abs/2212.09748"
+      },
+      {
+        "title": "DiT 官方实现：模型、训练与采样入口",
+        "url": "https://github.com/facebookresearch/DiT"
+      },
+      {
+        "title": "Lu et al. · DPM-Solver：利用扩散 ODE 结构的高阶求解",
+        "url": "https://arxiv.org/abs/2206.00927"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "同一个网络输出 [B,H,D]，为什么 epsilon 预测、干净动作预测和 Flow Matching 速度不能直接互换？",
+        "answer": [
+          "形状相同只说明元素数量一致，没有说明数值代表什么。epsilon 模型监督的是此次加噪使用的标准高斯噪声；干净动作模型监督动作本身；Flow Matching 的速度目标由所选概率路径及时间方向定义。它们的量纲、时间依赖和换算公式不同。",
+          "应从训练 loss 的 target 追到模型输出，再核对采样器如何使用该输出。用已知干净动作和固定噪声构造一个可手算样本，检查一次更新及端点。仅修改配置字段而不匹配训练参数化，可能不会触发 shape 错误，却会破坏采样。"
+        ],
+        "codeFocus": "NoisePredictor 的噪声 MSE、oracle_noise 的条件均值与 ddpm_reverse_step 的反向均值公式。",
+        "acceptance": [
+          "分别说明三种输出语义。",
+          "提出固定噪声的单步一致性检查。"
+        ]
+      },
+      {
+        "question": "将训练日程从 1000 步改成 20 步，并保留原 beta 区间后，从高斯噪声采样为什么可能失配？",
+        "answer": [
+          "累计 alpha 是所有 1−beta 的乘积。大幅减少步数但保留很小的 beta 时，终端仍可能包含大量干净动作信号，而推理却从标准高斯开始；此时训练终端分布和推理初值不一致。应该直接计算并查看终端 alpha_bar，而不是只比较步数。",
+          "推理减步还涉及如何选择训练日程中的时间点和对应采样公式。可使用有明确推导的调度器，但不能随意跳过相邻 DDPM 步。模型是否足够好、采样离散误差和动作后处理是否一致，应分别检查。"
+        ],
+        "codeFocus": "alpha_bar[-1]、训练 timestep 采样和推理 scheduler 的步进序列。",
+        "acceptance": [
+          "解释累计乘积与终端分布的关系。",
+          "区分改变训练日程与减少推理采样步数。"
+        ]
+      },
+      {
+        "question": "\\(\\epsilon\\)、a、v 能互相换算，为什么三个无权重 MSE 仍会训练出不同模型？",
+        "answer": [
+          "在固定等级且预测一致时，\\(L_\\epsilon=\\frac{\\alpha^2}{\\sigma^2}L_a\\)，\\(L_v=\\frac{L_a}{\\sigma^2}\\)。比例依赖等级，均匀采样等级后并不是对整个目标乘同一个常数；有限容量模型因此分配不同拟合重点。",
+          "若要保持某个指定目标，需一起转换损失权重与时间采样分布。端点除零、输出裁剪及不同网络参数化还可能破坏简单代数等价，不能只修改采样器配置。"
+        ],
+        "codeFocus": "用 \\(\\alpha\\)=0.8、\\(\\sigma\\)=0.6 和相同干净动作误差，计算三个损失。",
+        "acceptance": [
+          "推导 SNR 权重。",
+          "区分输出换算与总体优化目标一致。"
+        ]
+      },
+      {
+        "question": "“把 U-Net 换成 DiT，再用 DPM-Solver 采样，就变成了 Flow Matching。”这个判断错在哪里？",
+        "answer": [
+          "DiT 改变网络骨干，DPM-Solver 改变相应扩散 ODE 的数值积分；二者都不能单独说明训练概率路径或监督目标发生了变化。若仍按原日程训练噪声回归，模型的训练目标并未因此自动变成 Flow Matching。",
+          "应分别读出加噪公式、网络输出含义、损失权重及采样方程。若想在相同 Gaussian 路径下转换 noise、score 与 velocity，还需使用匹配的系数和时间方向；损失权重也不能忽略。是否在潜空间中生成，又是独立的表示选择。"
+        ],
+        "codeFocus": "对照本章 noise schedule、eps_hat 与 ddim_step 的接口，再在 DiT 官方仓库分别定位 models.py、train.py 与 sample.py。",
+        "acceptance": [
+          "区分表示空间、骨干、训练目标和采样器四个层次。",
+          "说明替换组件后需要核对的数学接口，不以模型名字代替目标定义。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "前向加噪核、边际分布和给定干净样本的后验是三个不同分布。",
+      "DDPM 的变分目标可转成带时间权重的 epsilon MSE，简化 MSE 改变了权重。",
+      "输出参数化可代数转换，但训练权重、数值误差与端点行为不自动相同。",
+      "采样必须匹配噪声等级和累计系数；DDIM 跳步需要非相邻步公式。"
+    ],
+    "lead": "扩散模型（Diffusion Model）是一类先规定数据逐步加噪的过程、再学习从噪声反向生成数据的概率模型。DDPM 用离散反向转移生成，DDIM 则构造另一种与噪声预测接口配套的采样过程。网络预测什么与采样器怎样更新是两层选择。本章沿同一个二维双峰分布，先认识加噪与去噪的完整流程，再推导后验、训练目标和不同参数化。",
+    "advancedSections": [
+      {
+        "id": "posterior-derivation",
+        "title": "回看反向一步：给定干净样本的高斯后验",
+        "body": [
+          "反向生成需要 \\(p_\\theta(x_{k-1}\\mid x_k,c)\\)，但真实反向分布要对未知干净数据积分，通常不易直接计算。训练时已经知道 a，因此可计算 \\(q(x_{k-1}\\mid x_k,a)\\)。前向 Markov 性给出 \\(q(y\\mid x_k,a)\\propto q(x_k\\mid y)q(y\\mid a)\\)，其中 \\(y=x_{k-1}\\)。这两个分布都是高斯，关于 y 的指数是二次函数。",
+          "下面先限制 \\(k\\ge1\\)，使 \\(1-\\bar\\alpha_{k-1}>0\\)。将两个平方展开，\\(y^\\top y\\) 的系数给出精度 \\(\\Lambda=\\frac{\\alpha_k}{\\beta_k}+\\frac{1}{1-\\bar\\alpha_{k-1}}\\)；线性项给出自然均值参数 \\(\\eta=\\frac{\\sqrt{\\alpha_k}\\,x_k}{\\beta_k}+\\frac{\\sqrt{\\bar\\alpha_{k-1}}\\,a}{1-\\bar\\alpha_{k-1}}\\)。高斯配方因此得到协方差 \\(\\Lambda^{-1}I\\)、均值 \\(\\Lambda^{-1}\\eta\\)。",
+          "利用 \\(\\bar\\alpha_k=\\alpha_k\\bar\\alpha_{k-1}\\) 化简，得到后验方差 \\(\\tilde\\beta_k=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}\\)，以及下式的干净样本项与当前噪声状态项。这个后验使用了训练时的 a；部署网络不能把 a 当作已知输入，因此还需学习能从 \\(x_k,k,c\\) 提供相关信息的预测器。",
+          "由 \\(x_k=\\sqrt{\\bar\\alpha_k}\\,a+\\sqrt{1-\\bar\\alpha_k}\\,\\epsilon\\) 解出 a，并代入后验均值，可得 \\(\\frac{1}{\\sqrt{\\alpha_k}}\\left[x_k-\\frac{\\beta_k\\epsilon}{\\sqrt{1-\\bar\\alpha_k}}\\right]\\)。这一步说明 epsilon 参数化的均值形式从何而来。训练样本中的 \\(\\epsilon\\) 是一个隐藏端点配对的噪声，网络对给定 \\(x_k\\) 的 MSE 最优预测仍是其条件均值。",
+          "\\(k=0\\) 对应从第一个噪声状态返回干净 a，给定 a 的后验退化为点质量，不能把含 \\(\\log\\tilde\\beta_0\\) 的普通高斯 KL 公式直接使用。变分目标在这里单独使用解码似然项；教学采样代码最后返回均值，是输出规则，不是已经计算了这个解码似然。"
+        ],
+        "formula": "\\begin{aligned}\n\\log q(y\\mid x_k,a)&=C-\\frac{\\|x_k-\\sqrt{\\alpha_k}y\\|^2}{2\\beta_k}\n-\\frac{\\|y-\\sqrt{\\bar\\alpha_{k-1}}a\\|^2}{2(1-\\bar\\alpha_{k-1})}\\\\\n\\tilde\\beta_k&=\\frac{\\beta_k(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k},\\\\\n\\tilde\\mu_k&=\\frac{\\sqrt{\\bar\\alpha_{k-1}}\\beta_k}{1-\\bar\\alpha_k}a+\n\\frac{\\sqrt{\\alpha_k}(1-\\bar\\alpha_{k-1})}{1-\\bar\\alpha_k}x_k,\\qquad k\\ge1 .\n\\end{aligned}",
+        "code": "import math\nimport torch\n\ntorch.set_default_dtype(torch.float64)\nbeta = torch.tensor(0.12)\nalpha = 1 - beta\nalpha_bar_previous = torch.tensor(0.72)\nalpha_bar = alpha_bar_previous * alpha\nclean = torch.tensor([[-0.7, 1.2], [0.4, -1.1]])\nnoise = torch.tensor([[0.3, -0.2], [1.3, 0.6]])\nnoisy = alpha_bar.sqrt()*clean + (1-alpha_bar).sqrt()*noise\n\n# Complete the square in the product q(x_k|y) q(y|clean).\nprecision = alpha/beta + 1/(1-alpha_bar_previous)\nnatural_mean = alpha.sqrt()*noisy/beta + alpha_bar_previous.sqrt()*clean/(1-alpha_bar_previous)\nposterior_variance = beta*(1-alpha_bar_previous)/(1-alpha_bar)\nposterior_mean = (\n    alpha_bar_previous.sqrt()*beta/(1-alpha_bar)*clean\n    + alpha.sqrt()*(1-alpha_bar_previous)/(1-alpha_bar)*noisy)\ntorch.testing.assert_close(precision.reciprocal(), posterior_variance)\ntorch.testing.assert_close(natural_mean/precision, posterior_mean)\n\n# The same mean can be parameterized by the sampled forward noise.\nepsilon_form = (noisy-beta/(1-alpha_bar).sqrt()*noise)/alpha.sqrt()\ntorch.testing.assert_close(epsilon_form, posterior_mean)\nprint(\"posterior variance:\", posterior_variance.item())\nprint(\"max mean difference:\", (natural_mean/precision-posterior_mean).abs().max().item())\n\n# This posterior is non-degenerate only for k>=1 in the zero-based convention.\nclean_boundary_variance = beta * (1-1) / (1-alpha)\nassert clean_boundary_variance == 0\nprint(\"passed: Gaussian product, epsilon mean and clean-boundary variance\")\n",
+        "codeExplanation": "先按自然参数计算两个 Gaussian 核的乘积，再与化简后的后验均值/方差对照；最后代入已知前向噪声验证 epsilon 形式。这个 oracle 不使用学习网络，能够把公式错误与模型预测误差分开。",
+        "lead": "前面已经按给定均值和方差完成了反向更新，现在回头推导这两个量的来源。这里的条件后验是已知当前带噪状态与干净训练样本时，前一级状态的分布。它是训练中可计算的比较对象，与生成时没有干净答案的反向模型不同。"
+      },
+      {
+        "id": "variational-objective",
+        "title": "回看训练目标：从轨迹 ELBO 到噪声回归",
+        "body": [
+          "固定一个训练样本 \\((a,c)\\)，把整条噪声轨迹 \\(x_{0:K-1}\\) 视为潜变量。生成联合分布为 \\(p_\\theta(a,x_{0:K-1}\\mid c)=p(x_{K-1})p_\\theta(a\\mid x_0,c)\\prod_{k=1}^{K-1}p_\\theta(x_{k-1}\\mid x_k,c)\\)。以前向链 \\(q(x_{0:K-1}\\mid a)\\) 作为变分分布，[VAE 的 ELBO](#/learn/latent-variable-models?tab=theory&section=elbo-derivation) 给出负对数似然的上界：",
+          "\\[L_{\\rm VLB}=\\mathbb E_q\\!\\left[\\log q(x_{0:K-1}\\mid a)-\\log p_\\theta(a,x_{0:K-1}\\mid c)\\right]\\ge-\\log p_\\theta(a\\mid c).\\]",
+          "要把这个整条轨迹的比值变成局部比较，关键是对同一个前向联合分布采用反向链式分解。固定 \\(a\\) 后，Markov 链的反向条件只需当前 \\(x_k\\) 与 \\(a\\)，因此 \\(q(x_{0:K-1}\\mid a)=q(x_{K-1}\\mid a)\\prod_{k=1}^{K-1}q(x_{k-1}\\mid x_k,a)\\)。这里是在重写已知分布，不是声明训练时已经学到了反向模型。",
+          "将这两个乘积放入对数比，逐项得到终端项 \\(\\log[q(x_{K-1}\\mid a)/p(x_{K-1})]\\)、各级项 \\(\\log[q(x_{k-1}\\mid x_k,a)/p_\\theta(x_{k-1}\\mid x_k,c)]\\)，以及 \\(-\\log p_\\theta(a\\mid x_0,c)\\)。对各级项先按 \\(q(x_{k-1}\\mid x_k,a)\\) 求期望，它就成为一个 KL；再按 \\(q(x_k\\mid a)\\) 求期望。这个全期望步骤解释了为什么最终出现“局部 KL 的平均”。",
+          "具体地，负 ELBO 为 \\[L_{\\rm prior}+\\sum_{k=1}^{K-1}\\mathbb E_{q(x_k\\mid a)}\\!\\left[D_{\\rm KL}\\!\\left(q(x_{k-1}\\mid x_k,a)\\,\\Vert\\,p_\\theta(x_{k-1}\\mid x_k,c)\\right)\\right]+L_{\\rm recon}\\]\\(L_{\\rm prior}=D_{\\rm KL}\\!\\left(q(x_{K-1}\\mid a)\\,\\Vert\\,p(x_{K-1})\\right)\\)；当前向日程和先验固定时，它不参与 \\(\\theta\\) 的梯度。\\(L_{\\rm recon}=\\mathbb E_{q(x_0\\mid a)}[-\\log p_\\theta(a\\mid x_0,c)]\\)。这一分解把困难的整条轨迹比值转为可计算的局部 Gaussian 比较。",
+          "设反向模型使用固定协方差 \\(\\rho_k^2 I\\)，而均值采用 epsilon 参数化。两个 Gaussian 的 KL 中，只有均值平方差依赖这个预测网络；协方差比值、对数行列式等合并成 \\(C_k\\)。用上一节的均值形式相减，差值恰好是 \\(-\\frac{\\beta_k(\\epsilon_\\theta-\\epsilon)}{\\sqrt{\\alpha_k}\\sqrt{1-\\bar\\alpha_k}}\\)。因此相应 \\(\\theta\\) 目标等于 \\(\\lambda_k\\lVert\\epsilon_\\theta-\\epsilon\\rVert^2\\)，\\(\\lambda_k=\\frac{\\beta_k^2}{2\\rho_k^2\\alpha_k(1-\\bar\\alpha_k)}\\)。",
+          "若反向方差也由网络学习，则协方差项一般依赖 \\(\\theta\\)，不能继续删除 \\(C_k\\) 或只训练这个简单 MSE。\\(k=0\\) 的重建项、先验项和离散数据的解码约定也需要单独处理；因此“DDPM loss 就是任意 mean MSE”并不准确。",
+          "常用 \\(L_{\\rm simple}\\) 对噪声等级均匀采样并使用无权重 epsilon MSE，是对原始变分目标的重新加权。若以非均匀概率 \\(r(k)>0\\) 抽样，却仍想估计某个指定的求和目标 \\(\\sum_k\\lambda_k L_k\\)，应使用 \\(\\lambda_k/r(k)\\) 的重要性权重；若目标是等级平均，还要包含相应的总数因子。有限模型容量下，改变权重会改变优化关注的噪声区间。",
+          "下面代码故意选择与真实后验不同的固定反向方差，验证 KL=加权 MSE+常数，并比较两者对 \\(\\epsilon_\\theta\\) 的 Autograd 梯度。它检验的是给定固定方差与索引条件下的恒等式，不比较不同训练目标在真实数据上的最终性能。"
+        ],
+        "formula": "\\begin{aligned}\nL_{\\mathrm{VLB}}&=L_{\\mathrm{prior}}+\n\\sum_{k=1}^{K-1}\\mathbb E\\,D_{\\mathrm{KL}}\\!\\left(q(x_{k-1}\\mid x_k,a)\\Vert p_\\theta(x_{k-1}\\mid x_k,c)\\right)+L_{\\mathrm{recon}},\\\\\nD_{\\mathrm{KL}}&=\\frac{\\|\\tilde\\mu_k-\\mu_\\theta\\|^2}{2\\rho_k^2}+C_k\\\\\n&=\\underbrace{\\frac{\\beta_k^2}{2\\rho_k^2\\alpha_k(1-\\bar\\alpha_k)}}_{\\lambda_k}\n\\|\\epsilon_\\theta(x_k,k,c)-\\epsilon\\|^2+C_k .\n\\end{aligned}",
+        "code": "import torch\n\ntorch.set_default_dtype(torch.float64)\nbeta = torch.tensor(0.12)\nalpha = 1-beta\nab_previous = torch.tensor(0.72)\nab = alpha*ab_previous\nposterior_variance = beta*(1-ab_previous)/(1-ab)\nreverse_variance = beta  # Fixed, intentionally different from the posterior.\nclean = torch.tensor([[-0.7,1.2],[0.4,-1.1]])\nnoise = torch.tensor([[0.3,-0.2],[1.3,0.6]])\nnoisy = ab.sqrt()*clean + (1-ab).sqrt()*noise\nepsilon_hat = (noise + torch.tensor([[0.2,-0.3],[0.1,0.4]])).requires_grad_()\nposterior_mean = (noisy-beta/(1-ab).sqrt()*noise)/alpha.sqrt()\nmodel_mean = (noisy-beta/(1-ab).sqrt()*epsilon_hat)/alpha.sqrt()\nq = torch.distributions.Independent(\n    torch.distributions.Normal(posterior_mean, posterior_variance.sqrt()), 1)\np = torch.distributions.Independent(\n    torch.distributions.Normal(model_mean, reverse_variance.sqrt()), 1)\nkl = torch.distributions.kl_divergence(q,p)\nweight = beta.square()/(2*reverse_variance*alpha*(1-ab))\nweighted_noise_error = weight*(epsilon_hat-noise).square().sum(-1)\ndimension = clean.shape[-1]\nconstant = 0.5*dimension*(\n    posterior_variance/reverse_variance-1\n    + torch.log(reverse_variance/posterior_variance))\ntorch.testing.assert_close(kl, weighted_noise_error+constant)\ng_kl = torch.autograd.grad(kl.mean(),epsilon_hat,retain_graph=True)[0]\ng_mse = torch.autograd.grad(weighted_noise_error.mean(),epsilon_hat)[0]\ntorch.testing.assert_close(g_kl,g_mse)\nprint(\"time weight:\", weight.item(), \"fixed covariance constant:\", constant.item())\nprint(\"passed: KL equals weighted epsilon MSE plus a theta-independent constant\")\n",
+        "codeExplanation": "Independent(Normal(...),1) 把动作向量作为一个联合事件，对维度求和后计算 KL。协方差常数与网络均值无关，故删除后保留相同的期望梯度；若使用逐元素 mean，必须同时追踪额外的维度因子。",
+        "lead": "前面用噪声 MSE 训练了回归器，下面再问它与数据似然是什么关系。轨迹 ELBO 把整条加噪过程看作潜变量，将全局生成目标分解为若干反向分布的局部比较，由此导出带时间权重的噪声回归。这个推导也说明简化目标省去了哪些权重。"
+      }
+    ]
+  },
+  {
+    "id": "dit-adaln",
+    "number": 40,
+    "module": "generative",
+    "level": "P0",
+    "title": "扩散 Transformer：DiT 架构与 FiLM / AdaLN-Zero 条件注入",
+    "subtitle": "围绕扩散 Transformer：DiT 架构与 FiLM / AdaLN-Zero 条件注入，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 65,
+    "tags": [
+      "Conditioning",
+      "FiLM",
+      "AdaLN",
+      "Cross-Attention",
+      "Gating",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "diffusion",
+      "flow-matching",
+      "attention"
+    ],
+    "objectives": [
+      "说明 DiT 是去噪网络骨干，而不是一种独立的生成目标或采样器。",
+      "推导时间与任务条件如何生成 AdaLN 调制参数，并实现 AdaLN-Zero。",
+      "用初始函数等价、首步梯度和条件干预检查实现是否符合预期。"
+    ],
+    "why": "在动作生成中，Transformer 可以作为噪声预测器或速度场网络。真正需要掌握的是生成时间和任务条件怎样进入 Block，以及零初始化如何影响初始函数与训练动态；一般条件融合方式不在本节重复展开。",
+    "sections": [
+      {
+        "title": "FiLM 的乘法交互与通道限制",
+        "body": [
+          "FiLM 用一个条件网络生成 \\(\\gamma(c)\\)、\\(\\beta(c)\\)，再做 \\(\\gamma\\odot h+\\beta\\)。它显式引入条件与特征的乘法：条件可以放大、压低或翻转某个通道，平移则改变非线性前的阈值。这里的参数通常是逐通道向量，不是整层共享的一个数；也不能把 \\(\\gamma\\) 固定看作概率，因为它不必位于零到一。",
+          "若 \\(\\gamma(c)=Ac+b\\)，则 \\(y_i=(A_ic+b_i)h_i+\\beta_i(c)\\)，有 \\(\\frac{\\partial^2 y_i}{\\partial h_i\\,\\partial c_j}=A_{ij}\\)。条件直接改变输入通道的局部斜率，这就是它与单层线性拼接的机制差别。不过对固定条件，FiLM 对 h 的矩阵仍是 \\(\\operatorname{diag}(\\gamma(c))\\)，不能单独实现任意通道旋转；前后线性层可以提供通道混合，不应把逐通道门控描述成任意条件线性变换。",
+          "对于 h=[B,T,D]，每样本条件给出 [B,D]，需要变为 [B,1,D] 才能沿时间轴广播。直接相乘时 PyTorch 从右侧对齐维度；若恰好 \\(B=T\\)，错误表达式甚至可能静默把样本条件当作时间条件。用 \\(B\\ne T\\) 和逐样本干预，才能暴露这个错位。",
+          "FiLM 不要求必须先归一化，但应用位置会改变行为：在线性层前后、激活前后调制不是同一函数。若条件本身是逐 token 的，调制也可以是 [B,T,D]，此时无需跨 T 共享。实现时应明确调制粒度，而不是见到两个相同维度就自动加广播。"
+        ],
+        "formula": "\\mathrm{FiLM}(h,c)=\\gamma(c)\\odot h+\\beta(c)",
+        "example": {
+          "title": "两个通道如何被条件分别控制",
+          "steps": [
+            "取一个样本两行特征 \\(h=\\begin{bmatrix}1&2\\\\3&4\\end{bmatrix}\\)，条件生成 \\(\\gamma=[2,0]\\)、\\(\\beta=[-1,5]\\)。",
+            "第一行输出 \\([2\\times1-1,0\\times2+5]=[1,5]\\)，第二行输出 \\([2\\times3-1,0\\times4+5]=[5,5]\\)。",
+            "第二通道不再依赖原特征，因为 \\(\\gamma_2=0\\)；对 h 的局部梯度在该通道也为零，但 \\(\\beta_2\\) 仍可接收梯度。"
+          ],
+          "conclusion": "逐通道缩放同时改变前向信息与反向梯度，零梯度有时来自有意的乘法结构。",
+          "afterParagraph": 1
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "把 [B,D] 直接乘 [B,T,D]",
+          "explanation": "广播按维度位置而非变量名对齐。当 \\(B=T\\) 时，错误代码可能成功运行并产生跨样本条件污染。",
+          "check": "使用 \\(B=2\\)、\\(T=3\\)；显式写 `scale[:,None,:]`。只改变条件第 0 个样本，其他样本输出必须保持不变。"
+        },
+        "id": "3",
+        "lead": "FiLM 是由条件生成逐通道缩放与平移、再作用于中间特征的调制方法。缩放引入条件与特征的乘法关系，平移改变响应的偏移。它不直接在不同位置之间检索内容，表达机制与注意力不同。"
+      },
+      {
+        "title": "AdaLN 与条件仿射",
+        "body": [
+          "AdaLN 在 LayerNorm 之后施加条件生成的缩放和平移，常写为 \\((1+s(c))\\odot\\operatorname{LN}(x)+b(c)\\)。加一是参数化选择：\\(s=b=0\\) 时得到 LN(x)，便于把“无调制”作为初始化点。若使用直接 \\(\\gamma\\) 参数化，则无调制对应 \\(\\gamma=1\\)、\\(\\beta=0\\)；不能从一种公式复制零初始化到另一种公式。",
+          "常见实现关闭 LayerNorm 自带的 elementwise_affine，让动态调制负责仿射，避免额外共享 \\(\\gamma\\)、\\(\\beta\\) 混淆解释；保留共享仿射也可以，但那是另一种参数组合。LayerNorm 的统计轴仍是最后的通道 D，条件不应该让不同样本混在一起求均值方差。",
+          "FiLM 与 AdaLN 的关键区别不是名字，而是被调制的特征是否先归一化及如何参数化。LN 去掉部分均值/尺度信息，条件仿射再引入样本相关的变化。若任务需要原始幅度或绝对统计，可以由残差路径或独立条件保留，不能期待归一化后的表示无条件保存所有原信息。"
+        ],
+        "formula": "\\mathrm{AdaLN}(x,c)=(1+s(c))\\odot\\mathrm{LN}(x)+b(c)",
+        "id": "4",
+        "lead": "自适应 LayerNorm（AdaLN）在 LayerNorm 之后使用条件生成的缩放和平移。它先调整特征统计，再依据条件调制通道，因而不同于固定仿射参数的 LayerNorm。下面比较其初始化与广播关系。"
+      },
+      {
+        "title": "零门控残差与首步梯度",
+        "body": [
+          "在调制分支外再乘 gate，可以得到 \\(y=x+g(c)\\odot F\\!\\left(\\operatorname{AdaLN}(x,c)\\right)\\)。\\(g=0\\) 时整个残差块输出等于 x，尽管内部 F 的输出不为零。这与 \\(s=b=0\\) 只保证 AdaLN 等于 LN(x) 不同：无调制不等于整个块恒等，恒等需要残差分支的总体贡献为零。",
+          "由链式法则，分支内部参数梯度含 g 因子，因此首步 \\(g=0\\) 时通常为零；门控梯度则含 F 的当前输出，可以非零。如果生成所有调制参数的最后线性层权重为零，条件输入的梯度也可能为零，即使门控偏置正在学习。不能把这些预期零值误判为 detach。",
+          "也要避免把所有相关项都同时清零而造成死分支。例如 F 输出和门控都为零时，门控梯度与 F 内部梯度都可能为零，需要检查实际初始化。DiT 的 AdaLN-Zero 是具体的结构与初始化设计，不是“任何层全部设零都会更稳定”的通用规则。"
+        ],
+        "example": {
+          "title": "用标量残差手算零门控的两条梯度",
+          "steps": [
+            "取 \\(y=x+gwx\\)，\\(x=3\\)、\\(w=2\\)、\\(g=0\\)，并令上游 \\(\\frac{\\partial L}{\\partial y}=1\\)，则前向 \\(y=3\\)。",
+            "\\(\\frac{\\partial L}{\\partial w}=gx=0\\)；\\(\\frac{\\partial L}{\\partial g}=wx=6\\)。内部 w 首步不更新，门控却可以离开零点。",
+            "如果再令 \\(w=0\\)，则门控梯度也为零；若 \\(g=ac\\) 且 \\(a=0\\)，条件 c 的梯度同样为零，但 a 的梯度还可能非零。"
+          ],
+          "conclusion": "检查结构预期、门控参数和更新后梯度，比要求所有参数首步非零更准确。",
+          "afterParagraph": 1
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "无调制、恒等块与条件有梯度是三件事",
+          "explanation": "\\(s=b=0\\) 只还原 LN；\\(g=0\\) 才让残差贡献为零。零门控或零调制权重会让部分梯度暂时为零，不能统一视为断图。",
+          "check": "先核对初始输出等于谁，再打印 gate 参数梯度；完成一次有效更新后重新检查分支与条件输入的梯度。"
+        },
+        "id": "5",
+        "lead": "零门控残差在变换分支外乘一个初始为零的门控，使整个块初始返回输入。门控、调制参数和分支参数可能在首步获得不同梯度。先看完整连接，才能判断“初始不改变输出”究竟限制了谁的学习。"
+      },
+      {
+        "title": "时间编码与多条件组合",
+        "body": [
+          "生成时间可先经多频正弦/余弦映射，再由 MLP 生成调制向量，使网络能够在不同频率上表示随时间变化的规律。训练用 [0,1] 而推理输入 [0,1000]，即使维度一致也会让编码处于不同区域；方向、范围与端点定义需要和噪声或 Flow Matching 的路径约定一致。",
+          "多个条件可以先各自编码到同一宽度后求和，也可以拼接再投影。求和成本低，但两路的尺度和识别方式需要学习；拼接保留显式槽位，增加后续参数。任一种方式都需要考虑缺失条件的表示，不能把“无指令”临时替换为不曾训练过的随机向量。",
+          "条件丢弃是在训练的一部分样本上，将选定条件替换为预先约定的空条件表示，让同一网络同时学习有条件与空条件预测。多条件输入要明确丢弃整组还是部分来源；若保留观测、仅丢弃文本，空条件分支就仍以观测为条件。推理沿用训练过的空表示，才能调用这条分支。",
+          "无分类器引导（Classifier-Free Guidance，CFG）在采样时组合这两份预测，无需额外分类器，用于调节生成结果对条件的服从程度。对同一状态 \\(x_t\\) 和时间 \\(t\\)，记空条件预测为 \\(f_\\varnothing\\)、条件预测为 \\(f_c\\)。下式中的两者须采用相同输出参数化，例如都预测噪声、都预测 Score 或都预测速度。",
+          "这里 \\(s=0\\) 使用空条件预测，\\(s=1\\) 使用普通条件预测，\\(s>1\\) 沿两者之差外推。该记号对应[原论文](https://arxiv.org/abs/2207.12598)的 \\(s=1+w\\)。CFG 需要已学到空条件分支，通常每个采样步计算两份预测，可合并为一个 Batch；按条件服从度、生成多样性和延迟选择强度。"
+        ],
+        "id": "6",
+        "lead": "时间编码将生成阶段转换为网络可使用的特征，多条件组合则规定时间、观测与其他信息在哪些位置共同影响计算。它们需要各自明确取值与语义，再决定拼接、读取还是调制。",
+        "formula": "f_{\\mathrm{guided}}(x_t,t)=f_\\varnothing(x_t,t)+s\\bigl[f_c(x_t,t)-f_\\varnothing(x_t,t)\\bigr]"
+      },
+      {
+        "title": "条件干预与语义评估",
+        "body": [
+          "第一层验证结构：断言调制参数形状、归一化轴、广播方向和残差初始行为，检查有效条件确实有路径到输出。第二层验证数值：在 eval 下固定输入和随机噪声，只改变一条样本的一个条件，检查对应输出变化以及其他样本不变，并按初始化预期检查梯度。",
+          "第三层验证语义：同一场景配两条要求不同结果的指令，评价输出是否朝正确目标改变，而不只是某个数不同。打乱语言与样本配对、移除条件或替换为无关条件，可以帮助判断模型是否依赖它；这些消融的性能差异还需结合数据相关性解释，不能把任意下降都归为良好语言理解。",
+          "示例在零门控初始化后手动赋予非零参数，用于观察计算路径与样本隔离；语言理解仍需任务指标检验。真实训练中应观察门控分布、条件梯度、行为指标及不同条件组合的泛化。结构教学和能力结论分开，才能避免从一个通过 assert 的小例子推导过大的结论。",
+          "这些局部算子怎样在完整动作模型中组合，见 [VLA 模型架构](#/learn/vla-architecture?tab=theory)：图像、语言与状态如何进入 token，Action Expert 如何读取条件，以及冻结与缓存如何改变梯度。该课分别标明具体 OpenPI 版本和教学实现，避免将单一融合方式视作所有 VLA 的共同结构。",
+          "条件注入的关键是能够指出“条件在何处改变了哪项计算”。拼接、检索与调制分别提供不同交互；只有同时核对前向依赖和反向路径，才能把结构接入、条件敏感性与语义利用区分开。"
+        ],
+        "id": "7",
+        "lead": "输出随着条件变化，只说明存在依赖，尚不能说明模型理解了条件的语义。验证需要从形状和梯度推进到受控干预，最终检查输出是否朝任务要求的方向改变。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "动作特征",
+        "shape": "[B,T,D]",
+        "meaning": "每样本多个动作位置。"
+      },
+      {
+        "name": "条件",
+        "shape": "[B,C]",
+        "meaning": "可来自语言、状态、生成时间等编码。"
+      },
+      {
+        "name": "scale / shift / gate",
+        "shape": "[B,D] → [B,1,D]",
+        "meaning": "按通道调制，在同一样本内沿 T 广播。"
+      },
+      {
+        "name": "调制输出",
+        "shape": "[B,T,D]",
+        "meaning": "可进入 FFN、注意力或残差分支。"
+      }
+    ],
+    "code": {
+      "title": "零门控 AdaLN：观察身份映射和条件路径",
+      "source": "# [1] 条件参数在每个样本内广播，B 与 T 特意不同\nimport torch\nfrom torch import nn\ntorch.manual_seed(40)\n\nclass ConditionalBlock(nn.Module):\n    def __init__(self, dim=4, condition_dim=2):\n        super().__init__()\n        self.norm = nn.LayerNorm(dim,elementwise_affine=False)\n        self.modulate = nn.Sequential(nn.SiLU(),nn.Linear(condition_dim,3*dim))\n        self.ffn = nn.Sequential(nn.Linear(dim,8),nn.SiLU(),nn.Linear(8,dim))\n        nn.init.zeros_(self.modulate[-1].weight)\n        nn.init.zeros_(self.modulate[-1].bias)\n\n    def forward(self,x,condition):\n        scale,shift,gate = self.modulate(condition).chunk(3,dim=-1)\n        normalized = self.norm(x)\n        h = normalized*(1+scale[:,None,:])+shift[:,None,:]\n        return x + gate[:,None,:]*self.ffn(h)\n\n# [2] 零门控保持恒等；先检查门控层而不是要求所有梯度非零\nmodel = ConditionalBlock()\nx = torch.randn(2,3,4)\ncondition = torch.randn(2,2,requires_grad=True)\ninitial = model(x,condition)\ntorch.testing.assert_close(initial,x)\ninitial.square().mean().backward()\nassert model.modulate[-1].bias.grad[-4:].norm() > 0\ntorch.testing.assert_close(condition.grad,torch.zeros_like(condition))\nprint(\"初始恒等与门控梯度正确\")\n\n# [3] 打开条件分支后，只改变第一个样本的条件\nwith torch.no_grad():\n    nn.init.normal_(model.modulate[-1].weight,std=0.1)\n    model.modulate[-1].bias[-4:].fill_(0.2)\nchanged = condition.detach().clone()\nchanged[0,0] += 1.0\nbefore,after = model(x,condition),model(x,changed)\ntorch.testing.assert_close(before[1],after[1])\nassert not torch.allclose(before[0],after[0])\nmodel.zero_grad(set_to_none=True)\ncondition.grad = None\nmodel(x,condition).square().mean().backward()\nassert condition.grad is not None and condition.grad.norm() > 0\nprint(\"条件只影响相应样本，打开分支后梯度能够回到条件\")\n",
+      "expected": "初始化输出与 x 一致，门控偏置有梯度；打开分支后仅被修改条件的样本输出改变，条件梯度非零。",
+      "explanations": [
+        {
+          "lines": "1–20",
+          "text": "每个条件生成 3D 个数，分别用作 scale、shift、gate。零初始化用于验证残差起始行为。"
+        },
+        {
+          "lines": "21–31",
+          "text": "`gate=0` 时输出等于 x；门控偏置可以有梯度，但零权重会使条件输入首步梯度为零。"
+        },
+        {
+          "lines": "32–45",
+          "text": "这里手动设置非零参数用于结构演示；不是声称完成训练。逐样本干预能发现广播造成的跨样本污染。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "手写逐样本 FiLM",
+      "prompt": "实现 film_batch(features,gamma,beta)。features 为 [B,T,D] 的嵌套列表，gamma/beta 为 [B,D]；返回逐元素 `gamma[b][d] * features[b][t][d] + beta[b][d]`，不修改输入。",
+      "runtime": "python",
+      "starter": "def film_batch(features, gamma, beta):\n    # TODO: 条件只在同一样本的时间位置之间共享\n    raise NotImplementedError(\"请实现 FiLM\")\n",
+      "solution": "def film_batch(features, gamma, beta):\n    if len(features) != len(gamma) or len(features) != len(beta):\n        raise ValueError(\"Batch 大小不一致\")\n    result = []\n    for batch,row_list in enumerate(features):\n        if len(gamma[batch]) != len(beta[batch]):\n            raise ValueError(\"条件通道不一致\")\n        rows = []\n        for row in row_list:\n            if len(row) != len(gamma[batch]):\n                raise ValueError(\"特征通道不一致\")\n            rows.append([gamma[batch][d]*value+beta[batch][d]\n                         for d,value in enumerate(row)])\n        result.append(rows)\n    return result\n",
+      "tests": "x = [[[1,2],[3,4]],[[5,6],[7,8]]]\ngamma,beta = [[2,1],[1,0]],[[0,-1],[3,4]]\ny = film_batch(x,gamma,beta)\nassert y == [[[2,1],[6,3]],[[8,4],[10,4]]]\nchanged = film_batch(x,[[4,1],[1,0]],beta)\nassert changed[1] == y[1] and changed[0] != y[0]\nassert x == [[[1,2],[3,4]],[[5,6],[7,8]]]\nassert film_batch([[]],[[1,1]],[[0,0]]) == [[]]\nprint(\"通过：逐通道调制、样本隔离和不修改输入\")\n",
+      "hints": [
+        "索引顺序是 batch、time、channel；gamma/beta 没有 time 轴。",
+        "同一 batch 的每行使用同一组条件，但不同 batch 不能混用。"
+      ],
+      "explanation": "第二个样本的第二通道 gamma 为零，所以输出始终等于 beta=4。改变第一个样本的条件不应影响第二个样本。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 adaptive_layer_norm(x,condition,modulator)。x=[B,T,D]，modulator(condition)=[B,2D]，前 D 是 scale，后 D 是 shift。使用无固定仿射的 LayerNorm，再做 `(1 + scale) * LN(x) + shift`。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef adaptive_layer_norm(x, condition, modulator, eps=1e-5):\n    # TODO: 生成逐样本条件，正确广播并调制\n    raise NotImplementedError(\"请实现 AdaLN\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef adaptive_layer_norm(x, condition, modulator, eps=1e-5):\n    scale,shift = modulator(condition).chunk(2,dim=-1)\n    normalized = F.layer_norm(x,(x.shape[-1],),eps=eps)\n    return normalized*(1+scale[:,None,:])+shift[:,None,:]\n",
+      "tests": "torch.manual_seed(40)\nx = torch.randn(2,3,4,requires_grad=True)\ncondition = torch.randn(2,2,requires_grad=True)\nmodulator = torch.nn.Linear(2,8)\ntorch.nn.init.zeros_(modulator.weight)\ntorch.nn.init.zeros_(modulator.bias)\ntorch.testing.assert_close(adaptive_layer_norm(x,condition,modulator),\n                           F.layer_norm(x,(4,),eps=1e-5))\ntorch.nn.init.normal_(modulator.weight,std=0.1)\nbefore = adaptive_layer_norm(x,condition,modulator)\nchanged = condition.detach().clone()\nchanged[0] += 1\nafter = adaptive_layer_norm(x,changed,modulator)\ntorch.testing.assert_close(before[1],after[1])\nassert not torch.allclose(before[0],after[0])\nbefore.square().mean().backward()\nassert condition.grad is not None and torch.isfinite(condition.grad).all()\nassert modulator.weight.grad is not None\nprint(\"通过：零调制、广播隔离与条件梯度\")\n",
+      "hints": [
+        "`scale=0` 时要保留 LN(x)，所以公式使用 `1+scale`。",
+        "对 [B,D] 使用 [:,None,:]，新增的是时间轴；直接乘到 [B,T,D] 会错误或失败。"
+      ],
+      "explanation": "零调制测试识别遗漏加一的问题；\\(B=2\\)、\\(T=3\\) 的测试避免轴大小恰好相等掩盖广播错误。逐样本干预与梯度检查分别验证前向依赖和反向连接。"
+    },
+    "knowledgeChecks": [
+      {
+        "question": "LayerNorm 自带的 gamma/beta 与 FiLM 或 AdaLN 由条件生成的参数有什么区别？为什么 [B,D] 要变成 [B,1,D]？",
+        "answer": [
+          "标准 LayerNorm 的可学习仿射参数通常跨样本和位置共享；FiLM/AdaLN 的调制参数由当前样本的条件产生，因此不同指令、状态或生成时间可以得到不同的缩放与平移。二者在计算中承担不同角色。",
+          "输入是 [B,T,D] 时，在中间增加长度一的轴，让条件只沿该样本的 T 个位置广播。不能用维度碰巧相等来判断正确性，应该选择 B 与 T 不同的例子，并只改变一个样本的条件检查隔离。"
+        ],
+        "codeFocus": "检查 modulator 输出的分块顺序，以及 `scale[:,None,:]` 和 `shift[:,None,:]` 的轴。",
+        "acceptance": [
+          "区分共享的固定参数与样本条件产生的动态参数。",
+          "解释时间轴广播并给出样本隔离检查。"
+        ]
+      },
+      {
+        "question": "残差门控初始化为零时，条件输入或分支内部梯度为零，一定表示代码断图吗？输出随指令改变是否已经证明语言跟随正确？",
+        "answer": [
+          "不一定。`y = x + gate * F(...)` 的乘法结构使 `gate=0` 时部分分支梯度为零，但门控生成层仍可能获得梯度。应检查门控参数的梯度、完成更新后再观察分支，而不是要求首步所有参数都有非零梯度。",
+          "输出随指令变化只证明计算路径对条件敏感。它也可能是无意义的数值变化；需要固定场景和其他条件，使用明确的指令—目标对照评估，检查动作是否按语义改变以及错误率如何变化。"
+        ],
+        "codeFocus": "同时观察 gate 相关参数梯度、更新后的条件梯度，以及任务层面的指令干预结果。",
+        "acceptance": [
+          "能用乘法路径解释首步零梯度。",
+          "明确区分条件敏感性与正确语言跟随。"
+        ]
+      },
+      {
+        "question": "单层“拼接后 Linear”和 FiLM 都输出相同形状，为什么它们对输入—条件交互的表达不同？",
+        "answer": [
+          "拼接后 Linear 为 \\(W_x x+W_c c+b\\)，对 x 的 Jacobian 恒为 \\(W_x\\)，与 c 无关；混合二阶导数为零。条件只能改变偏置项。",
+          "FiLM 为 \\(\\gamma(c)\\odot x+\\beta(c)\\)，对 x 的 Jacobian 是 \\(\\operatorname{diag}(\\gamma(c))\\)，会随条件变化。若 \\(\\gamma(c)=Ac+b\\)，混合二阶导数直接给出 A 的元素。",
+          "FiLM 本身仍仅逐通道缩放，并非任意动态矩阵。带非线性的拼接网络也能学习交互，不能把单层反例推广成拼接永远不如 FiLM。"
+        ],
+        "codeFocus": "固定条件后比较输出对 x 的 Jacobian，再改变条件观察这个 Jacobian 是否变化。",
+        "acceptance": [
+          "给出两种结构的 Jacobian。",
+          "明确结论只针对所讨论的层及其非线性假设。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "有条件输入就认为模型使用了条件",
+        "detail": "Mask、池化、detach 或数据捷径都可能让条件失效。分别检查计算路径、条件干预和任务级语义指标。"
+      },
+      {
+        "title": "直接 γ 与 1+scale 的初始化混用",
+        "detail": "直接 \\(\\gamma=0\\) 会抹掉特征，`1+scale` 在 `scale=0` 时才保留特征。根据公式设置初始化并明确无调制参考。"
+      },
+      {
+        "title": "只用 B=T 的张量测广播",
+        "detail": "相同维度可能让错误轴静默对齐。用不同 Batch 和时间长度，并确认改单个样本条件不会影响其他样本。"
+      },
+      {
+        "title": "将首步零梯度一概归为断图",
+        "detail": "乘法门控与零初始化能够产生预期零梯度。先检查门控梯度及一次更新后的路径，再决定是否存在 detach。"
+      },
+      {
+        "title": "用随机输出变化证明语言理解",
+        "detail": "变化只能说明数值敏感，不能说明方向正确。固定场景和噪声，设计目标明确的指令对照并评价任务结果。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "FiLM：Visual Reasoning with a General Conditioning Layer",
+        "url": "https://arxiv.org/abs/1709.07871"
+      },
+      {
+        "title": "Scalable Diffusion Models with Transformers",
+        "url": "https://arxiv.org/abs/2212.09748"
+      },
+      {
+        "title": "OpenPI：条件注入与动作专家",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/main/src/openpi/models_pytorch/pi0_pytorch.py"
+      },
+      {
+        "title": "PyTorch：LayerNorm 统计与仿射参数",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.LayerNorm.html"
+      },
+      {
+        "title": "Ho & Salimans：Classifier-Free Diffusion Guidance（2022，§3.2）",
+        "url": "https://arxiv.org/abs/2207.12598"
+      }
+    ],
+    "keyPoints": [
+      "特征拼接、token 拼接、Cross-Attention 与逐通道调制具有不同的信息路径。",
+      "[B,D] 条件作用于 [B,T,D] 时显式变为 [B,1,D]，用 \\(B\\ne T\\) 检查样本隔离。",
+      "AdaLN 的零 scale/shift 还原 LN；残差零 gate 才让整个分支起初不改变输入。",
+      "零门控允许门控学习而内部首步梯度为零；数值依赖不等于正确语言跟随。"
+    ],
+    "lead": "DiT（Diffusion Transformer）用 Transformer Block 参数化去噪网络；扩散目标与采样器仍由外部生成过程定义。本节聚焦 DiT 如何把生成时间和任务条件注入 Block，通用的 Prefix、Cross-Attention 与条件调制原理见 [Transformer 课程](#/learn/transformer?tab=theory&section=reading-vla-code)。",
+    "advancedSections": [
+      {
+        "title": "条件依赖与信息路径",
+        "body": [
+          "条件模型写成 \\(f_\\theta(x,c)\\)：x 是当前处理的状态或 token，c 是语言、视觉、状态或生成时间等条件。输入字典里出现 c，不代表输出实际使用了它：未读取的分支、遮住条件的 Mask 或学得的权重都可能使前向忽略条件。detach 则是另一件事，它保留本次前向数值及其随条件变化的关系，切断的是通向条件上游的梯度。先分别画出前向依赖与反向路径，再判断融合是否有效。",
+          "不同条件具有不同结构。一个生成时间标量可以编码成向量，一条语言指令含有词序，多张图像包含空间位置。把所有条件都平均成一个向量会降低接口成本，也会丢失局部检索能力；保留全部 token 增加灵活性，同时增加注意力开销。接口选择应对应任务所需信息，而不只是为了拼接时 shape 匹配。",
+          "还要区分条件的时间含义：序列位置描述“第几个 token”，动作时间描述“预测哪个执行时刻”，生成时间描述“当前噪声或流状态”。三者可能同时进入一个模型。把它们统一称为 t 而不注明尺度和来源，容易造成训练和采样使用不同条件的错误。"
+        ],
+        "id": "0",
+        "lead": "条件模型在当前待处理对象之外，还以已知信息 c 决定输出。条件路径是这些信息进入运算并影响预测的依赖关系。输入接口有某个字段，只证明数据被传入，尚未证明计算或训练实际使用了它。",
+        "figures": [
+          {
+            "src": "/assets/figures/film-overview-distill.svg",
+            "alt": "FiLM 的双分支网络：左侧条件生成器产生调制参数，送入右侧主网络的两个 FiLM 层，改变主输入的处理。",
+            "caption": "以 FiLM 为例：左侧条件分支生成缩放与偏移参数，调制右侧处理主输入的网络。先看清两条信息路径，再展开各层运算。图源：[Dumoulin 等，Distill](https://distill.pub/2018/feature-wise-transformations/)。",
+            "afterParagraph": 0,
+            "width": 704,
+            "height": 460
+          }
+        ],
+        "comparison": {
+          "title": "条件的结构与读取方式决定融合起点",
+          "columns": [
+            "方式",
+            "适合从什么需求出发",
+            "主要计算特点"
+          ],
+          "rows": [
+            [
+              "特征拼接",
+              "维数较小的状态、目标或任务向量，先建立简单基线",
+              "沿特征轴并排输入，由后续网络组合。"
+            ],
+            [
+              "Token 拼接",
+              "图像、语言和动作需要在同一序列中交互",
+              "统一特征宽度，用位置、来源与 Mask 规定交互。"
+            ],
+            [
+              "Cross-Attention",
+              "不同查询需要从多个词或 Patch 中分别读取条件",
+              "查询数控制输出长度，保留对条件位置的选择。"
+            ],
+            [
+              "FiLM",
+              "全局条件需要逐通道调节已有特征",
+              "用条件产生缩放和平移，控制响应与阈值。"
+            ],
+            [
+              "AdaLN",
+              "Transformer 或生成网络中，需要在归一化后注入时间、类别等条件",
+              "将 LayerNorm 与条件仿射组合，按所选参数化初始化。"
+            ]
+          ]
+        }
+      },
+      {
+        "title": "特征拼接与 token 拼接",
+        "body": [
+          "特征拼接将 \\(x\\in\\mathbb R^D\\) 与 \\(c\\in\\mathbb R^C\\) 合成 \\([x;c]\\)，单个线性层给出 \\(W_x x+W_c c+b\\)。对每个 token 复制同一个 c 时，条件相当于样本相关偏置；输入与条件的混合二阶导数为零，条件不能改变该层对 x 的线性斜率。随后加入非线性或更深结构可以产生交互，因此这个限制属于“拼接后只有一个线性层”，不是对所有拼接网络的限制。",
+          "Token 拼接沿序列轴加入条件，通常需要先将宽度投影到共同 D，并补上位置或来源信息。要让动作 token 读取条件，Mask 必须开放相应方向；若条件放在因果序列的未来，较早的动作位置无法看到它们。即使开放了一层，也要检查其他层或池化操作是否保留了这条路径。",
+          "条件 token 与动作 token 一起进行自注意力，可能让条件表示也反向读取动作。这个设计可以有用，但会影响固定前缀缓存是否成立。选择融合方式时，应同时考虑表示能力、可见性、计算量和后续推理复用，而不只比较 API 调用是否简短。"
+        ],
+        "id": "1",
+        "lead": "特征拼接沿通道轴并排提供不同信息，Token 拼接沿位置轴增加可被读取的序列项。二者分别改变一个位置的内容与整组候选位置。下面先看连接后由什么算子完成交互。"
+      },
+      {
+        "title": "Cross-Attention 与单个条件 token",
+        "body": [
+          "Cross-Attention 用需要更新的 token 生成 Q，用条件序列生成 K/V。每个查询获得不同权重，因此多个动作位置可以关注不同词或图像 patch；输出长度由查询数决定，不由条件长度决定。若条件仅压缩成一个 token，则每个头对唯一有效键的 softmax 权重为一，无法再在多个条件位置之间选择。",
+          "只有一个有效 Key 且无注意力 Dropout 时，\\(\\operatorname{softmax}([s])=[1]\\)，读出就是 V，完全不依赖 Q 或 K。这条注意力分支对 Q/K 的梯度为零；Value、输出投影仍可学习，若外面有残差，整个块仍可依赖查询输入。把整幅图先压成一个 token 后，不能再期待 Cross-Attention 根据不同查询从图内不同位置进行选择。",
+          "条件键的 padding 或缺失视角要被正确遮罩。给每个查询增加相同条件向量，与让每个查询根据内容读取一组条件 token，表达方式不同；后者仍可能忽略条件，因此结构选择不能代替任务验证。可检查交叉注意力输出、条件扰动和最终损失的变化，但不要把漂亮的权重热图直接解释成因果证据。",
+          "条件宽度与动作宽度可以不同，通过各自投影进入同一每头维度即可。多头 attention 的头数、条件序列长度、query 长度也不是同一个概念。阅读代码时先给 Q/K/V 标注 [B,H,Tq,d]、[B,H,Tc,d]，再检查 Mask 在哪条轴上表示有效条件。"
+        ],
+        "focus": {
+          "kind": "常用",
+          "title": "先画可见性，再决定是否能缓存条件",
+          "explanation": "条件 token 是否读取动作会影响它在迭代中是否变化；只要输出 shape 相同，双向与单向信息流都能运行，却有不同语义。",
+          "check": "固定 c、改变 x，比较各层拟缓存条件 K/V；同时验证动作查询确实能读取有效条件，不能读取 padding。"
+        },
+        "id": "2",
+        "lead": "Cross-Attention 让待更新位置发出 Query，读取条件序列提供的 Key/Value。多个条件位置允许按内容选择；若只剩一个有效条件位置，Softmax 权重恒为一。这个边界决定条件压缩后还剩什么交互。"
+      }
+    ]
+  },
+  {
+    "id": "action-chunking",
+    "number": 23,
+    "module": "policies",
+    "title": "时序建模：Action Chunking 与 Temporal Ensembling",
+    "subtitle": "围绕时序建模：Action Chunking 与 Temporal Ensembling，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 70,
+    "tags": [
+      "Action Chunk",
+      "时间对齐",
+      "窗口",
+      "Mask",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "behavior-cloning"
+    ],
+    "objectives": [
+      "正确构造历史观测和未来动作窗口并处理边界",
+      "区分预测长度、执行长度与控制频率",
+      "识别未来信息泄漏、跨轨迹拼接与延迟引起的错位"
+    ],
+    "why": "动作块把多个未来命令放进一次预测。采集、训练窗口、时间对齐和在线执行必须使用一致的时间约定；Temporal Ensembling 与 RTC 还需要处理新旧预测在同一物理时刻上的交接。",
+    "sections": [
+      {
+        "title": "给一个训练样本固定时间原点",
+        "body": [
+          "选择决策时刻 t 后，先定义观测历史 \\(X_t=(o_{t-O+1},\\ldots,o_t)\\) 与动作标签 \\(A_t=(a_t,\\ldots,a_{t+H-1})\\)。这里约定 \\(o_t\\) 在 \\(a_t\\) 发出前可获得。若数据集把发出动作后的图像记作 \\(o_t\\)，就需要重写这一对应关系。索引只是记录位置，不能代替真实采集与执行时间。 本章统一用 \\(O\\) 表示历史观测长度、\\(H\\) 表示预测动作长度、\\(K\\) 表示一次实际执行的前缀长度，三者不应由同一个符号兼任。",
+          "动作标签还可能是未来状态或控制参考，偏移一格的正确答案取决于它的定义。训练张量 x.shape=[B,O,…]、target.shape=[B,H,D] 即使完全符合配置，也可能让模型预测过去的动作或使用未来图像。因此必须从数据记录规范一路追到 __getitem__，再画出一组具体时间戳。",
+          "一个容易检查的方法是把观测内容暂时替换为时间索引，把动作替换为十倍索引。任意抽取起点后直接打印窗口，就能发现把观测结束在 t+1、把动作从 t−1 开始或跨回合拼接的问题。完成这个确定性检查后，再把图像张量和真实动作放回同一套索引逻辑。"
+        ],
+        "formula": "X_t=(o_{t-O+1},\\ldots,o_t),\\qquad A_t=(a_t,\\ldots,a_{t+H-1})",
+        "focus": {
+          "kind": "常用",
+          "title": "用索引哨兵验证时间对齐",
+          "explanation": "复杂视觉张量可能使一个时间步的偏移难以识别，已知规律的数字标签可以直接暴露索引错误。",
+          "check": "设置 \\(o_i=i\\)、\\(a_i=10i\\)，分别测试首帧、中间帧、末帧及回合连接处的窗口。"
+        },
+        "id": "0",
+        "lead": "动作窗口是相对于一次决策组织的未来命令片段，观测窗口则是该决策可读取的当前与历史信息。时间原点把这两部分放到同一索引约定中。先固定这一关系，才能判断标签是在预测未来还是误用了未来观测。"
+      },
+      {
+        "title": "边界填充是输入协议与监督协议",
+        "body": [
+          "回合开头没有足够历史，回合结尾没有足够未来动作。历史可用首帧复制、零值配合有效位等明确策略填充；未来动作则应保存有效性 Mask，防止补出的数值被当成真实监督。历史填充影响模型输入分布，未来填充影响损失定义，二者不能共用一个模糊的“补零”解释。",
+          "轨迹常被存成一个长数组，读取窗口时不能只检查全局数组边界。两个回合在内存中相邻，并不表示物理上连续。必须以 episode ID 和回合内长度限制历史与未来，尤其是在成功后自动 reset 的环境中；否则一个动作块可能混合了上个任务末尾与新任务起点。",
+          "若模型内部使用注意力或循环结构，Padding 还需要参与可见性或状态更新的规则。Loss Mask 不会自动屏蔽输入。应分别扰动无效输入与无效标签，检查有效输出和损失是否按设计保持不变。对固定首帧重复填充，训练与推理必须采用相同规则，不能在线突然改成全零历史。"
+        ],
+        "example": {
+          "title": "一条轨迹末尾的未来动作窗口",
+          "steps": [
+            "轨迹长度为 8，索引 0…7，起点 t=6，预测长度 H=4。",
+            "动作标签应为 [\\(a_6\\),\\(a_7\\),填充值,填充值]，有效位为 [True,True,False,False]。",
+            "若动作记录为 10i，打印值就是 [60,70,0,0]；不能读取下一回合的 \\(a_0\\)、\\(a_1\\)。"
+          ],
+          "conclusion": "标签数值与有效性分开存储；窗口应由回合边界而非整份文件长度限制。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "文件连续就当作轨迹连续",
+          "explanation": "跨回合混入的下一帧通常尺寸完全合法，模型甚至可以拟合这种错误标签。",
+          "check": "检查窗口内所有记录的 episode ID，首尾窗口必须有专门断言。"
+        },
+        "id": "1",
+        "lead": "边界填充是在历史或未来长度不足时，为统一形状补入数值的过程。历史填充改变输入，未来填充需要标记哪些动作不受监督。两种协议处理的未知信息不同，不能用同一个补零规则代替定义。"
+      },
+      {
+        "title": "不同传感器频率下的因果对齐",
+        "body": [
+          "插值本身也可能使用未来。离线线性插值常用左右两个邻近样本，但右侧样本在在线决策时尚未到达。若训练的观测由这种未来数据参与构造，模型就获得部署时不存在的平滑信息。可采用仅使用已到达记录的保持或因果估计，或在协议中明确增加等待延迟；不能只在表格里把时间戳改成过去。",
+          "重采样动作时还要尊重动作含义。绝对位置目标可按约定插值，单位时间速度需要对齐保持区间，离散夹爪切换不一定适合数值平均。把高频动作简单每隔若干帧抽取，可能漏掉短促事件；把相邻增量直接抽样而不聚合，则会改变累计位移。先确定物理语义，再选择重采样方法。"
+        ],
+        "id": "2",
+        "lead": "因果对齐是只使用决策截止时已经到达的信息，为不同频率的传感与动作建立时间对应。采集时间相近并不等于在线可同时获得。下面区分源时间、到达时间与插值所使用的信息。",
+        "example": {
+          "title": "同一个 100 ms，离线插值与在线可用值为何不同",
+          "afterParagraph": 1,
+          "steps": [
+            "决策截止为 100 ms。三条标量观测的“源时间、到达时间、数值”分别为 (80 ms, 90 ms, 0.80)、(95 ms, 105 ms, 0.95)、(120 ms, 130 ms, 1.20)。",
+            "在 100 ms 真正已到达的只有第一条，因果保持得到 0.80。第二条虽然采集于截止之前，却要到 105 ms 才能使用。",
+            "离线用源时间 95 与 120 ms 的两点插值，会得到 0.95+(100−95)/(120−95)×(1.20−0.95)=1.00。这用了截止时不可获得的记录；若要等它们到齐，决策协议也必须相应延后。"
+          ],
+          "conclusion": "在线可用性同时受采集时间与到达时间约束；只按源时间重排，无法恢复决策当时的信息。"
+        }
+      },
+      {
+        "title": "预测长度与执行长度控制不同问题",
+        "body": [
+          "预测 H 步让模型在一次前向中表达动作之间的相关性，并可共享观测编码；每次实际执行 K 步后重新观察，则决定策略多久更新一次反馈。通常 K≤H，但具体系统还可能异步生成并重叠融合。增大 H 主要改变规划范围和输出目标，增大 K 则使更长一段动作沿用较旧条件。",
+          "例如策略动作频率 20 Hz，\\(H=16\\) 表示名义覆盖 0.8 秒，\\(K=4\\) 表示每 0.2 秒尝试更新计划。若每次生成需 0.3 秒，同步实现无法在这个周期持续获得新结果；异步实现也必须检查队列剩余时间是否足够。训练时的预测时域和部署时的可用未来时域不是同一个数。",
+          "动作块可能提升序列一致性，却不能保证对突发接触、目标移动或观测变化即时响应。选择 H、K 时要同时测量成功率、延迟、轨迹平滑程度与恢复能力。不能只根据模型每次调用较少就认定系统更快；单次调用的耗时、图像处理和动作消费节奏都参与闭环。"
+        ],
+        "example": {
+          "title": "名义动作块与有效未来的差别",
+          "steps": [
+            "以 20 Hz 预测 16 步，名义时长为 16×0.05=0.8 秒。",
+            "若动作块从观测时刻开始标记，返回结果时已过去 0.25 秒，前 5 个槽位已经过去。",
+            "剩余 11 步只覆盖约 0.55 秒；下一轮请求还需考虑传输、排队与延迟抖动。"
+          ],
+          "conclusion": "使用实际起始时间和槽位计算剩余计划，不能把 H/fps 当成每次返回后的可用时长。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "把推理步数当作动作执行步数",
+          "explanation": "Diffusion/Flow 的采样迭代在生成空间更新整个动作块，机器人控制步沿物理时间消费动作。",
+          "check": "分别命名 horizon、execution_steps、solver_steps、control_dt，并在日志中记录它们。"
+        },
+        "id": "3",
+        "lead": "预测长度 H 是一次输出包含的未来命令数，执行长度 K 是读取新观测前实际消费的命令数。前者定义预测目标，后者定义反馈频率。先分清二者，再结合控制周期与生成耗时判断可用时域。"
+      },
+      {
+        "title": "相对动作的参考不能在窗口内悄悄改变",
+        "body": [
+          "若标签是相对观察时刻姿态的动作块，窗口内每个未来动作都以同一姿态为锚点。若标签是相邻时刻之间的位移，恢复时则要逐步累计。两者都可以训练，但网络输出与执行器必须采用同一种定义；把一个数组叫 delta_actions 并不能说明它属于哪一种。",
+          "丢弃过期前缀时，这个区别尤其重要。固定锚点的后续目标仍能用原锚点解码；逐步增量如果从中间开始执行，需要重新考虑已经执行的部分和当前参考。不能直接把剩余的第一个增量当成针对最新实测状态重新生成的闭环修正，因为模型生成它时的条件没有改变。",
+          "训练时也不要把未来实测姿态作为每个动作位置的附加输入，除非部署确实拥有对应预测或反馈机制。那会把一段开环预测变成带未来答案的条件任务。可以用明确的递推模型设计不同机制，但应重新定义训练和推理过程，而不是只修改标签构造函数。"
+        ],
+        "id": "4",
+        "lead": "相对动作的参考规则规定每个未来目标相对哪个姿态编码。固定锚点与逐步增量即使都被叫作 delta，恢复过程也不同。窗口推进或丢弃前缀时，不能无说明地更换这套参考。"
+      },
+      {
+        "title": "重叠预测怎样对应同一个物理时刻：Temporal Ensembling 与 RTC",
+        "body": [
+          "连续两次调用会对同一个未来执行时刻给出不同预测。若要做 temporal ensembling，必须先按绝对执行时间对齐：上一块的第 j 步，可能对应新块的第 j−K 步，而不是相同数组索引。每个候选还要带原始观测时间，便于识别动作虽然尚未过期、条件却已经过旧的情况。",
+          "对同一语义的连续位置目标做加权平均可以减轻接缝跳动，但不保证混合结果仍是一个有效策略。两个不同绕行模式的平均可能碰到障碍，离散夹爪状态也可能没有“半开半关”的任务含义。相对增量在不同锚点上不能直接混合；旋转平均还涉及几何表示，需要专门处理。",
+          "融合权重决定旧计划与新观测之间的折中。旧计划权重较大可能更平滑，也可能延迟纠错。应将是否融合、对哪些动作维融合、采用的时间对齐和权重随版本一起记录，并与不融合基线比较。只看轨迹曲线好看，无法说明抓取或接触任务真的更可靠。",
+          "Temporal Ensembling 与 Receding/Real-Time Chunking 都处理相邻预测块的重叠，但不是同一种机制。Temporal Ensembling 把不同观测时刻预测到的同一绝对执行时刻的动作对齐后加权融合；RTC 更关注新推理尚未完成时如何继续消费旧计划，并在新旧 Chunk 的重叠区平滑交接，通常可理解为旧计划前缀、过渡融合区和新预测后缀。它们都必须按绝对执行时间对齐，不能按数组下标直接平均。具体保留多少旧动作、融合多长区间由推理延迟和执行协议决定，不是固定常数。"
+        ],
+        "id": "5",
+        "lead": "时间集成是把多次预测中对应同一执行时刻的候选动作合并。它要求先按真实时间和共同动作语义对齐，而不是平均相同数组下标。下面再讨论权重、来源年龄与重规划。",
+        "example": {
+          "title": "两块位置目标应平均哪两个数",
+          "afterParagraph": 1,
+          "steps": [
+            "每 50 ms 一个绝对位置目标。旧块从 0 ms 开始，为 [0, 0.010, 0.020, 0.030] 米；新块从 100 ms 开始，为 [0.024, 0.028, 0.032, 0.036] 米。两块使用同一坐标系与参考。",
+            "150 ms 对应旧块下标 3 的 0.030 米，也对应新块下标 1 的 0.028 米。示例权重取旧块 0.25、新块 0.75，融合目标为 0.25×0.030+0.75×0.028=0.0285 米。",
+            "若直接平均两块下标 3，就把旧块的 150 ms 与新块的 250 ms 混在一起。即使数组形状相同，结果也没有对应同一个执行时刻。"
+          ],
+          "conclusion": "先对齐物理执行时刻与动作参考，再对候选加权；权重本身不能修复时间错位。"
+        }
+      },
+      {
+        "title": "用小窗口建立端到端验收",
+        "body": [
+          "单轨迹窗口先核对 [B,O,…]、[B,H,D]、有效步数与边界值。多轨迹数据还要把 episode ID、时间戳、相机有效位与动作语义一起传递；构窗函数之前的数据排序和时间协议决定索引是否有物理含义。",
+          "至少保留四类测试：起点与终点的精确索引、跨回合不串接、修改未来观测不影响当前输入、以及训练和部署在同一记录上的一致性。对异步推理再增加返回延迟、乱序结果、指令切换和队列耗尽等时间场景，检查动作按真实时间被消费。",
+          "不要用模型训练成功替代这些检查。一个容量足够的网络可以学会稳定的一格错位，甚至利用未来泄漏得到更低误差。先把窗口变成可手算的确定性转换，再让模型学习其中的条件关系，才能判断失败来自时序接口、表征能力还是闭环决策本身。",
+          "动作块首先是带时间与参考语义的预测对象，而不只是一个较长数组。观测、预测、执行各有边界；保持时间、有效位与锚点一致，才能让一次生成和下一次反馈自然衔接。"
+        ],
+        "id": "6",
+        "lead": "前面的时序规则可以在接入学习模型之前单独验证。让窗口和执行队列处理可手算的编号轨迹，能够把时间协议错误与模型误差分开。对照还需要覆盖边界与因果性，因为一个网络可能把稳定的错位关系也拟合得很好。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "observation history",
+        "shape": "[B,O,D_obs]",
+        "meaning": "截至当前决策时刻的历史观测"
+      },
+      {
+        "name": "action chunk",
+        "shape": "[B,H,D_act]",
+        "meaning": "从当前命令开始的未来标签"
+      },
+      {
+        "name": "history / action mask",
+        "shape": "[B,O] / [B,H]",
+        "meaning": "区分真实记录和边界填充"
+      }
+    ],
+    "code": {
+      "title": "在单条轨迹内构造边界安全的窗口",
+      "source": "import torch\n\ntorch.manual_seed(7)\n\n# STEP 1: 每一行代表同一决策时刻的观测和待发送动作\nT, O, H = 8, 3, 4\nobservations = torch.stack([torch.arange(T), torch.arange(T) + 100], dim=1).float()\nactions = (10 * torch.arange(T)).float().unsqueeze(-1)\n\n# STEP 2: 只允许在本轨迹内索引，越界位置填零并提供 mask\ndef make_window(t):\n    if not 0 <= t < T:\n        raise ValueError('current time outside episode')\n    obs_index = torch.arange(t - O + 1, t + 1)\n    act_index = torch.arange(t, t + H)\n    obs_valid = (obs_index >= 0) & (obs_index < T)\n    act_valid = (act_index >= 0) & (act_index < T)\n    obs = observations[obs_index.clamp(0, T - 1)]\n    act = actions[act_index.clamp(0, T - 1)]\n    obs = torch.where(obs_valid[:, None], obs, torch.zeros_like(obs))\n    act = torch.where(act_valid[:, None], act, torch.zeros_like(act))\n    return obs, act, obs_valid, act_valid\n\n# STEP 3: 检查轨迹开头和结尾，而不仅检查中间帧\nsamples = [make_window(0), make_window(6)]\nhistory, target, history_mask, target_mask = [torch.stack(x) for x in zip(*samples)]\nassert history.shape == (2, O, 2)\nassert target.shape == (2, H, 1)\nassert history_mask[0].tolist() == [False, False, True]\nassert target_mask[1].tolist() == [True, True, False, False]\n\n# STEP 4: 执行长度是部署选择，不改变训练标签长度\nexecution_horizon = 2\ncommands_to_send = target[:, :execution_horizon]\nprint('history:', history.tolist())\nprint('target:', target.squeeze(-1).tolist())\nprint('target mask:', target_mask.tolist())\nprint('execute first steps:', commands_to_send.squeeze(-1).tolist())\n",
+      "explanations": [
+        {
+          "lines": "5–9",
+          "text": "本例的观测第二列人为加 100，便于区分观测与动作；它只演示索引，数值不代表真实机器人。"
+        },
+        {
+          "lines": "10–23",
+          "text": "先构造真实索引和有效性，再使用 clamp 防止数组越界。clamp 只为安全读取，Mask 后才得到真正的填充语义。"
+        },
+        {
+          "lines": "24–31",
+          "text": "开头历史不足、结尾标签不足是最容易出错的两个边界。应同时检查内容、形状和 Mask。"
+        },
+        {
+          "lines": "32–38",
+          "text": "模型预测 H 步后可以只发送前两步，然后用新观测重规划。真实部署还要结合有效性与动作缓冲处理。"
+        }
+      ],
+      "expected": "输出 history 形状 (2,3,2)、target 形状 (2,4,1)。t=6 的标签为 [60,70,0,0]，后两步 Mask 为 False。"
+    },
+    "exercise": {
+      "title": "手写窗口的时间索引",
+      "prompt": "实现 window_indices(length,t,history,horizon)，返回 (obs_indices, action_indices)。不存在的历史或未来记录使用 None，t 必须位于轨迹内，三个长度参数都必须为正。",
+      "runtime": "python",
+      "starter": "def window_indices(length, t, history, horizon):\n    # TODO: 只生成同一条轨迹中的索引；越界处返回 None\n    raise NotImplementedError\n",
+      "solution": "def window_indices(length, t, history, horizon):\n    if min(length, history, horizon) <= 0 or not 0 <= t < length:\n        raise ValueError('invalid window configuration')\n    obs = [i if 0 <= i < length else None for i in range(t-history+1, t+1)]\n    act = [i if 0 <= i < length else None for i in range(t, t+horizon)]\n    return obs, act\n",
+      "tests": "assert window_indices(5,0,3,3) == ([None,None,0], [0,1,2])\nassert window_indices(5,4,3,3) == ([2,3,4], [4,None,None])\nassert window_indices(5,2,2,2) == ([1,2], [2,3])\ntry:\n    window_indices(5,5,2,2)\n    raise AssertionError('t 越界应报错')\nexcept ValueError:\n    pass\nprint('窗口边界与当前动作对齐检查通过。')\n",
+      "hints": [
+        "历史区间的右端包含 t；动作区间的左端也包含 t。",
+        "Python range 的终点不包含在结果中。"
+      ],
+      "explanation": "这些索引依赖上述时间约定。接入真实数据集时，先验证图像和命令的记录顺序，再确定标签应该从 t 还是其他索引开始。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 chunkify(actions, starts, horizon)。actions 是单条轨迹 [T,D]，starts 是合法起点 [B]。返回零填充标签 [B,H,D] 与有效性 Mask [B,H]，不可越过轨迹末尾。",
+      "starter": "import torch\n\ndef chunkify(actions, starts, horizon):\n    # TODO: 向量化索引，返回 chunk 和 valid\n    raise NotImplementedError\n",
+      "solution": "import torch\n\ndef chunkify(actions, starts, horizon):\n    if horizon <= 0 or len(actions) == 0 or ((starts < 0) | (starts >= len(actions))).any():\n        raise ValueError('invalid chunk configuration')\n    index = starts[:, None] + torch.arange(horizon, device=starts.device)\n    valid = index < len(actions)\n    selected = actions[index.clamp(max=len(actions)-1)]\n    chunk = torch.where(valid[..., None], selected, torch.zeros_like(selected))\n    return chunk, valid\n",
+      "tests": "a = torch.arange(5).float().unsqueeze(-1)\nc,v = chunkify(a, torch.tensor([0,3,4]), 3)\ntorch.testing.assert_close(c.squeeze(-1), torch.tensor([[0.,1.,2.],[3.,4.,0.],[4.,0.,0.]]))\nassert v.tolist() == [[True,True,True],[True,True,False],[True,False,False]]\nassert c.shape == (3,3,1)\nprint('向量化 Action Chunk 检查通过。')\n",
+      "hints": [
+        "用 starts[:,None]+arange(horizon) 构造 [B,H] 索引。",
+        "clamp 只用于安全读取，超过轨迹长度的结果仍需归零并标 False。"
+      ],
+      "explanation": "chunkify 处理的是一条轨迹，所以有效性由这条轨迹的长度决定。先保留真实索引形成 valid，再夹住索引防止访问越界，最后把无效位置归零。若直接把 clamp 得到的末帧复制值当标签，模型会被迫学习伪造的后续动作。起点应合法，H 必须为正；多轨迹数据要先分组，不能跨轨迹滑窗。"
+    },
+    "pitfalls": [
+      {
+        "title": "历史窗口里使用未来插值",
+        "detail": "检查插值使用的右端样本是否在线可用。必要时改因果保持或明确引入等待时间，并保持训练部署一致。"
+      },
+      {
+        "title": "只对输出 Mask，忽略输入 Padding",
+        "detail": "跨位置网络可能读取无效输入。用无效输入扰动检查有效输出，并明确注意力或循环状态的处理。"
+      },
+      {
+        "title": "预测 1 秒就认为拥有 1 秒反应余量",
+        "detail": "返回时已过去的前缀不能再次执行。用槽位时间、端到端延迟与剩余有效时长判断队列预算。"
+      },
+      {
+        "title": "重叠动作按相同索引平均",
+        "detail": "不同生成时刻的数组索引不对应同一控制时刻。先做时间与参考锚点对齐，再决定能否融合。"
+      },
+      {
+        "title": "把生成迭代与物理执行频率绑定",
+        "detail": "采样器迭代更新动作分布，执行频率决定物理命令时间。分别配置并测量，不能用一个 steps 变量表达两者。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "ACT 原论文：Action Chunking with Transformers",
+        "url": "https://arxiv.org/abs/2304.13705"
+      },
+      {
+        "title": "Diffusion Policy：滚动执行与动作序列",
+        "url": "https://diffusion-policy.cs.columbia.edu/"
+      },
+      {
+        "title": "PyTorch 数据加载官方文档",
+        "url": "https://docs.pytorch.org/docs/stable/data.html"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "模型使用“前后各两帧”的图像窗口预测当前动作，离线效果很好。为什么这个实现可能无法部署？",
+        "answer": [
+          "当前决策只能使用已经获得的观测。前后窗口中的后两帧来自未来，训练时额外提供了执行尚未产生的信息。部署时等待这些帧会改变决策时刻和动作目标；不能仅把相同窗口索引复制到在线程序。",
+          "应先定义观测截止时刻和动作生效时刻，改为因果历史，或显式把预测目标对齐到等待后的时刻。用未来帧扰动检查：改动决策时刻之后的图像，不应改变该时刻本来可用的模型输入。窗口还需按 episode 隔离并在开头标记缺失历史。"
+        ],
+        "codeFocus": "window_indices 的历史 range(t−history+1,t+1)；构造输入前的时间戳检查。",
+        "acceptance": [
+          "识别未来观测泄漏。",
+          "给出不使用未来信息的索引和测试方法。"
+        ]
+      },
+      {
+        "question": "预测 \\(H=16\\) 步、执行 K=4 步，推理延迟增加后，能否直接把 K 调大解决？",
+        "answer": [
+          "K 调大通常能延长已有动作的播放时间，但也延长了再次获得反馈前的开放执行阶段。它改变反应能力、源观测年龄与重规划节奏，并不消除延迟。先测量端到端延迟分布、动作间隔、可用队列长度和实际消费速度。",
+          "新的 chunk 到达时，要根据观测时间戳对齐到未执行的未来槽位，丢弃已经过去的部分。若有效剩余时长仍不足以覆盖下一次推理，调整 K 本身不一定解决问题。比较方法时应固定动作语义并记录停止、过期与队列耗尽事件。"
+        ],
+        "codeFocus": "code.source 的 execution_horizon 与部署层的时间戳/队列消费逻辑。",
+        "acceptance": [
+          "区分 H、K、控制频率和推理延迟。",
+          "说明更长执行窗口对反馈新鲜度的影响。"
+        ]
+      }
+    ],
+    "keyPoints": [
+      "观测历史、未来标签、生成步数和物理控制步必须分开命名。",
+      "预测长度 H、执行长度 K、策略频率和底层控制频率不是同一个超参数。",
+      "窗口不能跨回合，缺失历史与缺失未来必须有明确的填充及有效性协议。",
+      "融合或丢弃动作前缀时，应按绝对执行时间和参考锚点对齐。"
+    ],
+    "lead": "动作分块（Action Chunking）是让策略一次预测一段未来动作，而非只预测下一条命令的方法。观测窗口提供条件，预测时域定义输出覆盖多远，执行时域定义多久再次读取反馈；三者是不同长度。本章先建立统一时间原点，再定义边界填充、因果对齐与相对参考，最后说明重规划和重叠预测怎样对应真实执行时刻。"
+  },
+  {
+    "id": "vla-architecture",
+    "number": 0,
+    "module": "policies",
+    "title": "VLA 架构剖析：VLM 骨干与连续/离散动作专家",
+    "subtitle": "围绕VLA 架构剖析：VLM 骨干与连续/离散动作专家，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 100,
+    "tags": [
+      "VLA",
+      "PaliGemma",
+      "Action Expert",
+      "Joint Attention",
+      "OpenPI",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "multimodal",
+      "masking-autoregressive",
+      "generative-policy"
+    ],
+    "objectives": [
+      "从逐层投影与可见性推导 VLM 和动作专家之间的信息、梯度路径。",
+      "区分 π₀、π₀.₅ 与 π₀-FAST 的状态编码、时间条件和动作生成协议。",
+      "用完整 PyTorch 小模型核对多模态前向、有效监督、参数更新与采样。",
+      "证明固定前缀缓存的适用条件，并分清参数冻结、断图、eval 与优化器分组。"
+    ],
+    "why": "VLA 的名称不足以说明动作如何产生。以可追溯的具体实现为案例，沿逐层计算检查骨干与动作专家的信息、梯度和采样路径，才能判断目标、Mask、冻结范围和缓存是否仍在实现同一个策略。",
+    "lead": "本章不重复推导通用 Transformer 与 Flow Matching 数学，而是固定一个可追溯的 OpenPI 版本，沿视觉语言前缀、双参数流、Mask、梯度、缓存和动作采样追踪完整 VLA。",
+    "sections": [
+      {
+        "id": "vlm-to-policy",
+        "title": "从“移动到红色目标”开始：观测怎样决定动作",
+        "lead": "VLM 是使用图像与文字进行表示或预测的视觉语言模型，VLA 进一步以动作作为输出目标。两者的连接需要定义动作变量及它怎样读取观测。我们先用“移动到指定颜色并闭合夹爪”认识完整输入输出，再拆开具体模型。",
+        "body": [
+          "选用 VLA 的典型场景是：需要由图像定位目标、由语言区分任务，并有能与机器人控制接口对齐的动作示教。这时可以从预训练视觉语言表示出发适配动作策略。实际选型先用视觉／状态行为克隆建立对照，再通过同场景换指令检验语言带来的任务区分能力。",
+          "教学任务是在平面网格移动夹爪，动作是 \\((\\Delta x,\\Delta y,g)\\)：前两项为每控制步的网格位移，\\(g=-1/+1\\) 表示打开/闭合。状态是 \\((x,y,v_x,v_y)\\)，代码中初速度为零。四条样本各有两幅 \\(8\\times8\\) 彩色网格、三个文字槽位和最多三步动作；第二个样本缺失一个视图，第四个只请求两步。两视图是同一网格的重复渲染，用来检查相机与有效位接口，不模拟真实相机几何或完整抓取。",
+          "设一次机器人决策的条件为 \\(c_k=(I_k^{1:V},\\ell_k,s_k)\\)：\\(k\\) 是物理决策时刻，\\(V\\) 个相机图像为 \\(I_k^{1:V}\\)，\\(\\ell_k\\) 是当前语言指令，\\(s_k\\in\\mathbb R^{D_s}\\) 是本体状态。模型预测动作块 \\(A_k\\in\\mathbb R^{H\\times D_a}\\)，其中 \\(H\\) 是未来命令数，\\(D_a\\) 是每条命令的坐标数。生成时间 \\(t\\in[0,1]\\) 与 \\(k\\) 无关；一个 \\(t\\) 对应整块动作的一次生成状态，而不是某个关节的执行时刻。动作单位、参考系与执行切片沿用[动作表示](#/learn/action-representation)和[动作分块](#/learn/action-chunk)的定义。",
+          "一个普通读出头可以把最终条件特征直接映射成 \\([B,H,D_a]\\) 的回归值。连续生成式动作专家则还读取当前噪声动作 \\(X_t\\) 和时间 \\(t\\)，在多层网络内反复更新动作表示，输出速度或其他生成参数。后者不是给 VLM 最后一层接一个 Linear 就完整实现的：动作输入、时间条件、跨模态读取和迭代求解都是模型计算的一部分。",
+          "这也不是所有 VLA 的统一结构。离散动作模型可以用语言模型的输出词表做自回归预测；其他连续策略可以用独立 Cross-Attention 解码器读取最终条件特征。本章选取 π₀ 家族，重点分析“不同参数处理不同 token，在每层注意力中交互”的实现；其他概率目标已在[生成式动作策略](#/learn/generative-policy)中讨论。",
+          "官方实现的分析固定于 OpenPI commit 215abfb217dbac7d5f1273282331b9b1866c0479（2026-08-24）。下文“π₀.₅ 实现”指这一版本公开的 Flow Matching 路径；论文中的混合任务训练、后续 Knowledge Insulation 配方与这个公开训练入口不能合并成一个未加区分的架构。代码页使用从零初始化的小型教学模型，不加载官方权重，也不声称复现其机器人能力。"
+        ],
+        "figures": [
+          {
+            "src": "/assets/figures/vla-classic-pi0-overview.png",
+            "alt": "π0 原论文整网结构：多视角图像和语言输入预训练视觉语言骨干，本体状态与噪声动作输入动作专家，最终生成未来动作块并控制不同机器人。",
+            "caption": "先读中间的网络：图像与语言进入 VLM，机器人状态和噪声动作接入动作专家，右上方输出一整段未来动作。图源：[π₀ 原论文图 3](https://arxiv.org/html/2410.24164v4)。",
+            "afterParagraph": 0,
+            "width": 2033,
+            "height": 568
+          },
+          {
+            "src": "/assets/figures/vla-system-v2.svg",
+            "alt": "π₀ 风格的两条表示流在每层联合注意力中交互，视觉语言前缀不读取动态动作后缀，动作专家输出速度再经求解器得到动作块。",
+            "caption": "观测前缀与动作后缀逐层交互，动作专家输出速度，经积分和解码得到动作块。",
+            "afterParagraph": 4,
+            "width": 1200,
+            "height": 675
+          }
+        ]
+      },
+      {
+        "id": "observation-prefix",
+        "title": "图像与语言如何形成可读取的前缀",
+        "lead": "观测前缀是动作计算可以读取的一组固定条件 Token，本章由图像区域表示和文字表示组成。前缀不是必须压成一个场景向量；保留多个位置，使动作查询有机会选择不同区域和词语。下面先定义它的来源与有效位。",
+        "body": [
+          "令每个视角输出 \\(P_v\\) 个视觉 token，文字序列有 \\(L\\) 个存储槽位。图像编码器与投影形成 \\(E_I^v\\in\\mathbb R^{B\\times P_v\\times d_p}\\)，词嵌入形成 \\(E_\\ell\\in\\mathbb R^{B\\times L\\times d_p}\\)，按序列轴拼成 \\(P^{(0)}\\in\\mathbb R^{B\\times N_p\\times d_p}\\)，其中 \\(N_p=\\sum_vP_v+L\\)。这里的“token”表示序列中的一个向量位置；视觉 token 并不是必须先量化成语言词表 ID。",
+          "固定版本的 [embed_prefix](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0.py) 对各相机调用 SigLIP 图像编码器，再拼接 PaliGemma 文字嵌入；图像与文字共享前缀注意力块。SigLIP 内部的视觉空间建模，与后面 Gemma 层中的序列位置编码，属于两个不同计算阶段。实际图像尺寸、相机顺序、裁剪、像素尺度和缺失视角都需要与 checkpoint 训练协议一致。",
+          "前缀有效位 \\(m^p\\in\\{0,1\\}^{B\\times N_p}\\) 指出哪些存储位置确实存在。一个缺失相机的有效位应扩展到该相机的全部 patch；文字 Padding 也不能成为可读取的 Key。把无效位置的输入置零只能限制初值，投影偏置、位置编码和后续残差仍可产生非零向量，因此注意力有效位有独立作用。反过来，Mask 也不能清除在编码器内部已经发生的非有限运算。",
+          "沿用彩色目标输入，两幅 8×8 网格各经 4×4、stride 4 的 patch 投影得到 4 个 Token；接上三个文字槽位，形成 [4,11,16] 前缀。词表约定 0=Padding、1=移动、2=红、3=蓝、4=闭合；颜色编号选择目标，闭合是本任务共同的终步规则。颜色块落在哪个 patch、指令选择哪种颜色，应在前缀中保留为可区分的信息。小 patch 层没有 SigLIP 预训练语义；具有这条计算路径，只说明模型有机会利用输入，不保证它已经学会利用。"
+        ],
+        "formula": "P^{(0)}=\\operatorname{concat}_{\\rm seq}(E_I^1,\\ldots,E_I^V,E_\\ell),\\qquad N_p=\\sum_{v=1}^{V}P_v+L"
+      },
+      {
+        "id": "state-action-time",
+        "title": "状态、噪声动作与生成时间：两种接入方式",
+        "lead": "本体状态描述机器人当前自身信息，噪声动作是生成过程正在更新的候选动作块，生成时间标记它所处的阶段。三者角色不同。π₀ 与 π₀.₅ 对状态和时间采用不同接入方式，下面分别定义而不混成一个条件 Token。",
+        "body": [
+          "π₀ 的连续状态先经线性映射，形成一个 \\([B,1,d_a]\\) 的 state token。它与动作 token 都由动作专家参数处理，但属于不同可见性块。噪声动作 \\(X_t\\in\\mathbb R^{B\\times H\\times D_a}\\) 的每个时间槽先投影到 \\(d_a\\)，再与时间编码 \\(\\phi(t)\\in\\mathbb R^{B\\times d_a}\\) 沿特征轴拼接，并经过 MLP。时间向量在 \\(H\\) 个动作位置共享，状态 token 不经过这个 action-time MLP。于是 suffix 长度为 \\(1+H\\)，而不是把所有动作坐标展开成 \\(H D_a\\) 个 token。",
+          "π₀.₅ 的默认数据变换把归一化状态离散化后写入文本提示；这些状态 token 进入视觉语言前缀，suffix 中不再另加连续状态 token。动作输入只做线性投影，时间经过独立 MLP 后进入动作专家的 adaptive RMSNorm。这个结论同时依赖模型标志与数据变换：公开配置允许修改 discrete_state_input，不能看到 pi05=True 就假定任意自定义数据管线都已经提供状态。核对 [Pi0Config](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0_config.py)、[ModelTransformFactory](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/training/config.py) 与 [PaligemmaTokenizer](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/tokenizer.py) 三处，才能确定真实路径。",
+          "对一条专家隐藏向量 \\(h\\in\\mathbb R^{d_a}\\)，先计算 \\(\\bar h=h/\\sqrt{d_a^{-1}\\sum_i h_i^2+\\epsilon}\\)。时间条件 \\(z_t\\) 产生通道向量 \\(\\gamma(z_t),\\beta(z_t),g(z_t)\\)，得到调制输入 \\(\\widetilde h=(1+\\gamma)\\odot\\bar h+\\beta\\)，残差支路再由 \\(g\\) 控制贡献。这里的 RMSNorm 不减均值；“归一化后仿射调制”与一般 FiLM 有联系，但不等于把所有 FiLM、AdaLN、AdaRMSNorm 当作同一个算子。具体广播、归一化轴与零门控梯度见[条件融合](#/learn/conditioning-fusion)。",
+          "固定版本的 [RMSNorm 和 Block](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/gemma.py) 将时间条件用于动作专家的 attention/FFN 前归一化及最终归一化，前缀对应的条件为 None。这样改变生成时间不会直接改变前缀归一化。后面的缓存证明依赖这条实际计算关系；如果在新设计中让时间也调制视觉语言前缀，缓存条件就需要重写。",
+          "教学实现选用 π₀ 风格：\\(D_s=4,D_a=3,d_a=12\\)，一个 state Token 加三个动作 Token 形成 [4,4,12] 后缀。第一个样本起点为 (0,0)，红色块中心在 \\((-4/7,-4/7)\\)，三条示范位移都是 \\((-4/21,-4/21)\\)，最后一步闭合。训练真正送入动作投影的是这些标签与噪声的插值，推理则从整块噪声开始；颜色中心不额外作为隐藏答案输入网络。正弦频率、激活和宽度属于教学设置，未实现 π₀.₅ 的状态分词与 AdaRMSNorm。"
+        ],
+        "formula": "\\begin{aligned}S^{(0)}_{\\pi_0}&=\\operatorname{concat}_{\\rm seq}\\!\\left(sW_s+b_s,\\; f_{\\rm time}\\!\\left[ X_tW_a+b_a\\,;\\,\\phi(t)\\right]\\right)\\\\\\widetilde h_{\\pi_{0.5}}&=(1+\\gamma(z_t))\\odot\\operatorname{RMSNorm}(h)+\\beta(z_t),\\qquad h^+=h+g(z_t)\\odot F(\\widetilde h)\\end{aligned}"
+      },
+      {
+        "id": "joint-attention",
+        "title": "独立参数为什么能够共同做注意力",
+        "lead": "动作专家是用独立参数处理动作相关位置的多层网络；联合注意力则让不同参数流投影后的 Q/K/V 在同一可见集合中匹配与读取。独立参数不等于完全隔离，共同读取也不等于共享全部权重。先认识这个结构，再展开各层矩阵。",
+        "body": [
+          "在第 \\(l\\) 层，记前缀与后缀输入为 \\(P^{(l)}\\in\\mathbb R^{B\\times N_p\\times d_p}\\)、\\(S^{(l)}\\in\\mathbb R^{B\\times N_s\\times d_a}\\)。先各自归一化，再分别计算 \\(Q_p=P_nW_{Qp}\\)、\\(K_p=P_nW_{Kp}\\)、\\(V_p=P_nW_{Vp}\\)，以及对应的 \\(Q_a,K_a,V_a\\)。这里先写单头形式，\\(W_{Qp},W_{Kp},W_{Vp}\\in\\mathbb R^{d_p\\times d_h}\\)，专家矩阵为 \\(\\mathbb R^{d_a\\times d_h}\\)；输入宽度不同，只需投影后的头维 \\(d_h\\) 对齐。",
+          "将投影结果沿序列轴连接，形成 \\(Q=[Q_p;Q_a]\\)、\\(K=[K_p;K_a]\\)、\\(V=[V_p;V_a]\\)。分数矩阵包含四类项：\\(Q_pK_p^\\top\\)、\\(Q_pK_a^\\top\\)、\\(Q_aK_p^\\top\\)、\\(Q_aK_a^\\top\\)。第二项在本架构中被 Mask 禁止，第三项使动作位置能够读取视觉语言信息，第四项使动作块内部联合建模。每个允许位置的 Softmax 都在它实际可见的所有 Key 上归一化。",
+          "以某个动作 Query 为例，它的输出是前缀 Value 与后缀 Value 的同一次加权和。把它替换为“先对前缀做一次 Cross-Attention，再对动作做一次 Self-Attention”通常不等价，因为两个独立 Softmax 的分母、残差次序和 Query 来源都改变了。后者是合法的另一种模型，不能只因都能读取图像就当成同一实现。",
+          "联合注意力得到各 token 的结果后，按原前缀/后缀边界拆开，分别经过自己的输出投影、残差、归一化和 FFN。下一层重复这一过程。动作第 \\(l\\) 层读取的是前缀第 \\(l\\) 层的输入经过 K/V 投影后的表示，而不是只读取最后一层 VLM 输出；多层耦合因此提供不同抽象深度的条件。 对第一个样本，这提供了让某个噪声动作位置同时读取红色区域、颜色词和夹爪状态的路径；具体读取权重仍由训练决定，不能预先把某一头命名为“红色识别头”。",
+          "固定版本的 [Attention 与 Module](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/gemma.py) 明确要求两组配置有相同深度、Query 头数、KV 头数和 head_dim，但允许 width 与 mlp_dim 不同。默认 Gemma 配置的前缀/专家宽度为 2048/1024，深度均为 18，Query 头数为 8、KV 头数为 1、head_dim 为 256。这是该源码配置的事实，不能从教学模型的普通多头实现推断真实模型的 KV 内存。",
+          "论文称这两组权重为 experts，源码也按 token 所属模态使用不同参数。这里的路由由输入类别确定，没有学习一个 router 为每个 token 挑选 top-k 个稀疏 FFN 专家；因此不宜未经说明就按常见稀疏 MoE 的负载均衡或专家并行机制来解释。它也不只是一个浅层 head，而是在多层 attention、FFN 和归一化中拥有独立参数的完整动作计算流。"
+        ],
+        "formula": "\\begin{aligned}Q&=[Q_p;Q_a],\\quad K=[K_p;K_a],\\quad V=[V_p;V_a]\\\\O&=\\operatorname{softmax}_{\\rm key}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_h}}+M\\right)V,\\quad M_{ij}\\in\\{0,-\\infty\\}\\\\P^{(l+1)}&=\\operatorname{Block}_p(P^{(l)},O_p),\\qquad S^{(l+1)}=\\operatorname{Block}_a(S^{(l)},O_a)\\end{aligned}",
+        "example": {
+          "title": "动作 Query 为什么要在一个共同分母下读取",
+          "afterParagraph": 2,
+          "steps": [
+            "把一个动作 Query 的可见集合暂时缩成两个 Key：一个来自视觉语言前缀，一个来自动作后缀。设两个缩放分数都为 0，Value 分别为 \\((2,0)\\) 与 \\((0,4)\\)。这是局部手算，不是声称训练后的头必然采用这些权重。",
+            "联合 Softmax 使用同一个分母 \\(e^0+e^0=2\\)，权重为 \\((1/2,1/2)\\)，读出为 \\((1,2)\\)。前缀和动作可以使用不同投影参数，但投影后的 Key/Value 必须满足当前头的运算约定。",
+            "若拆成两个各含一个 Key 的 Softmax，每份权重都为 1，相加得到 \\((2,4)\\)。它已经不同于联合读出；实际网络再加入不同的残差和更新顺序，差别还会继续传播。"
+          ],
+          "conclusion": "“两类表示能够交换信息”只说明存在连接。共同归一化的范围、投影参数和更新次序共同定义具体架构。"
+        }
+      },
+      {
+        "id": "visibility",
+        "title": "用三块 Mask 读懂信息流，而不只看序列顺序",
+        "lead": "块可见性是按 Token 所属区域规定允许读取关系的 Mask。本章 π₀ 路径包含观测、状态与动作三块，使动作能读取条件且观测不依赖动态动作。序列拼接顺序只给出位置，真正的信息路径由这些规则决定。",
+        "body": [
+          "令 \\(P\\) 表示图像与语言块，\\(S\\) 表示一个连续状态 token，\\(A\\) 表示全部噪声动作 token。以行作为 Query、列作为 Key，π₀ 的允许读取关系为 \\(\\left[\\begin{smallmatrix}1&0&0\\\\1&1&0\\\\1&1&1\\end{smallmatrix}\\right]\\)。每个 1 代表对应子块全部开放：前缀内部双向，state 可读取前缀与自身，动作可读取全部前缀、state 和所有动作位置。因此动作块内部不是三角因果 Mask。",
+          "为什么动作可以看“后面的动作”？这些输入是同一生成时间的 \\(X_t\\)，并不是部署时不可用的未来真实标签。生成器在一次求解迭代中已经持有整块噪声状态，联合处理它们是条件分布模型的一部分。泄漏要按变量语义判断：若把干净动作答案或包含答案的另一路 token 交给同一预测支路，才改变了推理时的可用信息。",
+          "对深度作归纳可以证明前缀始终不依赖后缀。第 0 层前缀只含观测；假设第 \\(l\\) 层前缀与 \\(X_t,t\\) 无关，由于该层所有前缀 Query 只读前缀 Key/Value，且归一化、FFN 都逐 token 运算，下一层仍与它们无关。state 分支在 π₀ 中也不读动作，且没有时间调制，所以同样保持静态。若任一中间层开放了后缀到前缀的路径，这个归纳便不能继续；最后一层再遮住并不能自动删除先前已经写入的信息。",
+          "OpenPI 的 make_attn_mask 用“块起点标志”的累积和产生组号 \\(g_i\\)，允许条件是 \\(g_j\\le g_i\\)，再与 Query/Key 有效位相交。π₀ 的标志为前缀全 0、state 为 1、首个 action 为 1、其余 action 为 0；π₀.₅ 默认把离散 state 放进前缀，所以只剩前缀与动作两块。有效性与组号承担不同职责，不能用一个普通下三角矩阵替代。",
+          "教学输入中，第四个样本请求的动作时域只有两步，第三个存储槽位是显式 Padding，这个请求长度在训练和推理都已知。其 action_valid 同时用于输入可见性与监督。真实回合“将在第几步终止”可能只在离线标签中知道；此时该未来有效位只能参与 Loss，不能直接复制到在线可见性中。要先确定可部署的输入填充规则，再定义独立的监督有效位。"
+        ],
+        "formula": "M^{\\rm allow}_{bij}=\\mathbf 1[g_j\\le g_i]\\,m_{bi}m_{bj},\\qquad g_i=\\sum_{r\\le i}{\\rm block\\_start}_r",
+        "figures": [
+          {
+            "src": "/assets/figures/vla-joint-mask-v2.svg",
+            "alt": "左侧显示两组参数在每层投影到共同注意力空间；右侧显示 π₀ 的前缀、状态、动作三块可见性和 π₀.₅ 默认的两块可见性。",
+            "caption": "π₀ 与 π₀.₅ 公开 Flow 路径的联合注意力。左侧为两组参数的投影与交互，右侧为各输入块的可见性矩阵。",
+            "afterParagraph": 1,
+            "width": 1200,
+            "height": 850
+          }
+        ]
+      },
+      {
+        "id": "position-and-time",
+        "title": "RoPE 位置、动作索引与生成时间必须分别编码",
+        "lead": "RoPE 编码 Token 在序列中的位置关系，动作索引表示未来命令槽位，生成时间表示噪声到动作的进程。这些身份在动作 Token 上同时存在，不能共享一个未解释的时钟。下面将它们分别接到旋转与时间调制。",
+        "body": [
+          "设序列位置为 \\(p_i\\)，每头旋转矩阵为 \\(R(p_i)\\)。RoPE 使用 \\(q_i\\leftarrow R(p_i)q_i\\)、\\(k_j\\leftarrow R(p_j)k_j\\)，从而打分中出现 \\(q_i^\\top R(p_i)^\\top R(p_j)k_j\\)。在每个二维子空间的同频旋转下，\\(R(p_i)^\\top R(p_j)=R(p_j-p_i)\\)。它编码 token 位置差，不会自动知道控制周期、末端坐标系或生成噪声水平；这些仍由输入协议与时间条件提供。完整旋转推导见[位置编码](#/learn/transformer?tab=theory&section=position-and-rope)。",
+          "固定版本的完整前向使用 \\(p_{bi}=\\sum_{j\\le i}m_{bj}-1\\) 计算有效位置。缓存推理中，新 suffix 的位置从每个样本的有效前缀长度继续，再累积 suffix 有效位。若一个批次的前缀存储宽度都是 11，但两个样本实际有效长度为 11 与 6，就不能都把 state 的位置写成 11。Mask 决定可读取的槽位，position_ids 决定旋转相位，两者不能相互替代。",
+          "缓存中的 Key 已经完成本层位置旋转。下一次 ODE 调用只需旋转新 suffix 的 Q/K，不应把缓存 Key 按新偏移再旋转一次。动作位置 \\(h\\) 在不同生成迭代保持不变，而 \\(t\\) 与 \\(X_t\\) 一起变化；把每轮积分都当成向文本末尾追加 token，会同时改变序列长度、位置和可见性，已经不再计算原来的速度场。",
+          "教学 RoPE 采用相邻坐标对旋转，OpenPI 的 _apply_rope 使用前后半区配对。二者可通过一致的坐标重排表达同一种旋转构造，但现成权重对应具体布局，不能直接交换实现而忽略参数坐标。教学代码不加载 checkpoint，因此只要求全算与缓存采用同一布局；它的 time_action MLP 则独立处理 \\([B]\\) 的生成时间。"
+        ],
+        "formula": "\\widetilde q_i^\\top\\widetilde k_j=q_i^\\top R(p_j-p_i)k_j,\\qquad p^{\\rm suffix}_{bi}=\\sum_jm^p_{bj}+\\sum_{r\\le i}m^s_{br}-1"
+      },
+      {
+        "id": "flow-training",
+        "title": "一次训练：从动作标签到所有参数的梯度",
+        "lead": "VLA 的 Flow 训练以已知示范动作构造带噪动作和速度标签，再让条件网络拟合这个速度。模型输出的是生成时间导数，尚不是可直接执行的动作。下面固定 OpenPI 的反向时间约定，追踪监督如何传回专家与骨干。",
+        "body": [
+          "本节与 OpenPI 一致，令 \\(A\\) 为归一化示范动作、\\(Z\\sim\\mathcal N(0,I)\\) 为独立噪声，并构造 \\(X_t=tZ+(1-t)A\\)。因此 \\(t=1\\) 是噪声、\\(t=0\\) 是动作，对时间求导得到条件速度 \\(U=Z-A\\)。模型输入 \\((c,X_t,t)\\)，输出 \\(v_\\theta\\in\\mathbb R^{B\\times H\\times D_a}\\)。给定当前输入时，平方回归的理想解为 \\(\\mathbb E[Z-A\\mid X_t,t,c]\\)，而不是假设推理时知道某条训练路径的终点。条件期望与连续性方程的证明保留在[Flow Matching](#/learn/flow-matching)。",
+          "用 \\(\\mathcal I\\) 表示有效标量坐标的集合，损失为 \\(|\\mathcal I|^{-1}\\sum_{i\\in\\mathcal I}(v_i-U_i)^2\\)。输出梯度是 \\(\\partial L/\\partial v_i=2(v_i-U_i)/|\\mathcal I|\\)，再经线性读出、专家层、前缀 K/V 和图像语言编码器回传。Loss 没有直接监督每个前缀位置，不代表前缀参数没有梯度：动作 Query 使用的 Value 与 Key 仍由这些参数决定。 在网格案例中，示范标签先按被指令选中的颜色中心计算位移，再与噪声构造训练对；因此图像位置、颜色指令和当前起点都参与标签定义。相比只用随机图像配状态函数标签，这个例子能够核对输入语义与目标的对应，但四条样本的拟合仍不足以检验指令泛化。",
+          "在单个注意力行，记 \\(o_i=\\sum_j\\alpha_{ij}v_j\\)，则 \\(\\partial o_i/\\partial v_j=\\alpha_{ij}I\\)，并有 \\(\\partial o_i/\\partial s_{ij}=\\alpha_{ij}(v_j-o_i)\\)，其中 \\(s_{ij}\\) 是 Softmax 前分数。前一个式子说明 Value 直接传递条件梯度，后一个式子说明 Key/Query 通过改变读取权重获得梯度。若仅有一个有效 Key，权重固定为 1，第二条路径为零；这是结构事实，不能把所有零梯度都判为训练失败。",
+          "无效动作标签如果含 NaN，必须在构造 \\(X_t\\) 之前处理，否则它已经进入模型并可能通过动作块 attention 污染有效位置；只在最后 Loss 乘零不够。教学代码对已知的填充槽位先安全替换，输入 Mask 同时阻止其作为 Key 被读取，再对有效输出选索引求平方。空监督批次直接报错。官方 compute_loss 本身先对动作坐标取均值，教学实验增加显式有效时域归约；这项工程协议不应误写成原源码默认实现。",
+          "公开实现从偏向噪声端的 Beta 变换采样时间，而教学实验固定四个内部时刻与一份噪声，重复优化同一小批次以检查训练链路。改变时间采样密度，会改变各时间区间在有限模型训练中的权重；只要给定条件的权重为正，理想逐点平方回归解仍是相应条件期望。固定小批实验没有证明对新时间、新场景或新噪声的泛化。"
+        ],
+        "formula": "\\begin{aligned}X_t&=tZ+(1-t)A,\\qquad U=\\frac{dX_t}{dt}=Z-A\\\\L(\\theta)&=\\mathbb E\\!\\left[\\frac1{|\\mathcal I|}\\sum_{i\\in\\mathcal I}(v_{\\theta,i}(X_t,t,c)-U_i)^2\\right]\\\\\\frac{\\partial o_i}{\\partial s_{ij}}&=\\alpha_{ij}(v_j-o_i),\\qquad s_{ij}=q_i^\\top k_j/\\sqrt{d_h}\\end{aligned}"
+      },
+      {
+        "id": "gradients-and-freezing",
+        "title": "冻结、断图与缓存：沿同一计算图区分六件事",
+        "lead": "冻结参数是停止选定参数的求导或更新，断图是切断某段上游求导依赖，缓存是复用前向中间结果。这三类操作作用于不同关系。前缀不读取动作仍可接受动作损失的反向信号，后训练需要分别定义这些选择。",
+        "body": [
+          "对前缀参数 \\(\\theta_p\\) 与专家参数 \\(\\theta_a\\)，动作损失的梯度包含 \\(\\nabla_{\\theta_p}L=\\sum_l (\\partial K_p^{(l)}/\\partial\\theta_p)^\\top\\nabla_{K_p^{(l)}}L+(\\partial V_p^{(l)}/\\partial\\theta_p)^\\top\\nabla_{V_p^{(l)}}L\\)，其中各层投影还通过前缀隐藏状态相互依赖。前向 Mask 禁止动作写回前缀，不能消除这些反向链式项。要隔离某条梯度，需要显式改变计算图或目标，而不是只调整可见性。",
+          "设置 requires_grad_(False) 只让这些参数不累计梯度，冻结模块仍可把梯度传给它之前的可训练输入。若图像前还有可训练增强器或适配器，这条输入梯度可能仍然必要。对中间特征 detach()，或在 no_grad() 内重新计算该段，则会切断它之前的路径；eval() 只切换 Dropout、BatchNorm 等训练行为，本身不关闭 Autograd，也不冻结参数。",
+          "优化器参数组是另一个独立选择：具有梯度的参数若未加入 optimizer，step 不会更新它；更换模块后旧优化器还可能引用旧对象。应先清除旧梯度，核对 requires_grad，再核对参数对象与实际更新差值。教学代码给 prefix 与 expert 不同学习率，仅用来展示参数分组，不是对真实 VLA 学习率比例的建议。",
+          "make_cache 本身不必断图。确定性设置下，在同一次参数版本内建立保留计算图的前缀 K/V，再用 suffix loss 反传，可以与完整计算给出相同梯度；教学实验显式比较视觉投影权重梯度。推理时的 no_grad cache 不具备这条反向路径；跨 optimizer.step 复用旧缓存还会使用旧参数的表示。无论是否 retain_graph，都不能据此把过期特征解释为当前模型的精确计算。",
+          "不同参数出现零梯度还可能来自架构本身。本课只读取最终动作输出，最后一层前缀 FFN 的输出不再被后续层使用，因此这部分参数不参与当前动作损失；同层动作读取的是进入该层 attention 的前缀 K/V。要求每个参数在每个 batch 都非零会误报。检查应围绕预期路径，例如首层视觉投影、词嵌入和动作专家参数组的梯度，以及实际参数变化。",
+          "Knowledge Insulation 进一步区分“骨干仍学习”和“骨干不接受动作专家梯度”。官方研究使用离散动作与其他 token 预测目标训练骨干，同时阻断连续动作专家损失向骨干回传；这不等价于把全部骨干永久冻结。固定版本的公开 README 说明只支持 π₀.₅ 的 Flow 训练/推理路径，不能把论文完整的多目标配方自动投射到每一次公开微调调用。具体迁移与 LoRA 取舍继续阅读[微调与 PEFT](#/learn/finetuning)。"
+        ],
+        "comparison": {
+          "title": "操作改变的是哪个对象",
+          "columns": [
+            "操作",
+            "参数梯度",
+            "上游输入梯度",
+            "前向行为与缓存"
+          ],
+          "rows": [
+            [
+              "requires_grad_(False)",
+              "指定参数不累计新梯度",
+              "仍可经过该模块",
+              "随机层与缓冲区是否变化需另外控制"
+            ],
+            [
+              "tensor.detach()",
+              "该张量之前的路径被切断",
+              "被切断",
+              "当前数值保留；参数更新后可能过期"
+            ],
+            [
+              "torch.no_grad()",
+              "上下文中的操作不记录反向图",
+              "该段路径被切断",
+              "适合推理；不是 eval() 的替代"
+            ],
+            [
+              "model.eval()",
+              "仍可计算",
+              "仍可计算",
+              "切换训练/推理行为，不自动禁用梯度"
+            ],
+            [
+              "optimizer 参数组",
+              "决定有梯度的哪些参数被 step 更新",
+              "不负责控制",
+              "参数换新后需同步 optimizer"
+            ],
+            [
+              "前缀 KV 缓存",
+              "取决于是否保留计算图",
+              "取决于缓存构造方式",
+              "只可复用依赖与参数版本未变的值"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "sampling-and-cache",
+        "title": "一次生成：固定前缀、重算动作，积分得到命令",
+        "lead": "动作采样是从噪声出发反复计算速度并积分，得到模型坐标中的动作块；前缀缓存只复用满足不变条件的观测 K/V。动态动作每轮仍需重算。最后还须解码动作语义、执行一部分并读取新观测。",
+        "body": [
+          "从 \\(X_1=Z\\) 开始，取 \\(N\\) 个 Euler 步，\\(\\Delta t=-1/N\\)、\\(t_n=1+n\\Delta t\\)，迭代 \\(X_{t_{n+1}}=X_{t_n}+\\Delta t\\,v_\\theta(X_{t_n},t_n,c)\\)。最终得到模型空间中的 \\(X_0\\)，再按训练统计量反归一化、恢复动作语义，并执行约定的前 \\(K\\) 条命令。\\(N\\)、\\(H\\)、\\(K\\) 分别是求解次数、预测时域和执行时域，不能由同一个“步数”代替。 对同一个红色目标，三维输出仍须按 \\((\\Delta x,\\Delta y,g)\\) 解码；生成时间的速度不是夹爪的物理速度。网格示范的三个增量相加能到达目标中心，但模型采样的增量是否也做到，需要单独评价，不能由 Loss 下降推出。",
+          "本教材其他 Flow 章节使用噪声在 \\(\\tau=0\\)、数据在 \\(\\tau=1\\) 的方向。令 \\(\\tau=1-t\\)，则 \\(dX/d\\tau=-dX/dt\\)，因此对应目标变为 \\(A-Z\\)，步长变为正。二者描述同一路径的相反时间参数化。端点、目标符号、时间编码输入和求解方向必须成套匹配，不能只给采样器加一个负号后忽略模型训练时使用的时间。",
+          "缓存成立的证明来自[可见性小节](#/learn/vla-architecture?section=visibility)的依赖归纳：固定观测、位置、Mask、参数与确定性状态后，每层前缀输入不依赖动态 suffix，于是该层 \\(K_p^{(l)},V_p^{(l)}\\) 不随 \\(X_t,t\\) 改变。预填充逐层保存这两个张量，后续只计算 suffix 的 Q/K/V、attention 和 FFN。注意力权重仍随新 Query 改变，不能一并缓存成固定权重；动作当前 K/V 也必须每轮替换，而不是逐轮追加。",
+          "π₀ 的连续 state 在数学上也满足静态条件，但这个 OpenPI 版本的 sample_actions 仅预填充 embed_prefix 产生的视觉语言前缀，state 仍随 suffix 重算。可缓存与已经实现缓存是不同陈述。π₀.₅ 默认 state 位于前缀；只要同一次观测条件不变，它随前缀一同复用。新图像、新指令、新状态、参数更新、位置规则变化或随机增强，都要求重新判断相应缓存是否有效。",
+          "对于 \\(L_b\\) 层、批量 \\(B\\)、KV 头数 \\(n_{kv}\\)、有效存储长度 \\(N_p\\)、头宽 \\(d_h\\)，普通前缀缓存保存 \\(2L_bBn_{kv}N_pd_h\\) 个数。缓存节省前缀的重复投影、FFN 和自注意力，却仍需让每个动作 Query 读取前缀。它不会让动作计算独立于图像 token 数，也不自动抵消缓存带来的内存与访存成本。",
+          "教学代码同时保留完整前向与 make_cache 路径，先比较一次速度，再比较整个 Euler 轨迹末端。改变真实图像后，旧缓存产生的结果与重新编码不同，形成负向测试。闭环获取下一次观测后要重新编码；不能因为语言指令未变，就把整段视觉语言缓存跨多个机器人决策重复使用。 在真实任务中，执行前 K 条命令后获得的是新的图像与状态 \\(c_{k+K}\\)，应重新编码并预测余下动作；这一步闭环更新不在当前固定网格实验的验收范围内。"
+        ],
+        "formula": "\\begin{aligned}X_1&=Z,\\quad \\Delta t=-1/N,\\quad X_{t+\\Delta t}=X_t+\\Delta t\\,v_\\theta(X_t,t,c)\\\\\\tau&=1-t,\\qquad v_{\\tau}(x,\\tau,c)=-v_t(x,1-\\tau,c)\\\\\\#\\mathrm{cache\\ elements}&=2L_bBn_{kv}N_pd_h\\end{aligned}",
+        "figures": [
+          {
+            "src": "/assets/figures/vla-training-inference-v2.svg",
+            "alt": "训练从示范动作和噪声构造输入与速度标签，经完整前后向更新两参数组；推理先建立前缀缓存，再在 t 从1到0的循环中重算动态动作，最后解码执行。",
+            "caption": "训练用示范动作与噪声构造监督；推理读取前缀缓存，迭代生成动作，再解码执行。虚线表示训练中的梯度。",
+            "afterParagraph": 2,
+            "width": 1200,
+            "height": 880
+          }
+        ]
+      },
+      {
+        "id": "continuous-case",
+        "title": "沿同一网格案例核对：标签、梯度与采样各说明什么",
+        "lead": "现在从头回看同一批输入：彩色方块决定候选位置，颜色词选择目标，状态给出起点，动作标签分步移动并在末步闭合。完整代码先检查这条标签约定，再检查网络训练、缓存和冻结；这些检查分别回答不同问题。",
+        "body": [
+          "实验包含 4 个样本、两幅小图像、3 个文字槽位、4 维状态与 3 步 3 维动作。前缀宽度 16、专家宽度 12，二者均为 2 层、2 个 attention 头、每头 4 维。输入宽度不同，但共同 attention 内宽度均为 8。PrefixEncoder、TeachingVLA.suffix、StreamLayer.project、attend、StreamLayer.finish 和 readout 分别对应本章各个结构环节；没有调用 nn.MultiheadAttention。",
+          "代码将每个 2×2 色块的像素中心映射到 [−1,1] 网格坐标，以目标中心减去夹爪起点，再除以已知请求步数，产生每步位移。独立断言将有效位移相加，核对终点正是指令选中的颜色中心；改选另一颜色会得到不同标签。标签合成使用已知渲染坐标，网络输入仍只有图像、文字和状态。它没有把颜色中心另行交给网络，也没有把数据集的正确性当作模型已经学会任务的证据。",
+          "CPU、float64、单线程、种子 20261106、PyTorch 2.15.0 的一次运行中，40 次固定小批更新将 Loss 从 2.377119 降到 0.142637。首步视觉投影与词嵌入的梯度范数约为 0.202212、0.085220，两个参数组都有实际更新。这里固定四个时间点和一份噪声，验证的是小批训练链路；它没有测量新场景、新指令组合或新噪声的泛化。无效标签 NaN、缺失视图隔离与空监督拒绝仍分别检查。",
+          "固定参数与观测时，完整/缓存速度的最大差约为 7.77×10⁻¹⁶，8 步 Euler 末端差约为 2.64×10⁻¹⁶。改变有效图像后，错误使用旧缓存与重新编码的差约为 0.256031。保留计算图的缓存仍通过视觉投影梯度等价检查；冻结参数时图像输入可有梯度，no_grad 缓存则切断这条上游路径。这些数值来自上述一次运行，平台变化可能带来微小差别。",
+          "模型采样与标签累加是两种不同的检查：前者当前只验收有限输出、形状、时间方向和缓存等价，后者验证合成示范的移动规则。实验没有独立任务测试集、动力学或接触模型，因而没有“抓取成功率”。完整真实策略还需按训练统计量反归一化，恢复动作单位与参考系，再在更新观测的闭环中评估；相应机制分别放在[训练与推理一致性](#/learn/train-infer-contract)、[动作执行](#/learn/execution-latency)与[策略评估](#/learn/evaluation)，此处不重复其推导。",
+          "建议按代码页中的函数边界阅读：先手算小型三块 Mask，再跟踪一次联合 attention 的投影与拆分；随后核对 FM target 的符号和有效分母，最后运行缓存、冻结和过期条件对照。练习页提供 Mask 手写题与联合 attention 实现题，要求用数值相等、禁止路径零梯度和条件干预来解释结果，而不仅是让返回张量形状正确。"
+        ]
+      },
+      {
+        "id": "family-comparison",
+        "title": "π₀、π₀.₅ 与 π₀-FAST：同一来源，不同计算协议",
+        "lead": "π₀ 和本章所指公开 π₀.₅ 路径采用连续动作流，π₀-FAST 则将动作编码为离散 Token 再自回归生成。它们在同一家族中仍有不同输入和训练协议。下面把这些差异定位到已经定义的计算接口。",
+        "body": [
+          "π₀-FAST 把归一化动作块经过 DCT、量化与 BPE 编码为离散序列，再用视觉语言模型做 next-token prediction。它没有本章连续 Flow 路径中的噪声动作输入、速度 target 或 ODE 循环。压缩 token 长度不必等于动作时域乘动作维度；解码得到的连续动作还需遵循相同的归一化与时间协议。FAST 的具体表示来自[官方论文](https://arxiv.org/abs/2501.09747v1)。",
+          "固定版本的 [Pi0FAST](https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0_fast.py) 使用一套 PaliGemma 模型参数和词表读出，而非 Pi0 中的两配置 joint-attention 模块。训练将输入/目标错开一位，Loss Mask 选取 postfix（其中包括动作输出格式标记）；推理逐 token 生成，再由动作 tokenizer 解码。原始连续 actions 参数并不直接作为这个 compute_loss 的回归 target，动作监督已经进入 tokenized_prompt。",
+          "π₀.₅ 原论文还讨论文本、高层子任务、离散动作与连续动作的联合训练。附录 A-E 给出一条容易遗漏的限制：连续动作专家不读取携带干净动作答案的 FAST token；否则训练时会获得部署的 Flow 输入所没有的信息。图 2 仅展示公开 Flow-only 实现，因此没有把这条额外监督序列画进前缀。论文架构和开源推理图应各按自己的输入协议阅读。",
+          "本文不从这些结构直接推导训练速度、语言理解或成功率排名。自回归次数取决于压缩长度，Flow 成本取决于求解次数与专家规模，实际时延还取决于缓存、精度和内核。方法之间的比较应固定观测信息、动作语义、数据和评估协议，分别报告计算预算与闭环行为，而不是把一个模型名字当作收益保证。",
+          "完整 VLA 应能从观测一路追到动作：编码确定条件信息，交互模块读取条件，训练目标定义生成量，采样与解码恢复动作，执行后再更新观测。骨干、专家、Mask 与缓存都要放回这条链上理解，不能从家族名称推断具体实现。"
+        ],
+        "comparison": {
+          "title": "固定 OpenPI 版本的默认接口",
+          "columns": [
+            "接口",
+            "π₀",
+            "π₀.₅ 公开 Flow 路径",
+            "π₀-FAST"
+          ],
+          "rows": [
+            [
+              "图像与语言",
+              "SigLIP / PaliGemma 前缀",
+              "同类视觉语言前缀",
+              "同类视觉语言前缀"
+            ],
+            [
+              "本体状态",
+              "连续投影，独立 state suffix 块",
+              "默认离散化写入 prompt；可被配置改变",
+              "离散化写入 prompt"
+            ],
+            [
+              "动作输入",
+              "整块连续噪声动作",
+              "整块连续噪声动作",
+              "训练时错位的离散 postfix token"
+            ],
+            [
+              "动作参数",
+              "独立专家参数，各层共同 attention",
+              "独立专家参数，各层共同 attention",
+              "同一自回归骨干与词表读出"
+            ],
+            [
+              "生成时间",
+              "action/time 拼接后 MLP",
+              "时间 MLP → 专家 AdaRMSNorm",
+              "没有 Flow 时间输入"
+            ],
+            [
+              "动作可见性",
+              "噪声动作块内双向",
+              "噪声动作块内双向",
+              "输出 token 因果可见"
+            ],
+            [
+              "监督与采样",
+              "速度 MSE；t=1→0 积分",
+              "速度 MSE；t=1→0 积分",
+              "postfix CE；逐 token 生成与解码"
+            ]
+          ]
+        }
+      }
+    ],
+    "shapes": [
+      {
+        "name": "images",
+        "shape": "[B,V,3,8,8]",
+        "meaning": "教学模型的多视角输入，V=2；真实 checkpoint 使用自己的预处理协议"
+      },
+      {
+        "name": "prefix",
+        "shape": "[B,11,16]",
+        "meaning": "每视角 4 个 patch，加 3 个文字槽位；带独立有效位"
+      },
+      {
+        "name": "state",
+        "shape": "[B,4] → [B,1,12]",
+        "meaning": "π₀ 风格的单个连续状态 token"
+      },
+      {
+        "name": "noisy action / velocity",
+        "shape": "[B,H,3]",
+        "meaning": "H=3；动作状态、速度 target 和输出具有相同轴"
+      },
+      {
+        "name": "suffix",
+        "shape": "[B,1+H,12]",
+        "meaning": "一个 state token 加 H 个动作 token"
+      },
+      {
+        "name": "per-stream Q/K/V",
+        "shape": "[B,2,N,4]",
+        "meaning": "2 个普通 attention 头，头宽 4；两流隐藏宽度不同但投影空间兼容"
+      },
+      {
+        "name": "joint attention mask",
+        "shape": "[B,11+1+H,11+1+H]",
+        "meaning": "行是 Query，列是 Key；块顺序与有效位共同决定允许读取的集合"
+      },
+      {
+        "name": "prefix cache, each layer",
+        "shape": "K,V: [B,2,11,4]",
+        "meaning": "逐层保存旋转后的 Key 与 Value，始终不追加旧动作状态"
+      }
+    ],
+    "code": {
+      "title": "双参数流 VLA：完整前后向、Flow 采样与缓存对照",
+      "source": "\"\"\"A small, original pi0-style teaching model; no pretrained weights required.\n\nRun: python vla-joint-attention.py  (dependency: PyTorch)\nOpenPI convention: t=1 is noise, t=0 is action; target = noise - action.\nThe fixed requested horizon mask is known at inference, not future episode termination.\n\"\"\"\nimport copy\nimport json\nimport math\n\nimport torch\nfrom torch import nn\n\n\ndef rms(x):\n    return x * torch.rsqrt(x.square().mean(dim=-1, keepdim=True) + 1e-6)\n\n\ndef rope(x, positions):\n    # x: [B, heads, L, d]; rotate adjacent pairs (a teaching convention).\n    d = x.shape[-1]\n    assert d % 2 == 0\n    frequency = 10000.0 ** (-torch.arange(0, d, 2, device=x.device, dtype=x.dtype) / d)\n    angle = positions[:, None, :, None] * frequency\n    even, odd = x[..., 0::2], x[..., 1::2]\n    return torch.stack((even * angle.cos() - odd * angle.sin(),\n                        even * angle.sin() + odd * angle.cos()), dim=-1).flatten(-2)\n\n\ndef visibility(valid, groups):\n    # Row=query, column=key. The three groups are prefix=0, state=1, action=2.\n    return (groups[None, :] <= groups[:, None])[None] & valid[:, :, None] & valid[:, None, :]\n\n\ndef attend(q, k, v, allowed):\n    scores = q @ k.transpose(-1, -2) / math.sqrt(q.shape[-1])\n    allowed = allowed[:, None]\n    has_key = allowed.any(dim=-1, keepdim=True)\n    scores = scores.masked_fill(~allowed, -torch.inf)\n    scores = torch.where(has_key, scores, torch.zeros_like(scores))\n    weights = torch.softmax(scores, dim=-1)\n    weights = torch.where(allowed, weights, torch.zeros_like(weights))\n    return weights @ v  # An invalid query has a zero attention result.\n\n\nclass StreamLayer(nn.Module):\n    def __init__(self, width, heads=2, head_dim=4):\n        super().__init__()\n        self.heads, self.head_dim = heads, head_dim\n        inner = heads * head_dim\n        self.qkv = nn.Linear(width, 3 * inner, bias=False)\n        self.out = nn.Linear(inner, width, bias=False)\n        self.ff = nn.Sequential(nn.Linear(width, 2 * width), nn.SiLU(),\n                                nn.Linear(2 * width, width))\n        self.scale1 = nn.Parameter(torch.ones(width))\n        self.scale2 = nn.Parameter(torch.ones(width))\n\n    def project(self, x, positions):\n        b, length, _ = x.shape\n        q, k, v = self.qkv(rms(x) * self.scale1).chunk(3, dim=-1)\n        q, k, v = [y.reshape(b, length, self.heads, self.head_dim).transpose(1, 2)\n                   for y in (q, k, v)]\n        return rope(q, positions), rope(k, positions), v\n\n    def finish(self, x, attention):\n        merged = attention.transpose(1, 2).flatten(-2)\n        x = x + self.out(merged)\n        return x + self.ff(rms(x) * self.scale2)\n\n\nclass PrefixEncoder(nn.Module):\n    def __init__(self, depth=2, width=16):\n        super().__init__()\n        self.patch = nn.Conv2d(3, width, kernel_size=4, stride=4)\n        self.camera = nn.Embedding(2, width)\n        self.word = nn.Embedding(32, width)\n        self.layers = nn.ModuleList(StreamLayer(width) for _ in range(depth))\n\n    def embed(self, images, words, image_valid, word_valid):\n        b, views, channels, height, width = images.shape\n        assert (views, channels, height, width) == (2, 3, 8, 8)\n        pixels = torch.where(image_valid[:, :, None, None, None], images, 0.0)\n        patches = self.patch(pixels.reshape(b * views, channels, height, width))\n        patches = patches.flatten(2).transpose(1, 2).reshape(b, views, 4, -1)\n        cameras = self.camera(torch.arange(views, device=images.device))\n        patches = (patches + cameras[None, :, None]).flatten(1, 2)\n        text = self.word(words)\n        valid = torch.cat((image_valid.repeat_interleave(4, dim=1), word_valid), dim=1)\n        prefix = torch.cat((patches, text), dim=1)\n        return torch.where(valid[..., None], prefix, 0.0), valid\n\n\nclass TeachingVLA(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.prefix = PrefixEncoder()\n        self.state = nn.Linear(4, 12)\n        self.action = nn.Linear(3, 12)\n        self.time_action = nn.Sequential(nn.Linear(24, 12), nn.SiLU(), nn.Linear(12, 12))\n        self.expert = nn.ModuleList(StreamLayer(12) for _ in range(2))\n        self.readout = nn.Linear(12, 3)\n\n    def suffix(self, state, x, t, action_valid):\n        # State has no t dependence; only the H action slots receive generation time.\n        frequency = torch.arange(1, 7, device=x.device, dtype=x.dtype) * math.pi\n        phase = t[:, None] * frequency\n        time = torch.cat((phase.sin(), phase.cos()), dim=-1)\n        action = self.action(torch.where(action_valid[..., None], x, 0.0))\n        time = time[:, None].expand(-1, x.shape[1], -1)\n        action = self.time_action(torch.cat((action, time), dim=-1))\n        suffix = torch.cat((self.state(state)[:, None], action), dim=1)\n        valid = torch.cat((torch.ones_like(action_valid[:, :1]), action_valid), dim=1)\n        return torch.where(valid[..., None], suffix, 0.0), valid\n\n    def forward(self, images, words, state, x, t, image_valid, word_valid,\n                action_valid, cache=None):\n        suffix, sv = self.suffix(state, x, t, action_valid)\n        if cache is None:\n            prefix, pv = self.prefix.embed(images, words, image_valid, word_valid)\n        else:\n            prefix, pv = None, cache['valid']\n        p = pv.shape[1]\n        valid = torch.cat((pv, sv), dim=1)\n        positions = valid.long().cumsum(dim=1) - 1\n        groups = torch.cat((torch.zeros(p, device=x.device, dtype=torch.long),\n                            torch.ones(1, device=x.device, dtype=torch.long),\n                            torch.full((x.shape[1],), 2, device=x.device)))\n        allowed = visibility(valid, groups)\n        for index, (prefix_layer, expert_layer) in enumerate(zip(self.prefix.layers, self.expert)):\n            qs, ks, vs = expert_layer.project(suffix, positions[:, p:])\n            if cache is None:\n                qp, kp, vp = prefix_layer.project(prefix, positions[:, :p])\n                q, k, v = [torch.cat(pair, dim=2)\n                           for pair in ((qp, qs), (kp, ks), (vp, vs))]\n                result = attend(q, k, v, allowed)\n                prefix = prefix_layer.finish(prefix, result[:, :, :p])\n                suffix = expert_layer.finish(suffix, result[:, :, p:])\n            else:\n                kp, vp = cache['layers'][index]\n                result = attend(qs, torch.cat((kp, ks), dim=2),\n                                torch.cat((vp, vs), dim=2), allowed[:, p:])\n                suffix = expert_layer.finish(suffix, result)\n        velocity = self.readout(rms(suffix[:, 1:]))\n        return torch.where(action_valid[..., None], velocity, 0.0)\n\n    def make_cache(self, images, words, image_valid, word_valid):\n        # This function itself preserves autograd. The caller chooses no_grad/detach.\n        prefix, valid = self.prefix.embed(images, words, image_valid, word_valid)\n        positions = valid.long().cumsum(dim=1) - 1\n        allowed = valid[:, :, None] & valid[:, None, :]\n        layers = []\n        for layer in self.prefix.layers:\n            q, k, v = layer.project(prefix, positions)\n            layers.append((k, v))  # Save each layer's rotated K and unrotated V.\n            prefix = layer.finish(prefix, attend(q, k, v, allowed))\n        return {'layers': layers, 'valid': valid}\n\n    def fm_loss(self, batch, noise, t):\n        images, words, state, actions, iv, wv, av = batch\n        if not av.any():\n            raise ValueError('The batch has no supervised action slots')\n        if not torch.isfinite(actions[av]).all():\n            raise ValueError('A valid action contains a non-finite value')\n        # Invalid labels may be NaN: replace before interpolation, not after squaring.\n        clean = torch.where(av[..., None], actions, 0.0)\n        noise = torch.where(av[..., None], noise, 0.0)\n        time = t[:, None, None]\n        x = time * noise + (1 - time) * clean\n        target = noise - clean\n        prediction = self(images, words, state, x, t, iv, wv, av)\n        return (prediction[av] - target[av]).square().mean()\n\n    @torch.no_grad()\n    def sample(self, batch, noise, steps=8, use_cache=True):\n        if steps < 1:\n            raise ValueError('steps must be positive')\n        if self.training:\n            raise ValueError('Call eval() before the inference comparison')\n        images, words, state, _, iv, wv, av = batch\n        cache = self.make_cache(images, words, iv, wv) if use_cache else None\n        x = torch.where(av[..., None], noise.clone(), 0.0)\n        dt = -1.0 / steps\n        for step in range(steps):\n            time = x.new_full((x.shape[0],), 1.0 + step * dt)\n            x = x + dt * self(images, words, state, x, time, iv, wv, av, cache)\n        return x\n\n\ndef grad_norm(parameters):\n    terms = [p.grad.square().sum() for p in parameters if p.grad is not None]\n    return float(torch.stack(terms).sum().sqrt()) if terms else 0.0\n\n\ndef experiment():\n    torch.manual_seed(20261106)\n    torch.set_num_threads(1)\n    model = TeachingVLA().double()\n    # A planar teaching task: move to the named colour and then close the gripper.\n    # Vocabulary: 0=padding, 1=move, 2=red, 3=blue, 4=close.\n    words = torch.tensor([[1, 2, 4], [1, 3, 0], [1, 3, 4], [1, 2, 0]])\n    # Top-left (row, column) of each 2x2 square: [sample, red/blue, row/column].\n    locations = torch.tensor([[[1, 1], [5, 5]], [[1, 5], [5, 1]],\n                              [[5, 1], [1, 5]], [[5, 5], [1, 1]]])\n    images = torch.zeros(4, 2, 3, 8, 8, dtype=torch.float64)\n    for b in range(4):\n        for colour, channel in enumerate((0, 2)):  # RGB red or blue\n            row, column = locations[b, colour].tolist()\n            images[b, :, channel, row:row+2, column:column+2] = 1.0\n    # Both views render the same grid; these are not calibrated physical cameras.\n    iv = torch.tensor([[1, 1], [1, 0], [1, 1], [1, 1]], dtype=torch.bool)\n    wv = words != 0\n    av = torch.tensor([[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 0]], dtype=torch.bool)\n    state = torch.tensor([[0.0, 0.0, 0.0, 0.0], [0.25, -0.25, 0.0, 0.0],\n                          [-0.25, 0.25, 0.0, 0.0], [0.1, 0.2, 0.0, 0.0]],\n                         dtype=torch.float64)  # [x, y, vx, vy], grid units\n    selected = (words[:, 1] == 3).long()\n    # Map square centres from pixel indices to the declared [-1,1] grid frame.\n    centres = (locations.flip(-1).double() + 0.5) / 7.0 * 2.0 - 1.0\n    target_xy = centres[torch.arange(4), selected]\n    requested_steps = av.sum(-1)\n    delta = (target_xy - state[:, :2]) / requested_steps[:, None]\n    actions = torch.cat((delta[:, None].expand(-1, 3, -1),\n                         -torch.ones(4, 3, 1, dtype=torch.float64)), dim=-1).clone()\n    actions[torch.arange(4), requested_steps - 1, 2] = 1.0  # close on last step\n    # Independent label checks: integrate displacements; switch the requested colour.\n    reached = state[:, :2] + torch.where(av[..., None], actions[..., :2], 0.0).sum(1)\n    torch.testing.assert_close(reached, target_xy)\n    assert (target_xy - centres[torch.arange(4), 1 - selected]).abs().sum(-1).min() > 0\n    actions[~av] = torch.nan\n    batch = (images, words, state, actions, iv, wv, av)\n    noise = torch.randn(4, 3, 3, dtype=torch.float64)\n    time = torch.tensor([0.2, 0.4, 0.6, 0.8], dtype=torch.float64)\n    prefix_params = list(model.prefix.parameters())\n    expert_params = [p for name, p in model.named_parameters() if not name.startswith('prefix.')]\n    optimizer = torch.optim.AdamW([{'params': prefix_params, 'lr': 2e-3},\n                                  {'params': expert_params, 'lr': 4e-3}], weight_decay=0.0)\n    prefix_before = model.prefix.patch.weight.detach().clone()\n    readout_before = model.readout.weight.detach().clone()\n    initial = float(model.fm_loss(batch, noise, time).detach())\n    for step in range(40):\n        optimizer.zero_grad(set_to_none=True)\n        loss = model.fm_loss(batch, noise, time)\n        loss.backward()\n        if step == 0:\n            gradients = {'vision': grad_norm(model.prefix.patch.parameters()),\n                         'language': grad_norm(model.prefix.word.parameters()),\n                         'prefix': grad_norm(prefix_params),\n                         'expert': grad_norm(expert_params)}\n            assert all(value > 0 and math.isfinite(value) for value in gradients.values())\n        optimizer.step()\n    final = float(model.fm_loss(batch, noise, time).detach())\n    assert final < initial  # Only verifies this fixed four-sample optimization experiment.\n    assert not torch.equal(prefix_before, model.prefix.patch.weight)\n    assert not torch.equal(readout_before, model.readout.weight)\n    model.eval()\n    with torch.no_grad():\n        cache = model.make_cache(images, words, iv, wv)\n        full = model(images, words, state, noise, time, iv, wv, av)\n        cached = model(images, words, state, noise, time, iv, wv, av, cache)\n        torch.testing.assert_close(full, cached, rtol=1e-10, atol=1e-10)\n        altered = images.clone()\n        altered[0, 0] += 2.0\n        stale = model(altered, words, state, noise, time, iv, wv, av, cache)\n        fresh = model(altered, words, state, noise, time, iv, wv, av)\n        assert (stale[0] - fresh[0]).abs().max() > 1e-6\n        padded = images.clone()\n        padded[~iv] = 999.0\n        ignored = model(padded, words, state, noise, time, iv, wv, av)\n        torch.testing.assert_close(ignored, full, rtol=1e-10, atol=1e-10)\n    generated = model.sample(batch, noise, use_cache=True)\n    generated_full = model.sample(batch, noise, use_cache=False)\n    torch.testing.assert_close(generated, generated_full, rtol=1e-10, atol=1e-10)\n    assert torch.isfinite(generated).all() and (generated[~av] == 0).all()\n    # A graph-preserving cache is also gradient-equivalent in this deterministic model.\n    model.zero_grad(set_to_none=True)\n    model(images, words, state, noise, time, iv, wv, av).square().sum().backward()\n    reference = model.prefix.patch.weight.grad.clone()\n    model.zero_grad(set_to_none=True)\n    cache = model.make_cache(images, words, iv, wv)\n    model(images, words, state, noise, time, iv, wv, av, cache).square().sum().backward()\n    torch.testing.assert_close(reference, model.prefix.patch.weight.grad, rtol=1e-9, atol=1e-9)\n    frozen = copy.deepcopy(model).eval()\n    frozen.zero_grad(set_to_none=True)\n    frozen.prefix.requires_grad_(False)\n    pixels = images.clone().requires_grad_()\n    frozen(pixels, words, state, noise, time, iv, wv, av).square().sum().backward()\n    assert all(p.grad is None for p in frozen.prefix.parameters())\n    assert pixels.grad.abs().sum() > 0  # Frozen parameters do not sever input gradients.\n    pixels2 = images.clone().requires_grad_()\n    with torch.no_grad():\n        detached_cache = frozen.make_cache(pixels2, words, iv, wv)\n    frozen(pixels2, words, state, noise, time, iv, wv, av, detached_cache).sum().backward()\n    assert pixels2.grad is None  # no_grad really removes this upstream route.\n    empty = (*batch[:-1], torch.zeros_like(av))\n    try:\n        model.fm_loss(empty, noise, time)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('empty supervision must be rejected')\n    report = {'seed': 20261106, 'torch': torch.__version__, 'dtype': 'float64',\n              'shapes': {'images': list(images.shape), 'prefix': [4, 11, 16],\n                         'suffix': [4, 4, 12], 'velocity': list(full.shape)},\n              'loss_before': initial, 'loss_after_40_updates': final,\n              'first_step_gradient_norms': gradients,\n              'cache_velocity_max_error': float((full - cached).abs().max()),\n              'cache_sample_max_error': float((generated - generated_full).abs().max()),\n              'stale_cache_max_error': float((stale - fresh).abs().max()),\n              'task': 'planar named-colour approach; dx, dy, gripper in grid units',\n              'target_xy': target_xy.tolist(),\n              'checks': ['label displacements reach the named colour',\n                         'switching colour changes the target label',\n                         'finite valid-mask FM loss', 'two parameter groups receive gradients',\n                         'full/cache velocity and Euler equality', 'changed-image cache invalidation',\n                         'missing-view isolation', 'graph-preserving cache gradient equality',\n                         'frozen parameter versus input gradient', 'no_grad cuts input route',\n                         'empty supervision rejected']}\n    print(json.dumps(report, indent=2))\n\n\nif __name__ == '__main__':\n    experiment()\n",
+      "explanations": [
+        {
+          "lines": "15–43",
+          "text": "归一化、RoPE、三块可见性与注意力核心。空行在 Softmax 前使用有限占位，之后将禁止权重归零。"
+        },
+        {
+          "lines": "46–90",
+          "text": "前缀宽度 16、专家宽度 12，各有投影与 FFN；两流进入兼容的头空间。图像编码器只是 patch 层。"
+        },
+        {
+          "lines": "93–186",
+          "text": "沿 suffix、forward、make_cache、fm_loss、sample 追踪整条链。目标为 noise−action，Euler 采用负步长；缓存是否保留图由调用者决定。"
+        },
+        {
+          "lines": "194–318",
+          "text": "同一网格案例：渲染红蓝目标、按颜色词构造标签并核对位移终点，然后验证 40 次更新、缓存、缺失视图与冻结。标签正确、梯度连通与策略成功分别需要证据。"
+        }
+      ],
+      "expected": "依赖仅 PyTorch。CPU float64、种子 20261106、PyTorch 2.15.0：40 次固定小批更新的 Loss 为 2.377119→0.142637；完整/缓存速度最大差约 7.77e−16，采样末端差约 2.64e−16。图像变化后错用旧缓存的差约 0.256031。标签终点、颜色选择及原有缓存/梯度断言均通过；固定小批拟合不表示模型在独立网格任务或真实机器人上成功。"
+    },
+    "exercise": {
+      "title": "手写 π₀ 的块可见性矩阵",
+      "runtime": "python",
+      "prompt": "实现 block_attention_mask(valid, block_start)。valid 是 [B,N] 布尔列表，block_start 是长度 N 的布尔列表；其累积和为组号。返回 [B,N,N] 布尔矩阵，行 Query i 只能读有效、且组号不大于自身的 Key j；无效 Query 整行必须为 False。拒绝空输入、形状不符及非布尔值。先手算两个 prefix、一个 state、两个 action 的矩阵，再运行测试。",
+      "starter": "def block_attention_mask(valid, block_start):\n    # 1. validate shapes and bools\n    # 2. cumulative group IDs\n    # 3. combine group order with both validity axes\n    raise NotImplementedError\n",
+      "solution": "def block_attention_mask(valid, block_start):\n    if not valid or not valid[0]:\n        raise ValueError(\"nonempty batch and sequence required\")\n    n = len(valid[0])\n    if len(block_start) != n or any(len(row) != n for row in valid):\n        raise ValueError(\"inconsistent lengths\")\n    if any(type(value) is not bool for row in valid for value in row):\n        raise ValueError(\"valid entries must be bool\")\n    if any(type(value) is not bool for value in block_start):\n        raise ValueError(\"block_start entries must be bool\")\n    groups, total = [], 0\n    for start in block_start:\n        total += int(start)\n        groups.append(total)\n    return [[[bool(row[i] and row[j] and groups[j] <= groups[i])\n              for j in range(n)] for i in range(n)] for row in valid]\n",
+      "tests": "start = [False, False, True, True, False]\nactual = block_attention_mask([[True] * 5], start)[0]\nexpected = [[True, True, False, False, False],\n            [True, True, False, False, False],\n            [True, True, True, False, False],\n            [True, True, True, True, True],\n            [True, True, True, True, True]]\nassert actual == expected\nmask = block_attention_mask([[True, False, True, True, False]], start)[0]\nassert all(not row[1] and not row[4] for row in mask)\nassert not any(mask[1]) and not any(mask[4])\n# The first boundary flag may shift every group equally without changing visibility.\nassert block_attention_mask([[True]*5], [True, False, True, True, False])[0] == expected\nfor valid, start in [([], []), ([[True]], []), ([[True], [True, False]], [False]),\n                     ([[1]], [False]), ([[True]], [0])]:\n    try:\n        block_attention_mask(valid, start)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"invalid input accepted\")\nprint(\"block mask checks passed\")\n",
+      "hints": [
+        "同一块中的 token 可以互相读取；不要把所有位置一律做下三角。",
+        "组号整体加一不会改变相对关系。",
+        "Query 无效和 Key 无效对应两条不同的屏蔽轴。"
+      ],
+      "explanation": "块起点的累积和表达的是块间因果性。动作块中只有第一个位置开启新组，后续动作保持同组，因此能够双向交互。有效位同时作用于两条轴，使填充不能被读取，也不能生成伪有效输出。"
+    },
+    "pytorchTask": {
+      "prompt": "手写 joint_attention(qp,kp,vp,qs,ks,vs,prefix_valid,action_valid)。六个输入为有限浮点 [B,heads,L,d]；prefix 与 suffix 长度可不同，但 B、heads、d 相同。suffix 第一个 token 是始终有效的 state，后面是 H 个 action。prefix 只读有效 prefix；state 读 prefix+state；action 读全部有效 token。返回 (prefix_output,suffix_output)，无效 Query 输出零。不得调用 MultiheadAttention 或 SDPA。测试要求逐行独立参照、全屏蔽前缀、禁止路径零梯度和有效条件梯度。",
+      "starter": "import math\nimport torch\n\ndef joint_attention(qp, kp, vp, qs, ks, vs, prefix_valid, action_valid):\n    # Validate [B, heads, length, d] and masks.\n    # Concatenate projected streams, apply the three-block mask,\n    # normalize over keys, then split the output by token boundary.\n    raise NotImplementedError\n",
+      "solution": "import math\nimport torch\n\ndef joint_attention(qp, kp, vp, qs, ks, vs, prefix_valid, action_valid):\n    # suffix = one always-valid state token followed by H action tokens\n    tensors = (qp, kp, vp, qs, ks, vs)\n    if any(x.ndim != 4 for x in tensors):\n        raise ValueError(\"Q/K/V must have shape [B, heads, length, d]\")\n    b, heads, p, d = qp.shape\n    s = qs.shape[2]\n    if min(b, heads, p, d) < 1 or s < 2:\n        raise ValueError(\"nonempty prefix and at least one action required\")\n    if any(x.shape != qp.shape for x in (kp, vp)) or any(x.shape != qs.shape for x in (ks, vs)):\n        raise ValueError(\"Q/K/V lengths must match within each stream\")\n    if qs.shape[:2] != qp.shape[:2] or qs.shape[-1] != d:\n        raise ValueError(\"batch/head dimensions must be compatible\")\n    if any(x.device != qp.device or x.dtype != qp.dtype or not x.is_floating_point()\n           or not torch.isfinite(x).all() for x in tensors):\n        raise ValueError(\"finite, same-device floating Q/K/V required\")\n    if prefix_valid.shape != (b, p) or action_valid.shape != (b, s - 1):\n        raise ValueError(\"mask shapes are inconsistent\")\n    if any(m.dtype != torch.bool or m.device != qp.device for m in (prefix_valid, action_valid)):\n        raise ValueError(\"boolean same-device masks required\")\n    state_valid = torch.ones(b, 1, dtype=torch.bool, device=qp.device)\n    valid = torch.cat((prefix_valid, state_valid, action_valid), dim=1)\n    groups = torch.tensor([0] * p + [1] + [2] * (s - 1), device=qp.device)\n    allowed = ((groups[None, :] <= groups[:, None])[None]\n               & valid[:, :, None] & valid[:, None, :])[:, None]\n    q, k, v = [torch.cat(pair, dim=2) for pair in ((qp, qs), (kp, ks), (vp, vs))]\n    logits = q @ k.transpose(-1, -2) / math.sqrt(d)\n    logits = logits.masked_fill(~allowed, -torch.inf)\n    has_key = allowed.any(dim=-1, keepdim=True)\n    logits = torch.where(has_key, logits, torch.zeros_like(logits))\n    weight = torch.softmax(logits, dim=-1)\n    weight = torch.where(allowed, weight, torch.zeros_like(weight))\n    output = weight @ v\n    return output[:, :, :p], output[:, :, p:]\n",
+      "tests": "torch.manual_seed(13)\nqp = torch.randn(2, 2, 3, 4, dtype=torch.float64, requires_grad=True)\nkp = torch.randn_like(qp, requires_grad=True)\nvp = torch.randn_like(qp, requires_grad=True)\nqs = torch.randn(2, 2, 4, 4, dtype=torch.float64, requires_grad=True)\nks = torch.randn_like(qs, requires_grad=True)\nvs = torch.randn_like(qs, requires_grad=True)\npv = torch.tensor([[1, 1, 0], [0, 0, 0]], dtype=torch.bool)\nav = torch.tensor([[1, 1, 0], [1, 1, 1]], dtype=torch.bool)\np, s = joint_attention(qp, kp, vp, qs, ks, vs, pv, av)\nassert p.shape == qp.shape and s.shape == qs.shape\nassert torch.isfinite(p).all() and torch.isfinite(s).all()\nassert (p[1] == 0).all() and (s[0, :, -1] == 0).all()\n# Independent row-by-row reference, not the same matrix-mask implementation.\nfor b in range(2):\n    keys = torch.cat((kp[b], ks[b]), dim=1)\n    values = torch.cat((vp[b], vs[b]), dim=1)\n    for i in range(4):\n        if i > 0 and not av[b, i-1]:\n            continue\n        visible = pv[b].nonzero().flatten().tolist() + [3]\n        if i > 0:\n            visible += [4+j for j in range(3) if av[b, j]]\n        logits = (qs[b, :, i:i+1] @ keys[:, visible].transpose(-1, -2)) / 2\n        expected = (logits.softmax(-1) @ values[:, visible]).squeeze(1)\n        torch.testing.assert_close(s[b, :, i], expected)\n# Prefix cannot depend on suffix; state cannot depend on any action slot.\n(p.square().sum() + s[:, :, :1].square().sum()).backward(retain_graph=True)\nassert qs.grad[:, :, 1:].count_nonzero() == 0\nassert ks.grad[:, :, 1:].count_nonzero() == 0\nassert vs.grad[:, :, 1:].count_nonzero() == 0\nfor tensor in (qp, kp, vp, qs, ks, vs):\n    tensor.grad = None\ns[:, :, 1:].square().sum().backward()\nassert vp.grad[0, :, :2].abs().sum() > 0\nassert vs.grad[0, :, -1].count_nonzero() == 0\ntry:\n    joint_attention(qp, kp, vp, qs, ks, vs, pv.float(), av)\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"non-bool mask accepted\")\nprint(\"joint attention reference and gradient checks passed\")\n",
+      "hints": [
+        "在 Q/K/V 已投影后沿 length 轴拼接，不是沿 head 或 feature 轴。",
+        "全屏蔽 Query 的 softmax 输入不能保持全负无穷；先选有限占位，随后清零该行权重。",
+        "先对 prefix 与 state 输出求导，动作 K/V 应无梯度；再对动作输出求导，允许的前缀 Value 应获得梯度。"
+      ],
+      "explanation": "这道实现题只验证共同 attention 空间中的数据流，两个流的 Linear、RMSNorm、FFN 与多层组合见完整代码。逐行参照使用显式合法 Key 索引，避免参照代码重复同一个矩阵 Mask 错误；梯度测试进一步验证被禁止的信息路径，不能由输出 shape 替代。"
+    },
+    "pitfalls": [
+      {
+        "title": "把共同注意力写成共同权重",
+        "detail": "不同 token 使用各自投影与 FFN；兼容的是注意力头空间，而非所有隐藏宽度与参数。"
+      },
+      {
+        "title": "把不读动作的前缀误认为不接受动作梯度",
+        "detail": "前向 Mask 限制信息写入；动作损失仍可沿前缀 K/V 反传。梯度隔离需要显式定义。"
+      },
+      {
+        "title": "把论文配方当成公开入口全部功能",
+        "detail": "π₀.₅ 原论文、Knowledge Insulation 与公开 Flow-only 微调路径需要分别核对。checkpoint 的训练来源不能自动定义后续每次更新的目标。"
+      },
+      {
+        "title": "把上次动作 K/V 累加到下一次 ODE 调用",
+        "detail": "迭代更新的是整块动作状态。固定前缀可保留，动态 suffix 应替换，而不是成为不断延长的历史。"
+      },
+      {
+        "title": "把物理动作时域与 Flow 时间混用",
+        "detail": "H 决定一次输出多少命令，t 决定当前概率路径位置，N 决定求解调用数；三个轴不能相互替换。"
+      },
+      {
+        "title": "只在最后乘 Mask 清除 NaN",
+        "detail": "无效 NaN 可能在构造噪声输入时就进入注意力。需要先安全构造输入，再独立选择有效监督，且不泄漏未来终止信息。"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "两组隐藏宽度不同，为什么还能做联合 attention？若分别对前缀和动作做两个 Softmax 再相加，是否等价？",
+        "answer": [
+          "各自的 Q/K/V 投影把隐藏宽度映射到兼容头空间，因此点积和 Value 加权是合法的；输出再用独立投影恢复各自宽度。",
+          "一次联合 Softmax 的分母包含全部允许 Key。两个独立 Softmax 会各自分配总质量 1，其和通常不同；额外门控或归一化也构成另一种参数化，不能直接视为原公式。"
+        ],
+        "codeFocus": "StreamLayer.project 与 TeachingVLA.forward 的 torch.cat / attend / split；联合 attention 手写题。",
+        "acceptance": [
+          "写清两组投影矩阵形状和 Q/K/V 拼接轴。",
+          "用一个前缀 Key、一个动作 Key 的标量例子说明归一化分母不同。"
+        ]
+      },
+      {
+        "question": "π₀ 的 state token 与 π₀.₅ 默认的 state token 分别在哪里？为什么这会改变可缓存范围？",
+        "answer": [
+          "π₀ 将连续状态投影到动作专家 suffix 中的独立块；π₀.₅ 默认把状态离散化写入文字前缀，不再添加连续 state suffix。实际数据变换允许配置差异，需要与模型一起核对。",
+          "π₀ state 在数学上静态且不读动作，可以设计缓存，但固定 OpenPI sample_actions 只预填充视觉语言 prefix；π₀.₅ 的离散 state 已包含在前缀缓存。新状态来到时相应缓存必须失效。"
+        ],
+        "codeFocus": "官方 embed_prefix / embed_suffix / ModelTransformFactory；教学 make_cache 仅缓存 prefix。",
+        "acceptance": [
+          "分别指出状态进入的参数流与可见性块。",
+          "区分理论上可缓存与固定版本确实缓存的内容。"
+        ]
+      },
+      {
+        "question": "为什么“前缀不读取动作”不能推出“动作 Loss 不更新前缀”？冻结前缀参数是否阻止可训练图像适配器收到梯度？",
+        "answer": [
+          "动作 Query 读取前缀 K/V，损失通过 Value 与 Softmax 分数回传到前缀投影及编码器。前向可见性与反向链式法则方向不同。",
+          "requires_grad_(False) 只冻结指定参数；上游可训练输入仍能获得梯度。对特征 detach 或用 no_grad 构造缓存才会切断该路。若骨干还要接受离散 token 目标，Knowledge Insulation 也不等价于全冻结。"
+        ],
+        "codeFocus": "experiment 中 frozen/pixels 与 detached_cache/pixels2 对照。",
+        "acceptance": [
+          "指出至少一条经前缀 Value 回传的梯度路径。",
+          "解释为什么 eval() 不能替代冻结或 no_grad。"
+        ]
+      },
+      {
+        "question": "将 OpenPI 的 t=1→0 改成本教材常用的 τ=0→1，需要同时改哪些量？",
+        "answer": [
+          "令 τ=1−t，则同一路径写成 \\(X_\\tau=(1-\\tau)Z+\\tau A\\)，速度目标为 A−Z。相应网络时间输入与速度符号必须按新参数化转换，积分步长改为正。",
+          "只改积分循环起止值或只改 target 都可能让输入路径与学习场不匹配。可用常速度端点算例与完整采样对照检验，而不能只检查张量维度。"
+        ],
+        "codeFocus": "fm_loss 的 x/target 与 sample 的 dt/time。",
+        "acceptance": [
+          "列出两个端点、导数目标、时间输入映射与步长。",
+          "能手算常速度下负步长从噪声到动作的正确终点。"
+        ]
+      },
+      {
+        "question": "保留计算图的 prefix cache 与 no_grad cache 在训练时有什么区别？为什么跨 optimizer.step 复用都需要重新检查？",
+        "answer": [
+          "同一次参数版本、确定性输入和合法 Mask 下，保留图的逐层 K/V 可以给出与完整前向相同的参数梯度。no_grad cache 只保留数值，不再把动作损失传回前缀编码器。",
+          "更新参数后，之前生成的 K/V 通常不再等于当前参数对相同观测的结果；retain_graph 只能保留旧图，不能把旧值变成新值。缓存有效性需要与输入、位置、模型状态及参数版本共同绑定。"
+        ],
+        "codeFocus": "make_cache 不带 no_grad 装饰；sample 由调用方整体 no_grad；experiment 比较缓存梯度。",
+        "acceptance": [
+          "分别说明前向等价、反向等价与版本有效性。",
+          "解释为什么只比较缓存张量 shape 不足够。"
+        ]
+      },
+      {
+        "question": "为什么教学实验中语言梯度非零、Loss 降低、缓存对照通过，仍不能证明策略会正确执行指令？",
+        "answer": [
+          "梯度和数值等价验证的是计算路径。合成标签只由状态生成，没有图像与指令语义任务；模型可以在条件无关的输入上仍有梯度。",
+          "固定四个样本和固定噪声的拟合没有覆盖新条件或新噪声分布。语义能力要用能区分指令的受控数据，策略能力还需动作解码、独立任务与闭环评估。"
+        ],
+        "codeFocus": "experiment 的标签构造、固定 noise/time 与 JSON 输出。",
+        "acceptance": [
+          "明确实验验证了什么，也明确没有验证什么。",
+          "提出固定观测与噪声、改变有意义指令的独立对照设计。"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "title": "π₀ 原论文：架构、专家、Mask 与采样（附录 B、D）",
+        "url": "https://www.pi.website/download/pi0.pdf"
+      },
+      {
+        "title": "π₀.₅ 原论文 v1：混合训练与架构边界（附录 A-E）",
+        "url": "https://arxiv.org/html/2504.16054v1"
+      },
+      {
+        "title": "FAST 原论文 v1：动作压缩与自回归建模",
+        "url": "https://arxiv.org/html/2501.09747v1"
+      },
+      {
+        "title": "OpenPI 固定版本：模型输入、FM 时间方向与缓存",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0.py"
+      },
+      {
+        "title": "OpenPI 固定版本：双专家 attention、RoPE、AdaRMSNorm",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/gemma.py"
+      },
+      {
+        "title": "OpenPI 固定版本：π₀ / π₀.₅ 配置与默认状态路径",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0_config.py"
+      },
+      {
+        "title": "OpenPI 固定版本：状态与动作 tokenizer",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/tokenizer.py"
+      },
+      {
+        "title": "OpenPI 固定版本：FAST 的错位目标和 CE",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/models/pi0_fast.py"
+      },
+      {
+        "title": "OpenPI 固定版本：数据变换与配置组合",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/src/openpi/training/config.py"
+      },
+      {
+        "title": "OpenPI README：公开 π₀.₅ Flow-only 范围",
+        "url": "https://github.com/Physical-Intelligence/openpi/blob/215abfb217dbac7d5f1273282331b9b1866c0479/README.md"
+      },
+      {
+        "title": "Knowledge Insulation 官方研究：梯度隔离与独立 token 目标",
+        "url": "https://www.pi.website/research/knowledge_insulation"
+      }
+    ],
+    "keyPoints": [
+      "动作专家拥有自己的多层参数，并在每层公共注意力空间读取视觉语言表示；它不是浅层读出头。",
+      "π₀ 与 π₀.₅ 的状态和时间注入不同；π₀-FAST 使用离散动作的自回归目标，不能套用连续速度采样。",
+      "块 Mask 的方向决定逐层依赖，前缀不读动作不等于动作梯度无法更新前缀。",
+      "固定条件的逐层 K/V 可以复用；动态动作、时间、位置变化和参数更新必须按计算依赖处理。",
+      "代码对照证明的是结构与数值机制，语义泛化和机器人成功率需要独立任务证据。"
+    ]
+  },
+  {
+    "id": "policy-gradient",
+    "number": 44,
+    "module": "posttraining",
+    "title": "策略梯度基础：REINFORCE、方差缩减与连续动作概率",
+    "subtitle": "围绕策略梯度基础：REINFORCE、方差缩减与 GAE，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 65,
+    "tags": [
+      "Policy Gradient",
+      "Advantage",
+      "Gaussian",
+      "`log_prob`",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "behavior-cloning"
+    ],
+    "objectives": [
+      "从期望回报推导 REINFORCE，并说明何种基线不改变梯度期望。",
+      "实现连续 Gaussian 策略的联合 log_prob，正确归约动作维。",
+      "区分 score-function 与 pathwise 梯度，判断 sample、rsample 和 detach 的使用边界。"
+    ],
+    "why": "策略梯度把环境回报转成动作分布的更新信号。先掌握 REINFORCE、基线和连续动作密度，再在 PPO 课程中学习旧策略比率、裁剪、GAE 与完整 rollout。",
+    "sections": [
+      {
+        "title": "从示教标签转向期望回报",
+        "body": [
+          "行为克隆告诉模型在条件 c 下示教做了什么；强化学习则依据执行结果评价一个动作或整段轨迹的收益。随机策略 \\(\\pi_\\theta(a\\mid s)\\) 定义在状态下采取不同动作的概率或密度，目标 \\(J(\\theta)\\) 是由该策略产生轨迹时的期望回报。奖励不是正确动作向量，不能把奖励大小直接当作动作监督标签。",
+          "轨迹概率可以分解为初始状态分布、各步策略概率和环境转移概率。若初始状态分布、环境动力学与奖励函数均不依赖 \\(\\theta\\)，对轨迹概率使用 \\(\\nabla p=p\\nabla\\log p\\)，参数梯度只需要经过策略 `log_prob`。这个 score-function 估计不要求对真实环境求导，所以能在不可微的机器人或模拟器中使用。下式针对有限时域、无折扣目标，\\(G_t\\) 是从 t 起的奖励和；若 J 定义为从起点计算的折扣回报，精确推导还需相应的 \\(\\gamma^t\\) 权重，或明确采用折扣状态访问分布的约定。",
+          "把中间步骤展开，令 \\(\\tau=(s_0,a_0,\\ldots,s_T)\\)，无折扣总奖励为 \\(R(\\tau)=\\sum_{t=0}^{T-1}r_t\\)，初始分布为 \\(\\rho_0\\)、转移为 \\(P\\)。假设轨迹概率（密度）在参数无关的共同支持上可微，并满足交换参数求导与积分的正则条件，则\\[\\begin{aligned}p_\\theta(\\tau)&=\\rho_0(s_0)\\prod_{t=0}^{T-1}\\pi_\\theta(a_t\\mid s_t)P(s_{t+1}\\mid s_t,a_t),\\\\\\nabla_\\theta J&=\\int R(\\tau)\\nabla_\\theta p_\\theta(\\tau)\\,d\\tau\\\\&=\\mathbb E_{\\tau\\sim p_\\theta}\\!\\left[R(\\tau)\\sum_t\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)\\right].\\end{aligned}\\]对一条固定轨迹求对数概率梯度时，环境因子没有策略参数；这并不表示真实的状态访问分布与参数无关，后者已经包含在外层采样分布中。 离散状态和动作的情形将积分换成求和。",
+          "为什么可以把整段 \\(R\\) 换成从当前时刻起的 \\(G_t\\)？在给定采样动作前的历史后，更早奖励已经确定，且 \\(\\mathbb E_{a_t\\sim\\pi_\\theta}[\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)]=0\\)。因此过去奖励与当前 score 的乘积期望为零，可以从估计器删除；未来奖励不能删除，因为它受到当前动作影响。下面枚举一个两步系统的全部轨迹，直接核对完整概率求导、整段回报权重和 reward-to-go 三种计算。",
+          "估计式仍依赖数据来自对应策略及相应分布假设。拿一份任意旧策略数据，直接套同一个 on-policy 公式，并不自动得到当前策略的无偏梯度；数据复用需要对应的重要性比率、目标设计或其他 off-policy 方法。回报定义、状态访问权重和估计方式都属于算法的一部分。"
+        ],
+        "formula": "\\nabla_\\theta J=\\mathbb E_{\\tau\\sim\\pi_\\theta}\\left[\\sum_t\\nabla_\\theta\\log\\pi_\\theta(a_t\\mid s_t)\\,G_t\\right]",
+        "focus": {
+          "kind": "常用",
+          "title": "先核对动作数据由哪一个策略采集",
+          "explanation": "策略梯度的期望不是对任意日志求平均，行为策略变化会改变分布与概率比率。",
+          "check": "保存采样时策略版本、动作、`log_prob` 和回合边界，明确算法允许如何复用这些数据。"
+        },
+        "id": "0",
+        "lead": "随机策略是给定状态后动作的概率分布，策略目标是它产生轨迹时的期望回报。策略梯度研究怎样调整这些概率以改善结果，区别于模仿学习拟合专家动作。先固定这个目标，再对轨迹概率求导。",
+        "code": "import torch\n\ntheta = torch.tensor([0.3, -0.4], dtype=torch.float64, requires_grad=True)\ndef probability(action, state):\n    p = torch.sigmoid(theta[state])\n    return p if action else 1 - p\n\nexpected_return = torch.zeros((), dtype=theta.dtype)\nfor a0 in (0, 1):\n    for a1 in (0, 1):\n        r0, r1 = float(a0), (2.0 if a1 == a0 else -1.0)\n        expected_return = expected_return + probability(a0, 0) * probability(a1, a0) * (r0 + r1)\nexact = torch.autograd.grad(expected_return, theta)[0]\nfull = torch.zeros_like(theta)\nto_go = torch.zeros_like(theta)\nwrong = torch.zeros_like(theta)\nfor a0 in (0, 1):\n    for a1 in (0, 1):\n        r0, r1 = float(a0), (2.0 if a1 == a0 else -1.0)\n        p0, p1 = probability(a0, 0), probability(a1, a0)\n        mass = (p0 * p1).detach()\n        g0 = torch.autograd.grad(p0.log(), theta)[0]\n        g1 = torch.autograd.grad(p1.log(), theta)[0]\n        full += mass * (g0 + g1) * (r0 + r1)\n        to_go += mass * (g0 * (r0 + r1) + g1 * r1)\n        wrong += mass * (g0 + g1) * r1\ntorch.testing.assert_close(full, exact, rtol=1e-12, atol=1e-12)\ntorch.testing.assert_close(to_go, exact, rtol=1e-12, atol=1e-12)\nassert not torch.allclose(wrong, exact)\nprint(\"通过：整轨迹求导与两种 score 估计一致，错误删除当前奖励的版本不一致。\")\n",
+        "codeExplanation": "状态从 0 开始，第一步动作决定第二步状态，两个状态分别使用一个 Bernoulli logit。穷举四条轨迹消除了采样方差；对 score 加权时把轨迹概率作为数值权重，而 exact 路径对完整概率求导。错误版本把第一步自己的奖励也删除，测试应拒绝这种混淆。"
+      },
+      {
+        "title": "损失负号与更新方向要能手算",
+        "body": [
+          "优化器通常做梯度下降，而策略目标是最大化期望回报，因此 actor 常写 \\(L_\\pi=-\\operatorname{mean}\\bigl(\\log\\pi_\\theta(a\\mid s)\\,\\hat A\\bigr)\\)。优势为正时，下降应提高该样本动作的概率；优势为负时，应降低它的概率。检查这一方向比仅看 actor loss 数值是否下降更重要，因为负 `log_prob` 与正负优势组合没有统一的“越接近零越好”解释。",
+          "对离散 Softmax，选择动作 j 时，\\(-A\\log p_j\\) 对 logit \\(z_i\\) 的梯度为 \\(A(p_i-\\mathbf1_{i=j})\\)。这来自交叉熵梯度乘一个有符号权重。优势不是概率，允许为负；它表达相对基线更好或更差，而不是要求模型拟合某个固定类别标签。",
+          "同一损失数值可以对应不同更新方向，尤其 Batch 中正负优势互相抵消时。记录概率变化、梯度范数、熵和实际回报比单一 actor loss 更有解释力。构造一个单样本、两个动作的小例子，检查正优势和负优势是否产生相反更新，是接入复杂训练循环前的必要步骤。"
+        ],
+        "formula": "L_\\pi=-\\operatorname{mean}(\\log\\pi_\\theta(a\\mid s)\\operatorname{stopgrad}(\\hat A)),\\qquad \\frac{\\partial L}{\\partial z_i}=\\hat A(p_i-\\mathbf1_{i=j})",
+        "example": {
+          "title": "两动作的正优势更新方向",
+          "steps": [
+            "初始概率 \\(p=(0.5,0.5)\\)，采到第二个动作，优势 \\(A=2\\)。",
+            "logits 梯度为 [1,−1]；梯度下降使第一个 logit 降低，第二个升高。",
+            "若 \\(A=-2\\)，梯度反号，第二个动作的概率应降低。"
+          ],
+          "conclusion": "先用最小例子检查符号，再讨论复杂 actor-critic 训练曲线。"
+        },
+        "id": "1",
+        "lead": "actor 是参数化的策略，actor loss 是为梯度下降程序构造的优化表达式。回报最大化常通过负号转换为损失最小化，优势则给动作概率的改变提供方向与权重。下面用可手算例子核对符号。"
+      },
+      {
+        "title": "基线无偏，需要怎样的独立性",
+        "body": [
+          "固定状态 s，记 \\(g(a,s)=\\nabla_\\theta\\log\\pi_\\theta(a\\mid s)\\)。在分布支持和求导交换满足正则条件时，\\(\\mathbb E_a[g\\mid s]=\\nabla_\\theta\\int\\pi_\\theta(a\\mid s)\\,da=0\\)。因此给定 s 后不依赖这次动作抽样的 \\(b(s)\\)，满足 \\(\\mathbb E[g\\,b(s)\\mid s]=0\\)。基线可以由过去数据训练，也可以随参数变化；在当前 actor 更新里，将其数值作为固定权重。",
+          "“输入没有动作”不自动等于统计独立。若先用当前样本的奖励拟合基线，再把这个基线用于同一动作样本，拟合结果可能通过数据依赖该动作。需要按实际采集、拟合、复用顺序判断，不能只看 `critic.forward` 是否只收 s。下一节的同批均值给出可以精确计算的反例。",
+          "无偏与最小方差也是两回事。在固定状态、用梯度向量的总方差作为标准时，最小化 \\(\\mathbb E[\\|g\\|^2(G-b)^2\\mid s]\\)，对 b 求导为零，得到 \\(b^*=\\frac{\\mathbb E[G\\|g\\|^2\\mid s]}{\\mathbb E[\\|g\\|^2\\mid s]}\\)，分母须为正。常用 \\(V(s)=\\mathbb E[G\\mid s]\\) 没有这个梯度范数权重，通常是方便的选择，不能无条件说它一定是最优方差基线。",
+          "代码里使用 `stopgrad(advantage)`，是为了阻止 actor 通过修改权重本身来降低乘积损失；它不能消除数据造成的统计依赖。critic 另用回报或 TD 目标更新，共享骨干可以同时收到两项损失的梯度。GAE、bootstrap 和优势标准化又有各自的估计性质，不能全部归为同一个“减基线不改变期望”的结论。"
+        ],
+        "formula": "\\mathbb E[g\\,b(s)\\mid s]=b(s)\\mathbb E[g\\mid s]=0,\\qquad b^*(s)=\\frac{\\mathbb E[G\\|g\\|^2\\mid s]}{\\mathbb E[\\|g\\|^2\\mid s]}",
+        "focus": {
+          "kind": "易错",
+          "title": "让 actor 沿着 advantage 反传到 critic",
+          "explanation": "这增加了不属于所写策略梯度估计的路径，模型可通过改变权重而不是动作概率影响损失。",
+          "check": "检查 actor-only backward 时 advantage 和独立 critic 参数没有梯度，再单独验证 critic 的训练目标。"
+        },
+        "id": "2",
+        "lead": "基线是从回报权重中减去的参考值，目的是降低策略梯度估计的方差。给定状态后不依赖当前采样动作的适当基线，可以保持期望梯度不变。下面推导这条独立性要求，而非假定任意均值都无偏。"
+      },
+      {
+        "title": "同一批回报的均值，为什么会带来有限样本偏差",
+        "body": [
+          "取同一个状态下 N 个独立的一步样本 \\((a_i,R_i)\\)，令 \\(g_i=\\nabla\\log\\pi(a_i)\\)，真实梯度 \\(g^*=\\mathbb E[g_iR_i]\\)。用同批均值 \\(\\bar R=\\frac1N\\sum_jR_j\\) 作每个样本的基线。展开 \\(\\mathbb E[g_i\\bar R]\\)：\\(j=i\\) 的项是 \\(g^*/N\\)；\\(j\\ne i\\) 的项因独立而成为 \\(\\mathbb E[g_i]\\mathbb E[R_j]=0\\)。于是整个中心化估计的期望是 \\((1-1/N)g^*\\)。",
+          "\\(N=1\\) 时 \\(R_1-\\bar R=0\\)，更新直接消失；\\(N=2\\) 时期望只剩一半。\\(\\operatorname{detach}(\\bar R)\\) 不改变这个结果，因为这里讨论的是抽样依赖，不是反向传播路径。使用不含样本 i 的 leave-one-out 均值，在这个独立同分布的一步例子中可以恢复无偏；跨时间相关的轨迹不能直接沿用这份证明。",
+          "再除以同批回报的标准差，会引入额外的随机尺度，不能简单地解释成除以一个固定常数。实际优势中心化或标准化可能对优化有帮助，但应把它视为具有自身性质的估计与优化选择。"
+        ],
+        "formula": "\\mathbb E\\left[\\frac1N\\sum_i g_i(R_i-\\bar R)\\right]=\\left(1-\\frac1N\\right)g^*",
+        "code": "from itertools import product\nimport math\n\n# Bernoulli policy at p=0.5; reward is the sampled action.\n# With logit as parameter, score = action - p.\np = 0.5\nplain = centered = leave_one_out = 0.0\nfor actions in product((0, 1), repeat=2):\n    probability = math.prod(p if a else 1 - p for a in actions)\n    rewards = actions\n    scores = [a - p for a in actions]\n    mean_reward = sum(rewards) / 2\n    plain += probability * sum(g * r for g, r in zip(scores, rewards)) / 2\n    centered += probability * sum(g * (r - mean_reward)\n                                  for g, r in zip(scores, rewards)) / 2\n    leave_one_out += probability * sum(\n        scores[i] * (rewards[i] - rewards[1 - i]) for i in range(2)) / 2\nassert math.isclose(plain, 0.25)\nassert math.isclose(centered, 0.125)\nassert math.isclose(leave_one_out, 0.25)\nprint('plain / same-batch / leave-one-out:', plain, centered, leave_one_out)",
+        "codeExplanation": "四种二动作组合穷举了整个分布，不用 Monte Carlo 近似。probability 是该组合出现的概率，scores 是对 logit 求导的 `log_prob`。三个估计分别得到 0.25、0.125、0.25：相同数值处理只有在依赖关系不同的条件下才有不同的无偏性。",
+        "id": "3",
+        "lead": "同批回报基线是用本批数据的平均回报作为各样本的参考值。它包含当前样本自身的信息，因此与逐动作独立的基线不同。下面在独立的一步采样中计算由此产生的有限样本偏差。"
+      },
+      {
+        "title": "连续动作的联合密度与动作轴",
+        "body": [
+          "对角 Gaussian 常由 \\(\\mu\\in\\mathbb R^{B\\times D}\\) 与标准差 \\(\\sigma\\) 给出，假设给定状态时各动作坐标条件独立。联合 `log_prob` 是各维 log 密度之和；`torch.distributions.Normal.log_prob` 返回逐维值，需要 `sum(-1)`，或者用 Independent 正确声明事件维。Batch 平均则在得到每样本联合值之后进行。",
+          "连续概率密度可以大于 1，所以 `log_prob` 也可以为正，这不违反概率归一化。密度的数值还随动作单位变化，不能把连续 `log_prob` 直接当离散类别概率来解释。若将动作维上的 sum 改成 mean，基础梯度多出一个维度尺度；在 PPO 比率等非线性运算里，更会改变完整联合分布的比值。",
+          "使用 `log_std` 有助于表达正标准差，但 exp 后仍需合理的数值范围。过小方差会产生很大的 `log_prob` 梯度，过大方差会导致探索动作偏离可用区域。clamp 是一种明确的参数约束，超出范围的梯度行为也要理解；它不替代动作边界与执行接口的处理。"
+        ],
+        "formula": "\\log\\pi(a\\mid s)=-\\frac12\\sum_{d=1}^{D}\\left[\\left(\\frac{a_d-\\mu_d}{\\sigma_d}\\right)^2+2\\log\\sigma_d+\\log(2\\pi)\\right]",
+        "example": {
+          "title": "为什么联合 log_prob 要沿动作维相加",
+          "steps": [
+            "两个动作坐标在给定状态下独立，某个动作处密度分别是 0.2 和 0.3。",
+            "联合密度为 0.06，联合 log 密度为 \\(\\log(0.2)+\\log(0.3)\\)。",
+            "把两项平均后再取 exp 得到 \\(\\sqrt{0.06}\\)，并不是这个二维动作的联合密度。"
+          ],
+          "conclusion": "事件维求和与 Batch 平均是两种归约，不能用一次 mean 代替。"
+        },
+        "id": "4",
+        "lead": "连续策略用概率密度描述动作向量，联合对数密度描述整条多维动作，而每维 log_prob 只描述一个坐标。是否先沿动作轴求和决定所用统计对象。下面以对角高斯建立这项约定。"
+      },
+      {
+        "title": "sample 与 rsample：不要混用梯度估计",
+        "body": [
+          "score-function 估计把采样动作视为固定数据，对 \\(\\log\\pi_\\theta(a\\mid s)\\) 关于 \\(\\theta\\) 求导。通常使用 `sample` 获得不带重参数化路径的动作；若动作来自其他带图的计算，应在这个损失中 `detach`。环境返回的优势也按估计式作为固定权重，而不是沿环境执行过程直接反传。",
+          "`rsample` 使用 \\(a=\\mu+\\sigma\\epsilon\\) 让动作对分布参数可微，适合通过可微奖励或 critic 计算 pathwise 梯度的目标。若把同一 `rsample` 动作不 `detach` 地送回 `Normal.log_prob`，并声称在做普通 REINFORCE，均值项的路径可能互相抵消：\\(a-\\mu=\\sigma\\epsilon\\) 的总导数不再是固定动作下的 score 梯度。",
+          "二者都可以用于合理算法，关键是目标是否需要 \\(\\partial Q/\\partial a\\) 或其他通过动作的导数。不能看到 `rsample`“可微”就认为总比 `sample` 更好。先写清估计式，再检查自动微分实际包含的路径；Gaussian score-function 练习把 action 与 advantage 作为固定样本和权重，明确停止它们的梯度。"
+        ],
+        "focus": {
+          "kind": "易错",
+          "title": "在 score-function 损失里保留 rsample 的动作路径",
+          "explanation": "这会改变固定样本求 `log_prob` 梯度的含义，甚至使均值梯度抵消。",
+          "check": "对同一数值动作比较 `detach` 前后 \\(\\mu\\) 的梯度，并说明当前算法使用的是 score-function 还是 pathwise 目标。"
+        },
+        "id": "5",
+        "lead": "Score-function 估计通过动作的对数概率求参数梯度，重参数化估计则通过可微采样值传播梯度。sample 和 rsample 支持这两类不同用法。先选定估计器，再决定哪些动作和优势应保持为固定数据。"
+      },
+      {
+        "title": "有界动作与熵项的额外约定",
+        "body": [
+          "Gaussian 支持整个实数轴，而机器人动作通常有边界。直接在采样后 clip 动作，会把很多原始样本映射到同一个边界点，实际执行分布不再是原来的 Gaussian。若还用未裁剪密度作为执行动作的 `log_prob`，需要明确算法如何处理这一差异，不能认为一个 clamp 没改变概率模型。",
+          "常见平滑方法是 \\(a=\\tanh(u)\\) 并做幅值缩放。对变换后动作计算密度时，应加入变量变换的 Jacobian 修正，例如 \\(\\log\\pi_a(a)=\\log\\pi_u(u)-\\sum_d\\log(1-\\tanh^2u_d)\\)，再包含固定尺度的修正。接近边界时需要稳定数值实现。未压缩 Gaussian 的 `log_prob` 不能直接解释压缩后的动作密度。",
+          "熵奖励鼓励分布保持一定随机性，通常在最小化损失中以 \\(-\\lambda\\mathcal H\\) 的形式加入；但探索更多并不保证收益更高。系数、动作尺度和方差共同影响行为。评估时应说明是采样动作还是使用均值/模式执行，因为训练探索策略与确定性部署策略可能产生不同结果。"
+        ],
+        "id": "6",
+        "lead": "有界动作分布需要将概率模型与动作范围共同定义；采样后裁剪会改变实际分布，不能只当作无影响的数值处理。熵正则又是对分布分散程度的额外目标。下面分别说明密度变换与目标约定。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "categorical logits",
+        "shape": "[B,A]",
+        "meaning": "每个样本的离散动作分布参数"
+      },
+      {
+        "name": "Gaussian mean / `log_std`",
+        "shape": "[B,D] / [D] 或 [B,D]",
+        "meaning": "连续动作每维均值与对数标准差"
+      },
+      {
+        "name": "joint `log_prob` / advantage",
+        "shape": "[B]",
+        "meaning": "动作轴归约后的联合对数概率及样本权重"
+      }
+    ],
+    "code": {
+      "title": "一步合成任务中的 actor 与独立 critic",
+      "source": "import torch\nfrom torch import nn\nfrom torch.distributions import Categorical\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\n\n# STEP 1: 观测正负决定哪一个离散动作得到奖励\nactor=nn.Linear(1,2)\ncritic=nn.Linear(1,1)\noptimizer=torch.optim.Adam(list(actor.parameters())+list(critic.parameters()),lr=0.03)\n\n# STEP 2: 用当前策略采样；这个一步任务中 reward=return\nfor _ in range(160):\n    obs=torch.rand(128,1)*2-1\n    distribution=Categorical(logits=actor(obs))\n    actions=distribution.sample()\n    correct=(obs[:,0]>0).long()\n    rewards=(actions==correct).float()\n    values=critic(obs).squeeze(-1)\n    advantages=rewards-values\n\n    # actor 不通过 advantage 更新 critic；critic 有自己的回归损失。\n    actor_loss=-(distribution.log_prob(actions)*advantages.detach()).mean()\n    critic_loss=(values-rewards.detach()).square().mean()\n    optimizer.zero_grad(set_to_none=True)\n    (actor_loss+0.5*critic_loss).backward()\n    optimizer.step()\n\n# STEP 3: 独立网格只用于检查合成决策，不是机器人评估\nwith torch.no_grad():\n    test_obs=torch.linspace(-1,1,101).unsqueeze(-1)\n    greedy=actor(test_obs).argmax(dim=-1)\n    accuracy=(greedy==(test_obs[:,0]>0).long()).float().mean()\nprint('synthetic greedy accuracy:',round(accuracy.item(),3))\n\n# STEP 4: 对单个正优势样本检查梯度方向\nlogits=torch.zeros(1,2,requires_grad=True)\ndist=Categorical(logits=logits)\nloss=-(dist.log_prob(torch.tensor([1]))*torch.tensor([2.])).mean()\nloss.backward()\nprint('logit gradients:',logits.grad.tolist())\ntorch.testing.assert_close(logits.grad,torch.tensor([[1.,-1.]]))\nprint('Gradient descent increases the positive-advantage action logit.')\n",
+      "explanations": [
+        {
+          "lines": "8–12",
+          "text": "这是一步、二动作的合成环境，避免回报长度和复杂动力学遮住概率更新本身。"
+        },
+        {
+          "lines": "13–29",
+          "text": "动作由当前分布采样。actor 使用 detached advantage；critic 通过独立损失学习奖励期望，不通过 actor 乘积取巧。"
+        },
+        {
+          "lines": "30–36",
+          "text": "额外网格只检验这个小任务的决策趋势。真实机器人还涉及连续动作、约束、部分观测和多步反馈。"
+        },
+        {
+          "lines": "37–44",
+          "text": "正优势动作 1 的 logit 梯度为负，梯度下降会增大它。直接看这个符号比记忆损失前面的负号更可靠。"
+        }
+      ],
+      "expected": "单样本梯度检查得到 [[1,-1]]，合成分类决策逐渐学习观测符号。这个示例不是完整 actor-critic 控制算法或真实 VLA 后训练配方。"
+    },
+    "exercise": {
+      "title": "检查正负优势会怎样改变动作概率",
+      "prompt": "实现 `categorical_logit_gradient(probabilities,chosen,advantage)`，返回损失 \\(-A\\log p(\\mathrm{chosen})\\) 对 logits 的梯度。输入概率应非负且和为 1，chosen 合法。",
+      "runtime": "python",
+      "starter": "import math\n\ndef categorical_logit_gradient(probabilities,chosen,advantage):\n    # TODO: 使用 softmax 对数概率的导数\n    raise NotImplementedError\n",
+      "solution": "import math\n\ndef categorical_logit_gradient(probabilities,chosen,advantage):\n    if not probabilities or not 0<=chosen<len(probabilities):\n        raise ValueError('invalid action')\n    if any(p<0 or not math.isfinite(p) for p in probabilities) or not math.isclose(sum(probabilities),1.0):\n        raise ValueError('invalid distribution')\n    return [advantage*(p-(1.0 if j==chosen else 0.0)) for j,p in enumerate(probabilities)]\n",
+      "tests": "assert categorical_logit_gradient([0.5,0.5],1,2.0)==[1.0,-1.0]\nassert categorical_logit_gradient([0.5,0.5],1,-2.0)==[-1.0,1.0]\ng=categorical_logit_gradient([0.2,0.3,0.5],2,1.)\nassert abs(sum(g))<1e-12 and g[2]<0\nprint('正优势增大动作概率，负优势减小动作概率；梯度方向检查通过。')\n",
+      "hints": [
+        "\\(-\\log\\operatorname{softmax}\\) 的导数是 \\(p-\\operatorname{one\\_hot}(a)\\)。",
+        "梯度下降减去梯度，所以选中动作的负梯度会提高它的 logit。"
+      ],
+      "explanation": "优势是这个交叉熵式梯度的带符号权重。正优势和负优势方向相反，零优势不贡献此项更新。概率为零时真实 `log_prob` 有边界问题；本练习给出的是 softmax 有限 logits 情况下导数公式的计算。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 `gaussian_actor_loss(mu,log_std,actions,advantages)`。mu/actions 为 `[B,D]`，`log_std` 为 [D] 或 `[B,D]`，advantages 为 `[B]`。`log_std` clamp 到 [−5,2]，对动作轴求和；停止 action 与 advantage 的梯度，仅实现未压缩对角 Gaussian 的 score-function 损失。",
+      "starter": "import torch\nfrom torch.distributions import Normal\n\ndef gaussian_actor_loss(mu,log_std,actions,advantages):\n    # TODO: 正标准差、联合 log_prob、正确的梯度边界\n    raise NotImplementedError\n",
+      "solution": "import torch\nfrom torch.distributions import Normal\n\ndef gaussian_actor_loss(mu,log_std,actions,advantages):\n    if mu.ndim!=2 or actions.shape!=mu.shape or advantages.shape!=(len(mu),):\n        raise ValueError('shape mismatch')\n    if log_std.shape not in ((mu.shape[1],),mu.shape):\n        raise ValueError('invalid log_std shape')\n    std=log_std.clamp(-5.,2.).exp()\n    distribution=Normal(mu,std)\n    joint_log_prob=distribution.log_prob(actions.detach()).sum(dim=-1)\n    return -(joint_log_prob*advantages.detach()).mean()\n",
+      "tests": "mu=torch.zeros(1,2,requires_grad=True)\nlog_std=torch.zeros(2,requires_grad=True)\nactions=torch.tensor([[1.,-2.]],requires_grad=True)\nadvantages=torch.tensor([2.],requires_grad=True)\nloss=gaussian_actor_loss(mu,log_std,actions,advantages)\nloss.backward()\ntorch.testing.assert_close(mu.grad,torch.tensor([[-2.,4.]]))\nassert log_std.grad is not None\nassert actions.grad is None and advantages.grad is None\n# rsample 的路径必须停止，才能得到这里声明的 score-function 项。\ntorch.manual_seed(4)\nm=torch.zeros(1,requires_grad=True)\nd=Normal(m,torch.ones(1))\na=d.rsample()\nbad=torch.autograd.grad(-d.log_prob(a).sum(),m,retain_graph=True)[0]\ngood=torch.autograd.grad(-d.log_prob(a.detach()).sum(),m)[0]\ntorch.testing.assert_close(bad,torch.zeros_like(bad))\nassert good.abs().item()>1e-6\nprint('动作轴求和、可学习方差和 sample/rsample 梯度边界检查通过。')\n",
+      "hints": [
+        "`Normal.log_prob` 返回 `[B,D]`；只沿 `dim=-1` 求和后才能与 `[B]` 优势逐样本相乘。",
+        "`actions.detach()` 防止 `rsample` 的路径改变 score-function 估计；advantages.`detach`() 阻止 actor 乘积训练基线。"
+      ],
+      "explanation": "对角独立分布的联合 `log_prob` 是各动作维的和。`log_std` 保证标准差正值，clamp 是本题明确的数值约定，范围外梯度会为零。actions 的路径应停止以实现此处估计；依赖可微 Q 的重参数化 actor 目标则可能有意保留。tanh 压缩或动作裁剪需要另行处理密度，不能直接使用本函数宣称正确。"
+    },
+    "pitfalls": [
+      {
+        "title": "将 reward 当动作回归标签",
+        "detail": "收益用于调整动作概率或价值目标，维度和语义与动作监督不同。先写明 J 与实际梯度估计。"
+      },
+      {
+        "title": "actor 经 advantage 反向修改 critic",
+        "detail": "普通 score-function 将优势作为固定权重。分开 actor/critic 的损失与梯度路径，检查共享模块的更新来源。"
+      },
+      {
+        "title": "对 log_prob 的 Batch 与动作维一起平均",
+        "detail": "事件维应形成联合 `log_prob`，再对样本归约；PPO 比率尤其依赖正确联合密度。"
+      },
+      {
+        "title": "rsample 一定比 sample 更适合所有策略梯度",
+        "detail": "是否需要动作路径取决于估计式。固定样本 score-function 需阻断该路径，pathwise 方法则有不同目标。"
+      },
+      {
+        "title": "clip 后仍使用原 Gaussian 的执行动作密度",
+        "detail": "裁剪或 tanh 会改变分布。按变换定义概率，并检查边界与 Jacobian；未压缩练习不覆盖这些情况。"
+      },
+      {
+        "title": "PPO 裁剪保证所有更新都安全且改善回报",
+        "detail": "裁剪 surrogate 不构成全局 KL 或性能保证。监控策略变化、价值误差和独立闭环结果。"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "基线只输入状态且已经 `detach`，为什么仍不能断言 actor 梯度无偏？",
+        "answer": [
+          "`detach` 只停止自动微分路径。如果基线用当前样本自己的回报计算或拟合，其数值仍可能依赖当前动作。N 个独立一步样本使用同批回报均值，会把梯度期望乘以 \\(1-1/N\\)；\\(N=1\\) 时更新为零。",
+          "零期望抵消需要给定状态后的相应独立性与分布条件。独立数据训练的状态基线，或在上述独立样本例子中的 leave-one-out 基线，可以满足该条件；整段轨迹中相关样本需要重新分析。"
+        ],
+        "codeFocus": "穷举两次 Bernoulli 抽样，比较无基线、同批均值和 leave-one-out。",
+        "acceptance": [
+          "区分计算图依赖与抽样依赖。",
+          "推导或复核 \\(1-1/N\\) 因子。"
+        ]
+      },
+      {
+        "question": "Normal 的 `sample` 与 `rsample` 对策略梯度有什么区别？为什么连续动作 `log_prob` 要求和？",
+        "answer": [
+          "`sample` 不携带采样路径梯度，适合把动作当固定样本的 score-function 更新。`rsample` 将动作表示为 `mu+std*epsilon`；若未经 `detach` 计算同一个 Normal 的 `log_prob`，总导数可能抵消均值的 score 项。若目标通过可微 Q 对动作求导，保留这条路径可能正是算法需要的。",
+          "对角 Gaussian 各动作维独立，联合密度是乘积，所以联合 `log_prob` 沿动作轴求和。可学习 `log_std` 通过 exp 得到正标准差，限制范围有数值与梯度代价；tanh 变换需要 Jacobian 修正。要先写清估计目标和动作变换，不能只看张量形状。"
+        ],
+        "codeFocus": "`gaussian_actor_loss` 的 `sum(-1)`、`actions.detach()` 与测试中的 bad/good 梯度。",
+        "acceptance": [
+          "解释 score-function 与路径梯度的区别。",
+          "说明动作轴求和、`log_std` 与变换密度边界。"
+        ]
+      },
+      {
+        "question": "给旧轨迹每步乘 \\(\\pi_{\\mathrm{new}}/\\pi_{\\mathrm{old}}\\)，为什么不等于获得任意新策略的无偏梯度？",
+        "answer": [
+          "单步比率在固定状态下校正动作分布，状态访问频率仍由旧策略产生。新策略会改变未来状态；完整轨迹校正涉及多步比率与支持覆盖，且可能有很大方差。",
+          "PPO 固定旧数据与优势来构造近邻 surrogate，再通过裁剪改变样本激励。它需要匹配动作变换与联合 `log_prob`，并控制数据陈旧程度；不能把 clip 解释为严格限制所有状态 KL 的保证。"
+        ],
+        "codeFocus": "`log_prob_old` 的策略版本、同一动作的事件维归约与 rollout 状态来源。",
+        "acceptance": [
+          "说明单步比率没有改变旧状态分布。",
+          "区分 surrogate 与完整新策略目标。"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "title": "Spinning Up：策略梯度推导、基线与代码",
+        "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html"
+      },
+      {
+        "title": "PyTorch distributions：sample、rsample 与 log_prob",
+        "url": "https://docs.pytorch.org/docs/stable/distributions.html"
+      },
+      {
+        "title": "Spinning Up：Vanilla Policy Gradient",
+        "url": "https://spinningup.openai.com/en/latest/algorithms/vpg.html"
+      },
+      {
+        "title": "Schulman et al. · PPO 原论文",
+        "url": "https://arxiv.org/abs/1707.06347"
+      },
+      {
+        "title": "Greensmith et al. · 策略梯度中的基线与方差",
+        "url": "https://www.jmlr.org/papers/v5/greensmith04a.html"
+      },
+      {
+        "title": "Ren et al. · DPPO（2409.00588v3 / ICLR 2025）：扩展去噪 MDP 与逐步概率",
+        "url": "https://arxiv.org/abs/2409.00588v3"
+      },
+      {
+        "title": "DPPO 官方实现：Diffusion Policy 的 PPO 后训练",
+        "url": "https://github.com/irom-princeton/dppo"
+      }
+    ],
+    "keyPoints": [
+      "策略梯度使用动作得到的收益调整动作概率，不是把高收益标量当动作标签回归。",
+      "score-function actor 损失对动作样本和优势停止梯度；critic 使用自己的目标训练。",
+      "对角 Gaussian 的联合 `log_prob` 沿动作维求和，连续密度与离散概率不可混淆。",
+      "`sample` 与 `rsample` 对应不同梯度估计；PPO 的旧策略比率与裁剪需要匹配实际采集分布。"
+    ],
+    "lead": "策略梯度是直接对策略参数求期望回报梯度、据此改进动作分布的方法。常见估计用采样动作的对数概率梯度，乘以回报或优势，让结果较好的动作更可能被选择；它不要求真实环境可微。本章先推导这种估计，再定义基线、连续动作密度与采样梯度，最后连接重要性比率和 PPO 的局部代理目标。"
+  },
+  {
+    "id": "ppo",
+    "number": 44,
+    "module": "posttraining",
+    "title": "在线强化学习：PPO 裁剪目标与双网络训练",
+    "subtitle": "围绕在线强化学习：PPO 裁剪目标与双网络训练，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 90,
+    "tags": [
+      "Policy Gradient",
+      "Advantage",
+      "Gaussian",
+      "`log_prob`",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "policy-gradient"
+    ],
+    "objectives": [
+      "构造 rollout 数据并计算 return、GAE 与优势归一化，正确处理终止和截断。",
+      "推导 PPO clipped surrogate，解释旧策略快照、动作 log_prob 与 ratio。",
+      "实现 Actor-Critic 更新并用 KL、clip fraction、entropy 和回报诊断训练。"
+    ],
+    "why": "策略梯度用回报给动作的 `log_prob` 梯度加权。无偏性取决于采样分布和基线依赖关系；自动微分还必须保留与估计式一致的路径。",
+    "sections": [
+      {
+        "id": "ppo-rollout",
+        "title": "从 on-policy rollout 到 PPO 更新",
+        "lead": "PPO 使用旧策略采集的数据构造局部代理目标，并在多个 epoch 中更新策略与价值网络。",
+        "body": [
+          "每条样本至少保存 observation、action、old_log_prob、reward、terminated/truncated、value 和必要的 mask。",
+          "先计算 return 与 advantage，再固定 rollout 数据和 old_log_prob；更新期间新策略重新计算同一动作的 log_prob。",
+          "连续动作要对动作事件维求和；动作经过 tanh 或其他变换时，old/new log_prob 必须使用一致的密度定义。",
+          "优势通常用 GAE 估计：先计算时序差分残差 \\(\\delta_t=r_t+\\gamma(1-d_t)V(s_{t+1})-V(s_t)\\)，再反向累积 \\(\\hat A_t=\\sum_{l\\ge0}(\\gamma\\lambda)^l\\delta_{t+l}\\)。真实终止时不跨边界 bootstrap；时间截断若有最终观测，通常仍需用其价值 bootstrap。return 可写为 \\(\\hat R_t=\\hat A_t+V(s_t)\\)。\\(\\lambda\\) 在偏差与方差之间折中，必须与 rollout 的终止/截断标记一起实现。"
+        ],
+        "formula": "\\delta_t=r_t+\\gamma(1-d_t)V(s_{t+1})-V(s_t),\\qquad \\hat A_t=\\sum_{l\\ge0}(\\gamma\\lambda)^l\\delta_{t+l}"
+      },
+      {
+        "title": "重要性比率校正了动作，是否也校正了状态",
+        "body": [
+          "固定同一个状态 s，若行为策略 \\(\\mu\\) 在 \\(\\pi_\\theta\\) 可能采到的动作上都有正概率，\\(\\rho(a,s)=\\pi_\\theta(a\\mid s)/\\mu(a\\mid s)\\) 可以把 \\(\\mathbb E_{a\\sim\\mu}[\\rho f(s,a)]\\) 改写成 \\(\\mathbb E_{a\\sim\\pi_\\theta}[f(s,a)]\\)。这一步只改变给定状态下的动作测度；若状态仍来自旧策略 \\(d_\\mu\\)，它没有自动变成当前策略的访问分布 \\(d_{\\pi_\\theta}\\)。",
+          "在有限轨迹上，若初始分布与环境动力学相同且有支持覆盖，整条轨迹的重要性比率是各步策略比率的乘积。它可以形式上校正轨迹分布，但连乘会使方差很大；逐决策校正、价值函数方法等有各自目标与条件，不能把任意一个单步 ratio 当成完整修复。",
+          "PPO 的常见 surrogate 固定旧策略采集的状态与优势，在其附近优化新动作概率；它不是任意新策略完整回报梯度的精确无偏估计。裁剪进一步有意改变目标，限制某些样本继续推动概率的激励。旧策略覆盖不足、更新过大或错误的动作 `log_prob`，都不能由一个 clip 自动解决。"
+        ],
+        "formula": "\\mathbb E_{s\\sim d_\\mu,a\\sim\\mu}[\\rho f]=\\mathbb E_{s\\sim d_\\mu,a\\sim\\pi_\\theta}[f],\\qquad \\frac{p_{\\pi_\\theta}(\\tau)}{p_\\mu(\\tau)}=\\prod_t\\frac{\\pi_\\theta(a_t\\mid s_t)}{\\mu(a_t\\mid s_t)}",
+        "id": "ppo-1",
+        "lead": "重要性比率是目标分布密度与采样分布密度的比，用来对已有样本重新加权。动作条件分布的校正不自动校正访问状态的分布。先明确期望针对哪些随机变量，再判断比率修正了什么。"
+      },
+      {
+        "title": "PPO 的比率、裁剪与旧策略快照",
+        "body": [
+          "PPO 常保存采集数据时旧策略的 `log_prob`，训练时计算 \\(r=\\exp(\\log\\pi_{\\mathrm{new}}-\\log\\pi_{\\mathrm{old}})\\)，再使用带裁剪的 surrogate objective。旧 `log_prob` 应对应同一个动作、状态、事件维归约和动作变换，并在优化期间作为固定值。它表示行为策略快照，不等于某个长期固定的参考模型或监督数据策略。 下式的裁剪 surrogate 是要最大化的目标；若用梯度下降实现 actor loss，应对它取负，再按约定加入价值与熵项。",
+          "对正优势，过大的比率不再增加裁剪目标；对负优势，过小比率同样被限制额外收益。这里取 min 的分支需要结合优势符号理解，不能把所有 ratio 无条件 clamp 后就认为等价。裁剪只改变这个样本目标的激励，并不严格保证所有状态下的 KL 或策略变化都在固定范围内。",
+          "多轮小批更新还需监控 KL、clip fraction、熵、critic 误差与真实回报，防止数据很快偏离当前策略。完整 PPO 包含 rollout、优势估计、边界处理与优化协议，不能仅靠一个 ratio 公式成为完整后训练方法。特别是生成式动作模型，普通去噪或 FM MSE 不自动提供 PPO 所需的精确动作 `log_prob`。"
+        ],
+        "formula": "L_{\\rm clip}=\\mathbb E\\left[\\min\\left(r\\hat A,\\operatorname{clip}(r,1-\\epsilon,1+\\epsilon)\\hat A\\right)\\right],\\qquad r=e^{\\log\\pi_\\theta-\\log\\pi_{\\rm old}}",
+        "id": "ppo-2",
+        "lead": "PPO（近端策略优化）使用旧策略采样的数据、动作概率比率和裁剪代理目标来训练新策略。裁剪改变过大比率带来的优化激励，并非硬性保证策略变化不超过某个范围。下面将目标与旧策略快照逐项对应。",
+        "comparison": {
+          "title": "裁剪分支随优势符号改变",
+          "columns": [
+            "优势",
+            "比率（裁剪范围 0.8～1.2）",
+            "被选择的目标",
+            "对比率的局部导数"
+          ],
+          "rows": [
+            [
+              "+1",
+              "1.3",
+              "1.2",
+              "0"
+            ],
+            [
+              "+1",
+              "0.7",
+              "0.7",
+              "+1"
+            ],
+            [
+              "−1",
+              "1.3",
+              "−1.3",
+              "−1"
+            ],
+            [
+              "−1",
+              "0.7",
+              "−0.8",
+              "0"
+            ]
+          ]
+        },
+        "example": {
+          "title": "正负优势下，PPO 的 min 选择不同分支",
+          "afterParagraph": 2,
+          "steps": [
+            "取裁剪幅度 ε=0.2，并讨论要最大化的单样本代理目标。若优势 A=2、比率 r=1.4，未裁剪项为 2.8，裁剪项为 \\(1.2\\times2=2.4\\)，min 取 2.4；继续提高这个比率不再增加该项收益。",
+            "若优势 A=−2、比率 r=0.6，未裁剪项为 −1.2，裁剪项为 \\(0.8\\times(-2)=-1.6\\)，min 取 −1.6；把已不受欢迎动作的概率继续压低，也不再从该项获得额外收益。",
+            "但 A=−2、r=1.4 时，min 取 −2.8，惩罚仍随比率变化；不能无条件把所有比率先 clamp，再只计算那一个乘积。梯度下降实现还要对上述代理目标取负。"
+          ],
+          "conclusion": "裁剪改变单样本的优化激励，不是对所有状态、参数更新或策略 KL 的硬性范围保证。"
+        }
+      },
+      {
+        "title": "从单步检查到完整后训练",
+        "body": [
+          "完整示例在一步合成任务上分别训练 actor 与 critic，并用解析 logit 梯度核对方向。扩展到多步环境时，需要接通回报、终止/截断、bootstrap 和策略版本，才能分析长时信用分配。",
+          "局部检查覆盖四件事：正负优势方向、动作维 `log_prob` 归约、优势与动作样本的梯度路径、采样策略身份。多回合表现还依赖评价协议；单独的 actor loss 无法区分策略改善、概率塌缩、基线变化和目标尺度变化。",
+          "对于 VLA 的奖励驱动后训练，还要定义一次动作决策覆盖多少控制步、动作序列概率怎样计算、环境回报怎样分配以及旧数据如何复用。确定性 ODE 生成仍含初始噪声的随机性，但要得到密度或可用的替代优化目标，需要另外的数学与实现。先把基础估计器边界弄清楚，才能可靠阅读这些方法。",
+          "一个具体连接是 [DPPO：Diffusion Policy Policy Optimization（2024，ICLR 2025）](https://arxiv.org/abs/2409.00588v3)。它把环境决策和内部去噪组织为两层扩展 MDP：当前环境状态、带噪动作与去噪步共同确定内部决策，下一次去噪结果作为内部动作；只有最终结果被执行时，环境才推进并产生任务奖励。在采用正方差的高斯反向转移时，每一步的条件 `log_prob` 可解析计算。保存旧策略生成的去噪链后，就能在相应扩展状态上构造新旧概率比，并用环境回报形成优势，将前面的 PPO 机制用于扩散策略后训练。",
+          "这里计算的是给定当前带噪动作与条件后的下一步概率，不是把所有中间潜变量积分掉之后的最终动作边缘密度。因此它既没有将负去噪 MSE 直接当作最终动作 `log_prob`，也不自动适用于确定性 Flow ODE：固定当前点后的确定性转移是 Dirac 分布，不能直接套用非退化 Gaussian 的密度比。实际训练还需要环境反馈、完整采样记录、对应的旧策略快照，以及明确的噪声方差和优势估计协议；修改采样方差或概率计算方式会改变估计的含义。阅读 [DPPO 官方实现](https://github.com/irom-princeton/dppo) 时应一起核对这些配置，而不是只移植一个 ratio 表达式。",
+          "策略梯度把执行结果转成动作分布的更新信号。估计器、基线、动作密度、采样来源与策略版本共同决定这份信号是否对应原目标；单步数值检查与完整多步训练应据此分开评价。"
+        ],
+        "id": "ppo-3",
+        "lead": "局部梯度正确只是奖励驱动后训练的起点，还需要采样、优势估计和执行共同使用一致的语义。把这些接口接回动作块和生成模型，可以识别哪些基础估计能够直接沿用，哪些需要新的概率目标。"
+      },
+      {
+        "id": "ppo-training-loop",
+        "title": "双网络训练与诊断",
+        "lead": "Actor 优化策略代理目标，Critic 回归价值目标；两者可以共享特征骨干，但梯度来源必须明确。",
+        "body": [
+          "每轮 rollout 后执行若干 epoch 的小批更新，按 minibatch 计算 policy loss、value loss 和 entropy bonus。",
+          "记录 approximate KL、clip fraction、entropy、value loss、explained variance 和环境回报。",
+          "PPO clipping 不保证全局 KL 上界，也不保证单调提升；需要 early stopping 与独立评估。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "categorical logits",
+        "shape": "[B,A]",
+        "meaning": "每个样本的离散动作分布参数"
+      },
+      {
+        "name": "Gaussian mean / `log_std`",
+        "shape": "[B,D] / [D] 或 [B,D]",
+        "meaning": "连续动作每维均值与对数标准差"
+      },
+      {
+        "name": "joint `log_prob` / advantage",
+        "shape": "[B]",
+        "meaning": "动作轴归约后的联合对数概率及样本权重"
+      }
+    ],
+    "code": {
+      "title": "PPO clipped objective 的最小实现",
+      "source": "import torch\n\ndef ppo_actor_loss(new_logp, old_logp, advantage, eps=0.2):\n    ratio = (new_logp - old_logp).exp()\n    raw = ratio * advantage\n    clipped = ratio.clamp(1-eps, 1+eps) * advantage\n    return -torch.minimum(raw, clipped).mean()\n\nnew=torch.tensor([0.2,-0.3],requires_grad=True)\nold=torch.tensor([0.0,-0.2])\nadv=torch.tensor([1.0,-1.0])\nloss=ppo_actor_loss(new,old,adv); loss.backward()\nassert torch.isfinite(loss) and torch.isfinite(new.grad).all()\nprint('loss',loss.item(),'grad',new.grad) ",
+      "explanations": [
+        {
+          "lines": "1–7",
+          "text": "ratio 由新旧策略对同一动作的联合 log_prob 差取指数得到。"
+        }
+      ],
+      "expected": "损失有限且梯度可计算。"
+    },
+    "exercise": {
+      "title": "手写 PPO clipped surrogate",
+      "prompt": "实现 ppo_surrogate(ratio, advantage, eps)，返回最大化目标的单样本平均值；ratio 与 advantage 等长。",
+      "runtime": "python",
+      "starter": "def ppo_surrogate(ratios, advantages, eps=0.2):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "def ppo_surrogate(ratios,advantages,eps=0.2):\n    if len(ratios)!=len(advantages) or not ratios or eps<0: raise ValueError('invalid inputs')\n    values=[]\n    for r,a in zip(ratios,advantages):\n        clipped=max(1-eps,min(1+eps,r))\n        values.append(min(r*a,clipped*a))\n    return sum(values)/len(values)\n",
+      "tests": "assert abs(ppo_surrogate([1.5],[2.0],0.2)-2.4)<1e-12\nassert abs(ppo_surrogate([0.5],[-2.0],0.2)-(-1.6))<1e-12\nassert abs(ppo_surrogate([1.0],[1.0]))<1e-12 or ppo_surrogate([1.0],[1.0])==1.0\nprint('PPO clipping branches passed')\n",
+      "hints": [
+        "分别计算 ratio*A 与 clip(ratio)*A。",
+        "取 min 之前先乘优势；优势为负时分支会改变。"
+      ],
+      "explanation": "这是要最大化的 surrogate，不是梯度下降使用的负损失；完整 PPO 还需要 rollout、GAE、critic 与策略版本管理。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 GAE：输入 rewards、values、dones 均为 [T]，从末端反向递推优势；done 为 True 时不跨终止边界 bootstrap。",
+      "starter": "import torch\ndef compute_gae(rewards, values, dones, gamma=0.99, lam=0.95, last_value=0.0):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "import torch\ndef compute_gae(rewards,values,dones,gamma=0.99,lam=0.95,last_value=0.0):\n    if rewards.ndim!=1 or values.shape!=rewards.shape or dones.shape!=rewards.shape: raise ValueError('shape mismatch')\n    adv=torch.zeros_like(rewards); running=torch.as_tensor(last_value,dtype=values.dtype,device=values.device)\n    for t in reversed(range(len(rewards))):\n        nonterminal=(~dones[t]).to(values.dtype)\n        next_value=running if t==len(rewards)-1 else values[t+1]\n        delta=rewards[t]+gamma*next_value*nonterminal-values[t]\n        running=delta+gamma*lam*nonterminal*running\n        adv[t]=running\n    return adv,adv+values\n",
+      "tests": "r=torch.tensor([1.,1.]); v=torch.tensor([0.5,0.5]); d=torch.tensor([False,True])\na,ret=compute_gae(r,v,d,gamma=1.,lam=1.)\ntorch.testing.assert_close(a,torch.tensor([1.5,0.5]))\ntorch.testing.assert_close(ret,torch.tensor([2.,1.]))\nprint('GAE terminal-boundary test passed')\n",
+      "hints": [
+        "TD residual 是 r_t + gamma * V_{t+1} * (1-done) - V_t。",
+        "GAE 递推也要乘 (1-done)，避免优势穿过终止边界。"
+      ],
+      "explanation": "本实现使用 dones 表示真正终止；时间截断需要单独保留 bootstrap value，不能与 terminal 混为一谈。"
+    },
+    "pitfalls": [
+      {
+        "title": "将 reward 当动作回归标签",
+        "detail": "收益用于调整动作概率或价值目标，维度和语义与动作监督不同。先写明 J 与实际梯度估计。"
+      },
+      {
+        "title": "actor 经 advantage 反向修改 critic",
+        "detail": "普通 score-function 将优势作为固定权重。分开 actor/critic 的损失与梯度路径，检查共享模块的更新来源。"
+      },
+      {
+        "title": "对 log_prob 的 Batch 与动作维一起平均",
+        "detail": "事件维应形成联合 `log_prob`，再对样本归约；PPO 比率尤其依赖正确联合密度。"
+      },
+      {
+        "title": "rsample 一定比 sample 更适合所有策略梯度",
+        "detail": "是否需要动作路径取决于估计式。固定样本 score-function 需阻断该路径，pathwise 方法则有不同目标。"
+      },
+      {
+        "title": "clip 后仍使用原 Gaussian 的执行动作密度",
+        "detail": "裁剪或 tanh 会改变分布。按变换定义概率，并检查边界与 Jacobian；未压缩练习不覆盖这些情况。"
+      },
+      {
+        "title": "PPO 裁剪保证所有更新都安全且改善回报",
+        "detail": "裁剪 surrogate 不构成全局 KL 或性能保证。监控策略变化、价值误差和独立闭环结果。"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "基线只输入状态且已经 `detach`，为什么仍不能断言 actor 梯度无偏？",
+        "answer": [
+          "`detach` 只停止自动微分路径。如果基线用当前样本自己的回报计算或拟合，其数值仍可能依赖当前动作。N 个独立一步样本使用同批回报均值，会把梯度期望乘以 \\(1-1/N\\)；\\(N=1\\) 时更新为零。",
+          "零期望抵消需要给定状态后的相应独立性与分布条件。独立数据训练的状态基线，或在上述独立样本例子中的 leave-one-out 基线，可以满足该条件；整段轨迹中相关样本需要重新分析。"
+        ],
+        "codeFocus": "穷举两次 Bernoulli 抽样，比较无基线、同批均值和 leave-one-out。",
+        "acceptance": [
+          "区分计算图依赖与抽样依赖。",
+          "推导或复核 \\(1-1/N\\) 因子。"
+        ]
+      },
+      {
+        "question": "Normal 的 `sample` 与 `rsample` 对策略梯度有什么区别？为什么连续动作 `log_prob` 要求和？",
+        "answer": [
+          "`sample` 不携带采样路径梯度，适合把动作当固定样本的 score-function 更新。`rsample` 将动作表示为 `mu+std*epsilon`；若未经 `detach` 计算同一个 Normal 的 `log_prob`，总导数可能抵消均值的 score 项。若目标通过可微 Q 对动作求导，保留这条路径可能正是算法需要的。",
+          "对角 Gaussian 各动作维独立，联合密度是乘积，所以联合 `log_prob` 沿动作轴求和。可学习 `log_std` 通过 exp 得到正标准差，限制范围有数值与梯度代价；tanh 变换需要 Jacobian 修正。要先写清估计目标和动作变换，不能只看张量形状。"
+        ],
+        "codeFocus": "`gaussian_actor_loss` 的 `sum(-1)`、`actions.detach()` 与测试中的 bad/good 梯度。",
+        "acceptance": [
+          "解释 score-function 与路径梯度的区别。",
+          "说明动作轴求和、`log_std` 与变换密度边界。"
+        ]
+      },
+      {
+        "question": "给旧轨迹每步乘 \\(\\pi_{\\mathrm{new}}/\\pi_{\\mathrm{old}}\\)，为什么不等于获得任意新策略的无偏梯度？",
+        "answer": [
+          "单步比率在固定状态下校正动作分布，状态访问频率仍由旧策略产生。新策略会改变未来状态；完整轨迹校正涉及多步比率与支持覆盖，且可能有很大方差。",
+          "PPO 固定旧数据与优势来构造近邻 surrogate，再通过裁剪改变样本激励。它需要匹配动作变换与联合 `log_prob`，并控制数据陈旧程度；不能把 clip 解释为严格限制所有状态 KL 的保证。"
+        ],
+        "codeFocus": "`log_prob_old` 的策略版本、同一动作的事件维归约与 rollout 状态来源。",
+        "acceptance": [
+          "说明单步比率没有改变旧状态分布。",
+          "区分 surrogate 与完整新策略目标。"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "title": "Spinning Up：策略梯度推导、基线与代码",
+        "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html"
+      },
+      {
+        "title": "PyTorch distributions：sample、rsample 与 log_prob",
+        "url": "https://docs.pytorch.org/docs/stable/distributions.html"
+      },
+      {
+        "title": "Spinning Up：Vanilla Policy Gradient",
+        "url": "https://spinningup.openai.com/en/latest/algorithms/vpg.html"
+      },
+      {
+        "title": "Schulman et al. · PPO 原论文",
+        "url": "https://arxiv.org/abs/1707.06347"
+      },
+      {
+        "title": "Greensmith et al. · 策略梯度中的基线与方差",
+        "url": "https://www.jmlr.org/papers/v5/greensmith04a.html"
+      },
+      {
+        "title": "Ren et al. · DPPO（2409.00588v3 / ICLR 2025）：扩展去噪 MDP 与逐步概率",
+        "url": "https://arxiv.org/abs/2409.00588v3"
+      },
+      {
+        "title": "DPPO 官方实现：Diffusion Policy 的 PPO 后训练",
+        "url": "https://github.com/irom-princeton/dppo"
+      }
+    ],
+    "keyPoints": [
+      "策略梯度使用动作得到的收益调整动作概率，不是把高收益标量当动作标签回归。",
+      "score-function actor 损失对动作样本和优势停止梯度；critic 使用自己的目标训练。",
+      "对角 Gaussian 的联合 `log_prob` 沿动作维求和，连续密度与离散概率不可混淆。",
+      "`sample` 与 `rsample` 对应不同梯度估计；PPO 的旧策略比率与裁剪需要匹配实际采集分布。"
+    ],
+    "lead": "策略梯度是直接对策略参数求期望回报梯度、据此改进动作分布的方法。常见估计用采样动作的对数概率梯度，乘以回报或优势，让结果较好的动作更可能被选择；它不要求真实环境可微。本章先推导这种估计，再定义基线、连续动作密度与采样梯度，最后连接重要性比率和 PPO 的局部代理目标。"
+  },
+  {
+    "id": "dpo-grpo",
+    "number": 44,
+    "module": "posttraining",
+    "title": "大模型与 VLA 后训练：DPO 与 GRPO 组内相对优势",
+    "subtitle": "围绕大模型与 VLA 后训练：DPO 与 GRPO 组内相对优势，完成理论推导、PyTorch 实现与面试手撕训练。",
+    "minutes": 90,
+    "tags": [
+      "Policy Gradient",
+      "Advantage",
+      "Gaussian",
+      "`log_prob`",
+      "核心课程",
+      "PyTorch",
+      "面试手撕"
+    ],
+    "prerequisites": [
+      "lora",
+      "policy-gradient"
+    ],
+    "objectives": [
+      "推导 DPO 的 chosen/rejected 序列 log-ratio 目标，理解 reference 与 β 的作用。",
+      "实现 GRPO 组内相对优势，并说明组内奖励退化、奖励尺度与 KL 约束。",
+      "判断 VLA 动作策略是否具有可用的 log_prob；区分离散动作、Gaussian、扩散反向链与确定性 Flow 的适用边界。"
+    ],
+    "why": "DPO 与 GRPO 都依赖明确的策略概率或可定义的概率比。迁移到 VLA 时，必须先说明动作序列如何计算 log_prob、奖励如何归属到动作块，以及参考策略和旧策略分别承担什么作用；Flow Matching 的速度 MSE 不能直接当作动作 log_prob。",
+    "sections": [
+      {
+        "id": "dpo-pairs",
+        "title": "偏好对与 DPO 目标",
+        "lead": "DPO 将偏好排序转成策略相对参考模型的隐式奖励差，不需要显式训练独立奖励模型。",
+        "body": [
+          "一个偏好样本包含 prompt、chosen completion 与 rejected completion。策略分别计算两个 completion 的条件 log probability。",
+          "隐式奖励与策略相对 reference 的 log-ratio 成正比，DPO 对偏好对的奖励差使用 sigmoid 二元分类目标。",
+          "序列 log probability 通常按有效 token 求和；长度归一化是另一个目标选择，必须与论文及实现配置一致。"
+        ],
+        "formula": "L_{DPO}=-\\log\\sigma\\left(\\beta\\left[\\log\\frac{\\pi_\\theta(y_w|x)}{\\pi_{ref}(y_w|x)}-\\log\\frac{\\pi_\\theta(y_l|x)}{\\pi_{ref}(y_l|x)}\\right]\\right)"
+      },
+      {
+        "id": "dpo-reference",
+        "title": "参考策略、β 与 KL 约束",
+        "lead": "参考策略定义偏好优化的相对基准，β 控制隐式奖励差的尺度。",
+        "body": [
+          "reference 通常冻结，策略模型可训练；两者必须使用一致 tokenizer、mask 和序列 log_prob 约定。",
+          "β 越大，给定 log-ratio 差对偏好分类的影响越强；它并非直接等同于实际测得的 KL。",
+          "训练监控应包括 chosen/rejected log-ratio、偏好准确率、reference KL 与输出长度。"
+        ]
+      },
+      {
+        "id": "grpo-group",
+        "title": "GRPO 的组内相对优势",
+        "lead": "GRPO 对同一 prompt 采样多个 completion，以组内奖励统计构造相对优势，弱化对独立价值模型的依赖。",
+        "body": [
+          "对同一 prompt 采样 G 个 completion，分别计算可验证奖励或奖励模型分数。",
+          "常见组内标准化优势为 (r_i-mean(r))/(std(r)+epsilon)，同组奖励相同或方差极小时需要处理退化情况。",
+          "策略更新仍需明确旧策略概率比、clip、KL 项、token mask 与 completion 长度归约。"
+        ],
+        "formula": "A_i=\\frac{r_i-\\operatorname{mean}(r_1,\\ldots,r_G)}{\\operatorname{std}(r_1,\\ldots,r_G)+\\epsilon}"
+      },
+      {
+        "id": "grpo-boundaries",
+        "title": "DPO 与 GRPO 的适用边界",
+        "lead": "DPO 依赖成对偏好监督，GRPO 依赖同 prompt 多样本及可比较奖励；二者解决的监督条件不同。",
+        "body": [
+          "DPO 的核心训练信号来自 chosen/rejected 对比，样本质量和参考策略选择至关重要。",
+          "GRPO 的组内优势要求同 prompt 的候选可比较；奖励噪声、奖励 hacking 和组内方差会影响更新。",
+          "VLA 使用这些方法时还需定义动作序列概率、终止条件、执行时长和奖励归属，不能把语言 token 的默认实现直接视为机器人动作策略实现。",
+          "连续 Gaussian 策略可以在方差为正且动作变换已计入 Jacobian 时计算动作 log_prob；扩散策略还可像 DPPO 那样在扩展去噪过程上使用每一步非退化 Gaussian 转移概率，但这不是把最终动作边缘密度直接写出来。确定性 Flow ODE 在给定当前状态时是确定映射，不能直接套用普通 Gaussian ratio；Flow Matching 训练 MSE 也不是 \\(\\log\\pi(A\\mid c)\\)。因此先证明概率对象可计算，再选择 DPO/GRPO/PPO，而不是先套用语言模型训练代码。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "categorical logits",
+        "shape": "[B,A]",
+        "meaning": "每个样本的离散动作分布参数"
+      },
+      {
+        "name": "Gaussian mean / `log_std`",
+        "shape": "[B,D] / [D] 或 [B,D]",
+        "meaning": "连续动作每维均值与对数标准差"
+      },
+      {
+        "name": "joint `log_prob` / advantage",
+        "shape": "[B]",
+        "meaning": "动作轴归约后的联合对数概率及样本权重"
+      }
+    ],
+    "code": {
+      "title": "DPO 与 GRPO 关键张量计算",
+      "source": "import torch\nimport torch.nn.functional as F\n\ndef dpo_loss(policy_w, policy_l, ref_w, ref_l, beta=0.1):\n    margin = beta*((policy_w-ref_w)-(policy_l-ref_l))\n    return -F.logsigmoid(margin).mean()\n\ndef group_advantage(rewards, eps=1e-6):\n    mean=rewards.mean(dim=-1,keepdim=True)\n    std=rewards.std(dim=-1,keepdim=True,unbiased=False)\n    return (rewards-mean)/(std+eps)\n\nw=torch.tensor([ -2.0, -1.0 ],requires_grad=True); l=torch.tensor([-3.0,-2.0],requires_grad=True)\nloss=dpo_loss(w,l,torch.tensor([-2.5,-2.5]),torch.tensor([-2.5,-2.5])); loss.backward()\nr=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\na=group_advantage(r)\nassert a[0,0]<0 and a[0,2]>0 and torch.isfinite(a).all()\nprint('DPO loss',loss.item(),'group advantages',a)",
+      "explanations": [
+        {
+          "lines": "1–8",
+          "text": "DPO 将 chosen 与 rejected 的策略相对 reference log-ratio 做差，再用 log-sigmoid 形成偏好损失。"
+        }
+      ],
+      "expected": "DPO 损失有限；组内较高奖励对应正优势，退化组保持有限数值。"
+    },
+    "exercise": {
+      "title": "计算偏好对的 DPO margin",
+      "prompt": "实现 DPO 的单样本损失，输入四个标量 log probability 与 beta，返回 -log sigmoid(beta * ((policy_chosen-ref_chosen)-(policy_rejected-ref_rejected)))。",
+      "runtime": "python",
+      "starter": "import math\ndef dpo_loss(pc, pr, rc, rr, beta):\n    # TODO: 稳定计算 log-sigmoid\n    raise NotImplementedError\n",
+      "solution": "import math\ndef dpo_loss(pc, pr, rc, rr, beta):\n    z=beta*((pc-rc)-(pr-rr))\n    return max(-z,0.0)+math.log1p(math.exp(-abs(z)))\n",
+      "tests": "assert abs(dpo_loss(-1.,-2.,-1.,-2.,0.1)-math.log(2))<1e-12\nassert dpo_loss(-0.5,-2.,-1.,-2.,0.1)<dpo_loss(-2.,-0.5,-1.,-2.,0.1)\nprint('DPO margin tests passed')\n",
+      "hints": [
+        "先计算策略相对 reference 的两个 log-ratio，再求差。",
+        "使用稳定 softplus 形式计算 -log sigmoid(z)。"
+      ],
+      "explanation": "本练习只覆盖 DPO 的偏好对目标，不包含完整语言模型训练、token mask 或 reference 前向缓存。"
+    },
+    "pytorchTask": {
+      "prompt": "实现组内标准化优势，输入 rewards [B,G]，按每行组内均值与总体标准差归一化。",
+      "starter": "import torch\ndef group_advantage(rewards, eps=1e-6):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "import torch\ndef group_advantage(rewards, eps=1e-6):\n    if rewards.ndim!=2 or rewards.shape[1]<2: raise ValueError('expect [B,G], G>=2')\n    mean=rewards.mean(-1,keepdim=True)\n    std=rewards.std(-1,keepdim=True,unbiased=False)\n    return (rewards-mean)/(std+eps)\n",
+      "tests": "r=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\na=group_advantage(r)\nassert a[0,0]<0<a[0,2]\nassert torch.isfinite(a).all()\ntorch.testing.assert_close(a[1],torch.zeros(3))\nprint('GRPO group advantage tests passed')\n",
+      "hints": [
+        "保持 prompt 维度，沿最后一维计算组内统计。",
+        "std 使用 unbiased=False，常量组加 epsilon 后应输出有限零值。"
+      ],
+      "explanation": "组内标准化只是 GRPO 的优势构造环节，真实算法还需要采样、策略比率、KL 与 token mask。"
+    },
+    "pitfalls": [
+      {
+        "title": "将 reward 当动作回归标签",
+        "detail": "收益用于调整动作概率或价值目标，维度和语义与动作监督不同。先写明 J 与实际梯度估计。"
+      },
+      {
+        "title": "actor 经 advantage 反向修改 critic",
+        "detail": "普通 score-function 将优势作为固定权重。分开 actor/critic 的损失与梯度路径，检查共享模块的更新来源。"
+      },
+      {
+        "title": "对 log_prob 的 Batch 与动作维一起平均",
+        "detail": "事件维应形成联合 `log_prob`，再对样本归约；PPO 比率尤其依赖正确联合密度。"
+      },
+      {
+        "title": "rsample 一定比 sample 更适合所有策略梯度",
+        "detail": "是否需要动作路径取决于估计式。固定样本 score-function 需阻断该路径，pathwise 方法则有不同目标。"
+      },
+      {
+        "title": "clip 后仍使用原 Gaussian 的执行动作密度",
+        "detail": "裁剪或 tanh 会改变分布。按变换定义概率，并检查边界与 Jacobian；未压缩练习不覆盖这些情况。"
+      },
+      {
+        "title": "PPO 裁剪保证所有更新都安全且改善回报",
+        "detail": "裁剪 surrogate 不构成全局 KL 或性能保证。监控策略变化、价值误差和独立闭环结果。"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "基线只输入状态且已经 `detach`，为什么仍不能断言 actor 梯度无偏？",
+        "answer": [
+          "`detach` 只停止自动微分路径。如果基线用当前样本自己的回报计算或拟合，其数值仍可能依赖当前动作。N 个独立一步样本使用同批回报均值，会把梯度期望乘以 \\(1-1/N\\)；\\(N=1\\) 时更新为零。",
+          "零期望抵消需要给定状态后的相应独立性与分布条件。独立数据训练的状态基线，或在上述独立样本例子中的 leave-one-out 基线，可以满足该条件；整段轨迹中相关样本需要重新分析。"
+        ],
+        "codeFocus": "穷举两次 Bernoulli 抽样，比较无基线、同批均值和 leave-one-out。",
+        "acceptance": [
+          "区分计算图依赖与抽样依赖。",
+          "推导或复核 \\(1-1/N\\) 因子。"
+        ]
+      },
+      {
+        "question": "Normal 的 `sample` 与 `rsample` 对策略梯度有什么区别？为什么连续动作 `log_prob` 要求和？",
+        "answer": [
+          "`sample` 不携带采样路径梯度，适合把动作当固定样本的 score-function 更新。`rsample` 将动作表示为 `mu+std*epsilon`；若未经 `detach` 计算同一个 Normal 的 `log_prob`，总导数可能抵消均值的 score 项。若目标通过可微 Q 对动作求导，保留这条路径可能正是算法需要的。",
+          "对角 Gaussian 各动作维独立，联合密度是乘积，所以联合 `log_prob` 沿动作轴求和。可学习 `log_std` 通过 exp 得到正标准差，限制范围有数值与梯度代价；tanh 变换需要 Jacobian 修正。要先写清估计目标和动作变换，不能只看张量形状。"
+        ],
+        "codeFocus": "`gaussian_actor_loss` 的 `sum(-1)`、`actions.detach()` 与测试中的 bad/good 梯度。",
+        "acceptance": [
+          "解释 score-function 与路径梯度的区别。",
+          "说明动作轴求和、`log_std` 与变换密度边界。"
+        ]
+      },
+      {
+        "question": "给旧轨迹每步乘 \\(\\pi_{\\mathrm{new}}/\\pi_{\\mathrm{old}}\\)，为什么不等于获得任意新策略的无偏梯度？",
+        "answer": [
+          "单步比率在固定状态下校正动作分布，状态访问频率仍由旧策略产生。新策略会改变未来状态；完整轨迹校正涉及多步比率与支持覆盖，且可能有很大方差。",
+          "PPO 固定旧数据与优势来构造近邻 surrogate，再通过裁剪改变样本激励。它需要匹配动作变换与联合 `log_prob`，并控制数据陈旧程度；不能把 clip 解释为严格限制所有状态 KL 的保证。"
+        ],
+        "codeFocus": "`log_prob_old` 的策略版本、同一动作的事件维归约与 rollout 状态来源。",
+        "acceptance": [
+          "说明单步比率没有改变旧状态分布。",
+          "区分 surrogate 与完整新策略目标。"
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "title": "Spinning Up：策略梯度推导、基线与代码",
+        "url": "https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html"
+      },
+      {
+        "title": "PyTorch distributions：sample、rsample 与 log_prob",
+        "url": "https://docs.pytorch.org/docs/stable/distributions.html"
+      },
+      {
+        "title": "Spinning Up：Vanilla Policy Gradient",
+        "url": "https://spinningup.openai.com/en/latest/algorithms/vpg.html"
+      },
+      {
+        "title": "Schulman et al. · PPO 原论文",
+        "url": "https://arxiv.org/abs/1707.06347"
+      },
+      {
+        "title": "Greensmith et al. · 策略梯度中的基线与方差",
+        "url": "https://www.jmlr.org/papers/v5/greensmith04a.html"
+      },
+      {
+        "title": "Ren et al. · DPPO（2409.00588v3 / ICLR 2025）：扩展去噪 MDP 与逐步概率",
+        "url": "https://arxiv.org/abs/2409.00588v3"
+      },
+      {
+        "title": "DPPO 官方实现：Diffusion Policy 的 PPO 后训练",
+        "url": "https://github.com/irom-princeton/dppo"
+      }
+    ],
+    "keyPoints": [
+      "策略梯度使用动作得到的收益调整动作概率，不是把高收益标量当动作标签回归。",
+      "score-function actor 损失对动作样本和优势停止梯度；critic 使用自己的目标训练。",
+      "对角 Gaussian 的联合 `log_prob` 沿动作维求和，连续密度与离散概率不可混淆。",
+      "`sample` 与 `rsample` 对应不同梯度估计；PPO 的旧策略比率与裁剪需要匹配实际采集分布。"
+    ],
+    "lead": "策略梯度是直接对策略参数求期望回报梯度、据此改进动作分布的方法。常见估计用采样动作的对数概率梯度，乘以回报或优势，让结果较好的动作更可能被选择；它不要求真实环境可微。本章先推导这种估计，再定义基线、连续动作密度与采样梯度，最后连接重要性比率和 PPO 的局部代理目标。"
   }
 ]
