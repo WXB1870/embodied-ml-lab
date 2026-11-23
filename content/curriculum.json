@@ -125,7 +125,12 @@
   ],
   "researchFindings": [],
   "resources": [],
-  "canonicalTopics": {},
+  "canonicalTopics": {
+    "mlp": "mlp",
+    "cnn-receptive-field": "cnn",
+    "attention": "transformer",
+    "flow-matching": "flow-matching"
+  },
   "moduleAliases": {
     "training": "appendix",
     "architecture": "transformers",
@@ -133,6 +138,8 @@
     "actions": "policies",
     "rl": "posttraining",
     "posttraining": "posttraining",
-    "closedloop": "policies"
+    "closedloop": "policies",
+    "foundations": "appendix",
+    "neural": "appendix"
   }
 }
