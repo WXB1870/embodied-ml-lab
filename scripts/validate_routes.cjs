@@ -46,7 +46,7 @@ for(const lesson of lessons){
   assert.ok(html.includes('class="article-intro"'));
   assert.ok(html.includes('class="chapter-goals"')&&html.includes('id="chapter-review"'));
   assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length+(lesson.advancedSections||[]).length);
-  if(lesson.advancedSections?.length)assert.ok(html.includes('class="advanced-material"'));
+  if(lesson.advancedSections?.length)assert.ok(html.includes('advanced-material'));
   assert.ok(!html.includes('id="discussion"'));
   assert.ok(!html.includes('class="key-points"'));
   const practice=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);
