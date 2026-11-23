@@ -105,7 +105,7 @@ for(const lesson of lessons){
  });
 }
 test('Core code pages start with the running example and retain unique code frames',()=>{
- for(const id of ['mlp','cnn-receptive-field','transformer','flow-matching']){
+ for(const id of ['mlp','cnn-receptive-field','flow-matching']){
   const lesson=lessons.find(l=>l.id===id);
   const html=evaluate(`renderLesson(byId[${JSON.stringify(id)}],'code','python',new URLSearchParams())`);
   const mainStart=html.indexOf('id="demo-'+lesson.mainImplementation+'"');
@@ -114,5 +114,6 @@ test('Core code pages start with the running example and retain unique code fram
   for(const demo of lesson.extraImplementations)assert.equal((html.match(new RegExp('id="code-'+demo.id+'"','g'))||[]).length,1);
  }
 });
+test('Attention course retains its own executable code page',()=>{\n const html=evaluate(`renderLesson(byId[\"attention\"],'code','python',new URLSearchParams())`);\n assert.ok(html.includes('id=\"lesson-code\"')&&html.includes('id=\"code-implementation\"'));\n});
 fs.writeFileSync(path.join(root,'reports/route-validation.json'),JSON.stringify({total:records.length,passed:records.length,results:records},null,2)+'\n');
 console.log(JSON.stringify({routeAndRendererChecks:records.length,passed:records.length}));
