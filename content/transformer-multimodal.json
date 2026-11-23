@@ -14,9 +14,7 @@
       "PyTorch",
       "面试手撕"
     ],
-    "prerequisites": [
-      "tensor"
-    ],
+    "prerequisites": [],
     "objectives": [
       "为视觉、状态与动作张量标注每个轴的含义",
       "区分维度重排、形状重组和广播",
@@ -649,6 +647,17 @@
         "code": "import torch\\n\\ndef rope(x, positions, inv_freq):\\n    # x: [..., T, D], D must be even\\n    angle = positions[..., None] * inv_freq\\n    c, s = angle.cos(), angle.sin()\\n    even, odd = x[..., 0::2], x[..., 1::2]\\n    out = torch.stack((even*c-odd*s, even*s+odd*c), dim=-1)\\n    return out.flatten(-2)\\n\\nx=torch.randn(2,5,8); pos=torch.arange(5.); freq=1.0/(10000**(torch.arange(4.)/4))\\ny=rope(x,pos,freq)\\ntorch.testing.assert_close(x.norm(dim=-1),y.norm(dim=-1))\\nprint(y.shape)",
         "codeKind": "complete",
         "codeExplanation": "此代码片段用于将本节推导落实为可执行张量运算。"
+      },
+      {
+        "id": "rope-length-scaling",
+        "title": "长度外推与缩放策略",
+        "lead": "RoPE 的外推能力取决于位置频率、训练上下文与推理时缩放策略。",
+        "body": [
+          "直接把位置索引延长到训练长度之外，会让高频通道经历未训练过的相位范围。",
+          "位置插值压缩推理位置范围，频率缩放则调整不同频段的角速度；不同策略对短程与长程注意力有不同影响。",
+          "评估长度外推要固定模型权重，比较训练长度内外的困惑度、检索准确率和位置敏感任务，而不能只观察数值稳定。"
+        ],
+        "formula": "\\theta_j'=\\alpha_j\\theta_j"
       }
     ],
     "shapes": [
