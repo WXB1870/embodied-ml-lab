@@ -40,6 +40,7 @@ test('Deployment paths cover assets, downloads and repeated normalization',()=>{
 });
 
 for(const lesson of lessons){
+ const canonicalId=evaluate(`LEGACY_LESSON_IDS[${JSON.stringify(lesson.id)}]`)||lesson.id;
  test(lesson.id+' theory introduction and exercise separation',()=>{
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
   assert.ok(html.includes('class="article-intro"'));
@@ -55,7 +56,7 @@ for(const lesson of lessons){
   for(const anchor of ['discussion','question-0','mistakes','pitfall-0']){
    const raw='/learn/'+lesson.id+'/?tab=theory&anchor='+anchor;
    const target=new URL(evaluate(`routeHref(${JSON.stringify(raw)})`),origin);
-   assert.ok([basePath+'/learn/'+lesson.id+'/',basePath+'/learn/'+lesson.id+'/exercise/'].includes(target.pathname));
+   assert.equal(target.pathname,basePath+'/learn/'+canonicalId+'/');
    assert.equal(target.searchParams.get('anchor'),anchor);
    assert.equal(target.searchParams.get('tab'),'exercise');
   }
@@ -63,11 +64,11 @@ for(const lesson of lessons){
  test(lesson.id+' canonical theory/code/exercise query routes',()=>{
   for(const tab of ['theory','code','exercise']){
    const expected='/learn/'+lesson.id+'/?tab='+tab;
-   assert.equal(evaluate(`routeHref(${JSON.stringify(expected)})`),basePath+expected);
-   assert.equal(evaluate(`routeHref(${JSON.stringify(basePath+expected)})`),basePath+expected);
+   assert.equal(evaluate(`routeHref(${JSON.stringify(expected)})`),basePath+'/learn/'+canonicalId+'/?tab='+tab);
+   assert.equal(evaluate(`routeHref(${JSON.stringify(basePath+expected)})`),basePath+'/learn/'+canonicalId+'/?tab='+tab);
    const legacy='/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/')+'?tab='+tab;
    const legacyResult=evaluate(`routeHref(${JSON.stringify(legacy)})`);
-   assert.ok([basePath+expected,basePath+legacy].includes(legacyResult));
+   assert.ok([basePath+'/learn/'+canonicalId+'/?tab='+tab,basePath+legacy].includes(legacyResult));
    context.location.pathname=basePath+'/learn/'+lesson.id+'/';
    context.location.search='?tab='+tab;context.location.hash='';
    assert.equal(evaluate('parseRoute().path'),'/learn/'+lesson.id);
