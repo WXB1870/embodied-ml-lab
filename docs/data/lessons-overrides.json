@@ -1,0 +1,1692 @@
+[
+  {
+    "id": "mlp",
+    "number": 22,
+    "module": "appendix",
+    "title": "MLP：表达、梯度与优化",
+    "subtitle": "手算前向与梯度，核对张量形状，再完成带归一化和有效池化的训练实验。",
+    "minutes": 90,
+    "tags": [
+      "MLP",
+      "Readout head",
+      "Regression"
+    ],
+    "prerequisites": [
+      "tensor",
+      "matrix-grad"
+    ],
+    "objectives": [
+      "说明仿射变换与激活如何共同表示非线性函数",
+      "计算网络的输出形状、参数量与共享计算范围",
+      "分别实现一般向量回归和序列分类，匹配输出与损失约定"
+    ],
+    "why": "MLP 是特征投影、分类器、时间嵌入和 Transformer 前馈层的基本组件。用通用回归与序列分类示例掌握其形状、表达能力、梯度和训练约定，能更可靠地阅读复杂模型。",
+    "code": {
+      "title": "训练一个二维非线性函数近似器",
+      "source": "import torch\nfrom torch import nn\n\ntorch.manual_seed(7)\n# STEP 1: 构造两个通用的非线性合成函数\nfeatures = torch.randn(128, 8)\ntarget = torch.stack([\n    features[:, 0] + 0.2 * features[:, 1].square(),\n    features[:, 2].sin() + 0.1 * features[:, 3] * features[:, 4],\n], dim=-1)\nmodel = nn.Sequential(nn.Linear(8, 32), nn.SiLU(), nn.Linear(32, 2))\nparameter_count = sum(p.numel() for p in model.parameters())\nassert parameter_count == (8 * 32 + 32) + (32 * 2 + 2) == 354\nprint(\"parameters:\", parameter_count)\n\n# STEP 2: 固定训练数据，检查前向、求导和更新是否工作\noptimizer = torch.optim.AdamW(model.parameters(), lr=0.03, weight_decay=0.)\ninitial_loss = (model(features) - target).square().mean().item()\nfor step in range(200):\n    optimizer.zero_grad(set_to_none=True)\n    prediction = model(features)\n    loss = (prediction - target).square().mean()\n    loss.backward()\n    optimizer.step()\n\n# STEP 3: 同一训练集的拟合检查，不作为样本外泛化结果\nmodel.eval()\nwith torch.no_grad():\n    final_loss = (model(features) - target).square().mean().item()\n    sample = model(features[:2])\nassert sample.shape == (2, 2) and torch.isfinite(sample).all()\nassert final_loss < initial_loss\nprint(\"training MSE:\", round(initial_loss, 5), \"->\", round(final_loss, 5))\nprint(\"two function outputs:\", sample)\n",
+      "explanations": [
+        {
+          "lines": "4–14",
+          "text": "两个目标含平方、正弦和乘法；网络输出为 [B,2] 的一般实数向量，总参数量 354。"
+        },
+        {
+          "lines": "16–24",
+          "text": "每步先清零，前向生成误差，backward 计算导数，step 才实际改变参数。"
+        },
+        {
+          "lines": "26–34",
+          "text": "以固定训练集比较更新前后的拟合，检查输出形状与有限值；这一结果不证明独立数据上的泛化。"
+        }
+      ],
+      "expected": "输出参数量 354；200 步后同一合成训练集的 MSE 低于初始值，两个探针的输出形状为 [2,2]。数值尾数可随环境略变。"
+    },
+    "exercise": {
+      "title": "手写两层 MLP 前向",
+      "prompt": "w1 为 [H,D]，w2 为 [O,H]，隐藏层使用 ReLU，输出层不加激活。输入 x 是一条 D 维特征，返回 O 维输出列表。",
+      "runtime": "python",
+      "starter": "def mlp_forward(x, w1, b1, w2, b2):\n    # TODO: 第一层 -> ReLU -> 第二层\n    raise NotImplementedError(\"请实现 mlp_forward\")\n",
+      "solution": "def mlp_forward(x, w1, b1, w2, b2):\n    hidden = [max(0., sum(w * xi for w, xi in zip(row, x)) + bias)\n              for row, bias in zip(w1, b1)]\n    return [sum(w * hi for w, hi in zip(row, hidden)) + bias\n            for row, bias in zip(w2, b2)]\n",
+      "tests": "w1, b1 = [[1., 1.], [-1., 2.]], [0., 6.]\nw2, b2 = [[2., 3.], [-1., 4.]], [1., -2.]\nassert mlp_forward([1., -2.], w1, b1, w2, b2) == [4., 2.]\nassert mlp_forward([2., 1.], w1, b1, w2, b2) == [25., 19.]\nassert mlp_forward([0.], [[0.]], [0.], [[1.]], [-3.]) == [-3.]\nprint(\"通过：隐藏非线性正确，输出允许负值。\")\n",
+      "hints": [
+        "每个隐藏神经元对应 w1 的一行。",
+        "只对隐藏层使用 max(0,value)，不要给最后输出加 ReLU。"
+      ],
+      "explanation": "最后一个测试检查输出允许负值。一般实数回归在没有额外范围约定时，不应在最后加 ReLU；隐藏层仍需要非线性。"
+    },
+    "pytorchTask": {
+      "prompt": "实现 SequenceClassifier(in_dim, hidden_dim, num_classes)：输入 features 为 [B,T,D] 的等长、全有效、有限浮点序列，B,T>0。先仅沿 T 轴平均，再执行带偏置 Linear(D,H)→SiLU→Linear(H,K)，返回 [B,K] 的未归一化 logits。必须正确注册模块，不得在输出端做 Softmax；不要求处理 Padding。",
+      "starter": "import torch\nfrom torch import nn\n\nclass SequenceClassifier(nn.Module):\n    def __init__(self, in_dim, hidden_dim, num_classes):\n        super().__init__()\n        # TODO: 注册两层带偏置 Linear 与隐藏 SiLU\n        raise NotImplementedError(\"请初始化分类器\")\n\n    def forward(self, features):\n        # TODO: 沿时间轴平均，返回类别 logits\n        raise NotImplementedError(\"请实现 forward\")\n",
+      "solution": "import torch\nfrom torch import nn\n\nclass SequenceClassifier(nn.Module):\n    def __init__(self, in_dim, hidden_dim, num_classes):\n        super().__init__()\n        self.net = nn.Sequential(\n            nn.Linear(in_dim, hidden_dim), nn.SiLU(),\n            nn.Linear(hidden_dim, num_classes))\n\n    def forward(self, features):\n        return self.net(features.mean(dim=1))\n",
+      "tests": "torch.manual_seed(0)\nmodel = SequenceClassifier(8, 16, 4).double()\nlinears = [m for m in model.modules() if isinstance(m, nn.Linear)]\nassert len(linears) == 2\nfirst, last = linears\nassert tuple(first.weight.shape) == (16, 8)\nassert tuple(last.weight.shape) == (4, 16)\nassert first.bias is not None and last.bias is not None\nassert sum(p.numel() for p in model.parameters()) == 212\nwith torch.no_grad():\n    first.weight.copy_(torch.arange(128, dtype=torch.float64).reshape(16, 8) / 128 - 0.5)\n    first.bias.copy_(torch.linspace(-0.3, 0.3, 16, dtype=torch.float64))\n    last.weight.copy_(torch.arange(64, dtype=torch.float64).reshape(4, 16) / 64 - 0.5)\n    last.bias.copy_(torch.tensor([-1.0, 0.5, 1.0, -0.5], dtype=torch.float64))\nx = (torch.arange(80, dtype=torch.float64).reshape(2, 5, 8) / 80 - 0.5).requires_grad_()\ny = model(x)\npooled = x.mean(dim=1)\nz = pooled @ first.weight.T + first.bias\nexpected = (z * torch.sigmoid(z)) @ last.weight.T + last.bias\ntorch.testing.assert_close(y, expected)\nassert y.shape == (2, 4)\ntorch.testing.assert_close(model(x.flip(1)), y)\nloss = torch.nn.functional.cross_entropy(y, torch.tensor([1, 3]))\nloss.backward()\nassert x.grad is not None and torch.isfinite(x.grad).all() and x.grad.abs().sum() > 0\nassert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())\nassert model(torch.randn(1, 1, 8, dtype=torch.float64)).shape == (1, 4)\nwith torch.no_grad():\n    last.weight.zero_()\n    last.bias.copy_(torch.tensor([-2., 0., 3., -1.], dtype=torch.float64))\ntorch.testing.assert_close(model(x), last.bias.expand(2, 4))\nprint(\"通过：固定权重数值、时间池化、模块注册、梯度与 logits 约定\")\n",
+      "hints": [
+        "池化只沿 dim=1；Linear 操作最后一维，输出类别数由 num_classes 决定。",
+        "SiLU(z)=z*sigmoid(z)，应只放在两层 Linear 中间。",
+        "CrossEntropyLoss 接收 logits，输出不需要事先变成概率。"
+      ],
+      "explanation": "先把 [B,T,D] 聚合为 [B,D]，再执行两层分类网络。测试固定两层参数，以独立的 z*sigmoid(z) 公式构造预期结果，能识别错误激活、错误池化或改变计算顺序；还检查参数量、真实反向、单样本边界与不受概率范围约束的 logits。平均池化具有排列不变性，因此它不适合直接表示必须区分顺序的任务。"
+    },
+    "sources": [
+      {
+        "title": "PyTorch · Linear",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.Linear.html"
+      },
+      {
+        "title": "PyTorch · Parameter initialization",
+        "url": "https://docs.pytorch.org/docs/stable/nn.init.html"
+      },
+      {
+        "title": "Glorot & Bengio · Understanding the difficulty of training deep feedforward neural networks",
+        "url": "https://proceedings.mlr.press/v9/glorot10a.html"
+      },
+      {
+        "title": "PyTorch · ReLU",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.ReLU.html"
+      },
+      {
+        "title": "PyTorch · CrossEntropyLoss",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html"
+      },
+      {
+        "title": "PyTorch · BCEWithLogitsLoss",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html"
+      },
+      {
+        "title": "PyTorch · MSELoss",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.MSELoss.html"
+      },
+      {
+        "title": "Saxe 等：Exact solutions to the nonlinear dynamics of learning in deep linear neural networks",
+        "url": "https://arxiv.org/abs/1312.6120"
+      },
+      {
+        "title": "Zaheer 等：Deep Sets",
+        "url": "https://arxiv.org/abs/1703.06114"
+      },
+      {
+        "title": "Goodfellow、Bengio、Courville：Optimization for Training Deep Models",
+        "url": "https://www.deeplearningbook.org/contents/optimization.html"
+      },
+      {
+        "title": "He 等：Delving Deep into Rectifiers",
+        "url": "https://arxiv.org/abs/1502.01852"
+      },
+      {
+        "title": "Yarotsky：Error bounds for approximations with deep ReLU networks",
+        "url": "https://arxiv.org/abs/1610.01145"
+      }
+    ],
+    "theoryTopic": "mlp",
+    "legacySectionMap": {
+      "0": "affine-nonlinearity",
+      "1": "forward-by-hand",
+      "2": "shapes-parameters",
+      "3": "backpropagation",
+      "4": "objectives",
+      "5": "tokens-readout",
+      "6": "initialization-scaling",
+      "7": "diagnosis"
+    },
+    "legacyAnchorMap": {
+      "question-0": "section-affine-nonlinearity",
+      "question-1": "section-tokens-readout",
+      "pitfall-0": "section-shapes-parameters",
+      "pitfall-1": "section-shapes-parameters",
+      "pitfall-2": "pitfall-2",
+      "pitfall-3": "section-tokens-readout"
+    },
+    "lead": "多层感知机（MLP）是一种将全连接仿射层与非线性激活交替组合的神经网络，也就是由可学习参数组织的多层函数模型。仿射层混合输入特征，激活使组合能够表达非线性关系，损失与反向传播再让参数从数据中学习。本章沿同一个 2→3→2 网络认识各组成部分，完成前向、损失、五组梯度与一次更新，再讨论表达能力和训练条件。",
+    "sections": [
+      {
+        "id": "affine-nonlinearity",
+        "title": "从仿射变换到非线性函数",
+        "body": [
+          "一个全连接层为每个输出特征学习一组输入权重，再加一个偏置。输入不是必须为图像或文本；关节状态、图像 token、融合后的场景表示都可以作为向量。权重决定输入方向如何混合，偏置让输出在输入为零时也能有非零值。带偏置的操作严格说是仿射变换。PyTorch 的 Linear 沿最后一个维度计算，其余维度作为批量位置保留。 下图用 4→5→3 示意输入、隐藏与输出层的全连接关系；后面的完整手算统一固定为 2→3→2 网络。",
+          "如果把多个 Linear 直接串联，中间没有非线性，它们仍能合并成一个仿射变换。两层的合并权重是两个权重矩阵的乘积，偏置也能相应合并。深度此时改变了参数化和可能的秩约束，却没有得到任意弯曲的函数。激活函数让不同输入进入不同的计算区域。例如 ReLU 对负预激活输出零，整个网络成为连续的分段仿射函数。",
+          "以标量输入为例，两个带偏置线性层满足 \\(w_2(w_1x+b_1)+b_2=(w_2w_1)x+(w_2b_1+b_2)\\)，斜率在整个输入轴上相同。若中间插入 ReLU，\\(w_2\\max(0,w_1x+b_1)+b_2\\) 会在预激活过零处改变斜率。多个隐藏单元可以在不同位置改变斜率，非线性表达由此逐步形成；后面的显式插值构造将把这一观察变成可检验的函数表示。",
+          "首先需要把这个函数写成形状明确的批量运算，并完整计算一次前向与反向。掌握这些机制以后，再分析局部 Jacobian、有限宽度的表示能力，以及相同函数为什么仍可能具有不同优化轨迹。初始化的统计假设见[激活与初始化](#/learn/activation-init)，深层传播的旁路机制见[残差连接](#/learn/residual)。"
+        ],
+        "formula": "h=\\phi(XW_1^\\top+b_1),\\qquad \\hat Y=hW_2^\\top+b_2",
+        "takeaway": "函数相同不保证参数梯度或训练轨迹相同；非线性、秩与参数化要分别分析。",
+        "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
+        "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。",
+        "lead": "仿射层用权重混合输入并加偏置，激活函数对所得响应作非线性变换。将两者交替组合才构成这里讨论的 MLP；只有仿射层的堆叠仍然是一个仿射映射。先认识这两个单元，再追踪完整网络。",
+        "codeKind": "runnable",
+        "figures": [
+          {
+            "src": "/assets/figures/mlp-network-d2l.svg",
+            "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
+            "afterParagraph": 1,
+            "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers)。",
+            "width": 372,
+            "height": 187
+          }
+        ]
+      },
+      {
+        "id": "shapes-parameters",
+        "title": "张量形状、参数朝向与参数量",
+        "body": [
+          "采用行向量组成 Batch 的约定：输入 X 为 [B,D]，第一层权重 \\(W_1\\) 为 [H,D]，偏置为 [H]，所以 `X@W1.T` 得到 [B,H]。第二层权重为 [O,H]，输出为 [B,O]。不要凭矩阵名判断乘法方向，应从相邻内维是否相等，以及每个轴代表什么来核对。nn.Linear(D,H).weight 的第一维是输出数，这与某些教材把权重写成 [D,H] 的约定相反。",
+          "两层有偏置的 \\(D\\to H\\to O\\) 网络，参数量是 \\(DH+H+HO+O\\)。Batch 大小不进入参数量，因为不同样本共享同一组权重。Batch 和序列长度会改变计算量及中间激活大小。若把 100 个 token 展平成一个大向量再接全连接，输入维度会从 D 变成 100D，参数量及结构假设都会变化。",
+          "输入也可以是 [B,T,D]。Linear(D,H) 会在每个 b,t 位置复用同一个映射，输出 [B,T,H]，不会自动让两个时间步互相通信。把前两个轴临时合为 \\(BT\\) 后计算，再恢复形状，与保留三维输入等价；把 T 和 D 合并则是另一种模型。维度重排需用 transpose/permute，reshape 只改变元素如何分组，不能替代轴交换。",
+          "参数量与训练内存不是一回事。参数需要存储权重，优化器还可能维护一阶、二阶状态；训练反向需要保留中间激活。把序列长度翻倍不增加共享 Linear 的权重，却通常增加激活占用与矩阵乘法工作量。估算时分别列出参数、梯度、优化器状态和激活，并注明 dtype，不能只用一个参数量乘常数覆盖所有训练设置。",
+          "后文固定 \\(B=3,D=2,H=3,O=2\\)，继续使用刚才的 2→3→2 网络，参数来自代码页的 [manual-backprop](#/learn/mlp?tab=code&anchor=demo-manual-backprop)。X 参与求导验证，但不是优化器更新的模型参数；这个区别将在一次 SGD 更新中明确体现。"
+        ],
+        "formula": "P=DH+H+HO+O,\\qquad [B,T,D]\\xrightarrow{\\operatorname{Linear}(D,H)}[B,T,H]",
+        "code": "layer = torch.nn.Linear(6, 8)\nx = torch.randn(2, 5, 6)\nassert layer(x).shape == (2, 5, 8)\nassert layer.weight.shape == (8, 6)",
+        "codeExplanation": "这个补充形状片段用 6→8 的单层演示 [B,T,D] 输入：保留 B、T，只变换最后一个特征轴，2×5 个位置共享 56 个参数。先执行 import torch；贯穿本章的 2→3→2 网络有 17 个参数，完整前向与手写反向见 manual-backprop。",
+        "example": {
+          "title": "从同一个 2→3→2 网络数出 17 个参数",
+          "afterParagraph": 1,
+          "steps": [
+            "输入 X:[B,2]。第一层 Linear(2,3) 的权重为 [3,2]、偏置为 [3]，输出为 [B,3]，参数数为 \\(3\\times2+3=9\\)。",
+            "ReLU 不增加参数，第二层 Linear(3,2) 的权重为 [2,3]、偏置为 [2]，输出为 [B,2]，参数数为 \\(2\\times3+2=8\\)。",
+            "总数为 \\(9+8=17\\)。后面的三条输入使用同一组参数；把 Batch 从 3 改成 30，不会把 17 变成 170，只会改变激活与计算量。"
+          ],
+          "conclusion": "贯穿案例的前向、反向与一次更新使用这 17 个可训练数。先逐层计数，再推广到一般 D→H→O 公式；补充形状片段会单独注明所用尺寸。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "相同元素个数，不代表相同的轴含义",
+          "explanation": "[B,T,D] 可以直接送进 Linear(D,H)，得到 [B,T,H]；每个时间位置独立复用相同参数。直接 reshape 成 [B,D,T] 并不是交换时间和通道，它只重新解释线性存储顺序，可能得到形状正常、语义已错的输入。",
+          "check": "用 torch.arange 构造每个位置都不同的输入，逐个检查一个指定 b,t 的输出，而不只 assert 最终 shape。"
+        },
+        "lead": "网络形状约定说明每个数组承载输入、隐藏表示、输出还是参数，以及各轴怎样对应。参数量则计数独立可学习的数值，不随同一权重被多少样本复用而增加。下面固定同一个 2→3→2 模型，为全部手算建立坐标。",
+        "codeKind": "fragment"
+      },
+      {
+        "id": "forward-by-hand",
+        "title": "完整手算一次前向与损失",
+        "body": [
+          "沿用上一节的 17 参数网络，所有矩阵都采用 PyTorch 的权重朝向。三条输入和目标为 \\[X=\\begin{bmatrix}1&-2\\\\0.5&1\\\\-1&0.25\\end{bmatrix},\\qquad Y=\\begin{bmatrix}0.5&-0.1\\\\0.7&0.4\\\\-0.2&0.8\\end{bmatrix}.\\]第一层 \\(W_1=\\begin{bmatrix}0.7&-0.3\\\\-0.4&0.8\\\\0.5&0.2\\end{bmatrix}\\)、\\(b_1=[0.2,0.1,0.4]\\)；第二层 \\(W_2=\\begin{bmatrix}0.6&-0.2&0.4\\\\-0.3&0.5&0.7\\end{bmatrix}\\)、\\(b_2=[0.1,-0.2]\\)。代码中的 w1、b1、w2、b2 就是这些数，没有在不同页面重新抽取参数。",
+          "先算第一条输入。三个预激活分别为 \\(1(0.7)+(-2)(-0.3)+0.2=1.5\\)、\\(1(-0.4)+(-2)(0.8)+0.1=-1.9\\)、\\(1(0.5)+(-2)(0.2)+0.4=0.5\\)。ReLU 把中间一项置零，得到 \\(A_{1,:}=[1.5,0,0.5]\\)。第一项输出为 \\(1.5(0.6)+0(-0.2)+0.5(0.4)+0.1=1.2\\)，第二项为 \\(1.5(-0.3)+0(0.5)+0.5(0.7)-0.2=-0.3\\)。这里同一条样本的隐藏单元与不同样本的批次轴承担不同作用。",
+          "逐行重复同一计算，得到下表。\\(Z\\) 是激活前的值，\\(A=\\operatorname{ReLU}(Z)\\) 是激活后的矩阵，代码中分别命名 z、h。参数共享意味着三行复用同一组权重，并不意味着三行拥有相同的激活开关；第一行第二单元关闭，而第二、三行的这个单元仍开放。",
+          "本例固定半均方误差 \\(L=\\frac1{2BO}\\sum_{b,o}(\\widehat Y_{bo}-Y_{bo})^2\\)。六个残差依次为 \\(0.7,-0.2,-0.25,0.27,0.16,-0.65\\)，平方和为 \\(1.1135\\)，故 \\(L=1.1135/12=0.092791666\\ldots\\)。除以 12 来自二分之一与六个输出元素，而不是隐藏单元数。下一节用 \\(G=(\\widehat Y-Y)/6\\) 开始反传，避免把损失值本身误当成梯度。",
+          "计算图中的实线表示前向依赖，反向箭头表示同一边对应的向量—Jacobian 乘积。第二层偏置直接影响预测，第一层偏置还须穿过第二层权重和 ReLU；因此两组偏置的梯度形状与数值本来就不同。图中只画一次共享运算，所有批次位置的贡献在参数处累加。"
+        ],
+        "formula": "Z=\\begin{bmatrix}1.5&-1.9&0.5\\\\0.25&0.7&0.85\\\\-0.575&0.7&-0.05\\end{bmatrix},\\quad A=\\max(0,Z),\\quad \\widehat Y=\\begin{bmatrix}1.2&-0.3\\\\0.45&0.67\\\\-0.04&0.15\\end{bmatrix}",
+        "takeaway": "手算时固定一个损失定义；先标中间量，再讨论导数。",
+        "lead": "张量形状规定了运算是否合法，具体数字则能说明每一步实际算了什么。一个两层小网络足以把权重、偏置、激活和标量损失连成完整路径。只改动一个偏置，还可以直接观察非线性如何打开或关闭某条局部梯度路径。",
+        "comparison": {
+          "title": "同一批输入的前向轨迹",
+          "columns": [
+            "样本",
+            "输入 X",
+            "预激活 Z",
+            "隐藏表示 A",
+            "预测 Ŷ / 目标 Y"
+          ],
+          "rows": [
+            [
+              "1",
+              "[1, −2]",
+              "[1.5, −1.9, 0.5]",
+              "[1.5, 0, 0.5]",
+              "[1.2, −0.3] / [0.5, −0.1]"
+            ],
+            [
+              "2",
+              "[0.5, 1]",
+              "[0.25, 0.7, 0.85]",
+              "[0.25, 0.7, 0.85]",
+              "[0.45, 0.67] / [0.7, 0.4]"
+            ],
+            [
+              "3",
+              "[−1, 0.25]",
+              "[−0.575, 0.7, −0.05]",
+              "[0, 0.7, 0]",
+              "[−0.04, 0.15] / [−0.2, 0.8]"
+            ]
+          ]
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/mlp-computation-chain-v2.svg",
+            "alt": "17 参数两层 MLP 的前向张量、参数支路与反向梯度路径",
+            "caption": "2→3→2 网络的前向与反向。蓝色路径传递前向值，反向从标量损失逐层求导；共享偏置的梯度沿 Batch 轴求和。",
+            "width": 1100,
+            "height": 510
+          }
+        ]
+      },
+      {
+        "id": "backpropagation",
+        "title": "反向传播：每个矩阵梯度从哪里来",
+        "body": [
+          "继续使用刚才的三条输入与同一组参数。第一行上游梯度为 \\(G_{1,:}=[0.7,-0.2]/6=[0.116666\\ldots,-0.033333\\ldots]\\)。传到隐藏层的第一行是 \\(G_{1,:}W_2=[0.08,-0.04,0.023333\\ldots]\\)；第二个预激活为负，乘 ReLU 导数后变成 \\((\\Delta_1)_{1,:}=[0.08,0,0.023333\\ldots]\\)。输入导数因此为 \\((\\Delta_1)_{1,:}W_1=[0.067666\\ldots,-0.019333\\ldots]\\)。注意其中的除以 6 已经来自整个批次损失，不能在聚合参数梯度时再除一次 Batch。",
+          "对 Batch 形式，设输入 \\(X\\in\\mathbb R^{B\\times D}\\)，预激活 \\(Z=XW_1^\\top+\\mathbf1b_1^\\top\\)，激活矩阵 \\(A=\\phi(Z)\\in\\mathbb R^{B\\times H}\\)，预测 \\(\\widehat Y=AW_2^\\top+\\mathbf1b_2^\\top\\in\\mathbb R^{B\\times O}\\)。这里 \\(H\\) 是隐藏宽度，\\(A\\) 才是隐藏激活。若 \\(L=\\frac12\\operatorname{mean}((\\widehat Y-Y)^2)\\)，损失对预测的导数为 \\(G=(\\widehat Y-Y)/(BO)\\)。PyTorch 的默认 MSELoss 不含前面的二分之一，因此使用它时 \\(G\\) 应再乘 2。",
+          "先只改变第二层权重。第 \\((b,o)\\) 个预测的微分为 \\(d\\widehat Y_{bo}=\\sum_h A_{bh}\\,d(W_2)_{oh}\\)，代入 \\(dL=\\sum_{b,o}G_{bo}\\,d\\widehat Y_{bo}\\)，交换有限求和的次序：\\[dL=\\sum_{o,h}\\left(\\sum_bG_{bo}A_{bh}\\right)d(W_2)_{oh}.\\]每个权重微分前的系数就是对应梯度，因此 \\(\\nabla_{W_2}L=G^\\top A\\)，形状为 `[O,H]`。同理，偏置被所有样本共享，\\(\\nabla_{b_2}L=\\sum_bG_{b,:}\\)。",
+          "再只改变隐藏激活，有 \\(d\\widehat Y=dA\\,W_2^\\top\\)，于是 \\(\\nabla_A L=GW_2\\)。激活逐元素作用，链式法则给出 \\(\\Delta_1=(GW_2)\\odot\\phi^{\\prime}(Z)\\)；沿第一层重复同一求和，得到 \\(\\nabla_{W_1}L=\\Delta_1^\\top X\\)、\\(\\nabla_{b_1}L=\\sum_b(\\Delta_1)_{b,:}\\) 和 \\(\\nabla_XL=\\Delta_1W_1\\)。这条计算链使用向量—Jacobian 乘积，无需显式保存所有输出对所有参数的完整 Jacobian。",
+          "检查梯度至少有三种互补证据：形状应与被求导变量相同，手写推导应与 autograd 对照，平滑区域内还可用中心有限差分核验。ReLU 的零点不可导，数值扰动跨过折点时，有限差分与框架选用的导数可能不同；测试应避开折点，不应仅通过放宽容差使测试通过。带 Mask 的任务还要重新推导有效分母，BO 不能无条件作为所有损失的分母。",
+          "一个偏置被 B 个样本共享时，其梯度是这些位置贡献之和；若上游 G 已经包含 mean 的分母，不能再额外除一次 B。广播的反向就是沿被扩展的轴求和。类似地，多个分支共用一组权重时，梯度会相加；最终梯度为零既可能是每条路径都为零，也可能是非零路径互相抵消，单看范数不能区分。",
+          "将三行贡献相加，第二层偏置梯度为 \\([0.101666\\ldots,-0.096666\\ldots]\\)，第一层偏置梯度为 \\([0.0415,-0.028666\\ldots,0.038166\\ldots]\\)。两层权重梯度见下表；例如 \\(\\partial L/\\partial(W_1)_{11}=0.08(1)+(-0.0385)(0.5)+0(-1)=0.06075\\)。某行的 ReLU 关闭不会阻止同一权重接受其他行的贡献。代码以 float64 核对全部五组梯度，并对第一层每个权重作中心有限差分。"
+        ],
+        "formula": "\\begin{aligned}G&=\\frac{\\widehat Y-Y}{BO},&\\nabla_{W_2}L&=G^\\top A,&\\nabla_{b_2}L&=\\sum_bG_{b,:},\\\\\\Delta_1&=(GW_2)\\odot\\phi^{\\prime}(Z),&\\nabla_{W_1}L&=\\Delta_1^\\top X,&\\nabla_XL&=\\Delta_1W_1.\\end{aligned}",
+        "takeaway": "权重梯度聚合所有共享位置；mean 的分母必须进入最初的上游梯度。",
+        "example": {
+          "title": "沿同一计算图完成一次 SGD 更新",
+          "steps": [
+            "固定学习率 \\(\\eta=0.1\\)，对四个参数张量使用 \\(\\theta^+=\\theta-\\eta\\nabla_\\theta L\\)。例如 \\((W_1)_{11}:0.7\\to0.693925\\)，\\((b_2)_1:0.1\\to0.089833333\\ldots\\)。X 与 Y 保持不变。",
+            "四组参数都要由旧参数点的梯度同时更新；不能先修改 W₂，再用新 W₂ 重新计算本应属于同一旧点的第一层梯度。manual-backprop 先计算五组导数，再在 no_grad 下统一 step。",
+            "用更新后的参数重新前向，得到 \\(\\widehat Y^+\\) 第一行约为 \\([1.129594,-0.280068]\\)，整体半均方误差约为 \\(0.082768803\\)。这个固定例子的 loss 降低是实测；换一个学习率或跨过激活边界，不保证每一步都下降。",
+            "代码将手写更新后的全部参数与 nn.Module + SGD 的结果比较，并确认原输入未变化。如何把同样的 VJP 自动组织起来见[自动微分](#/learn/autograd)；动量和 AdamW 如何改变更新规则见[优化器](#/learn/optimization)。"
+          ],
+          "conclusion": "前向、目标、反向和更新属于同一组状态；五组梯度中只有四组模型参数交给优化器。完整计算链可以逐项复算，不能由“loss 下降”单独替代梯度正确性验证。"
+        },
+        "lead": "反向传播是沿前向依赖反向应用链式法则、计算损失对各参数梯度的过程。激活的局部导数调节每条路径，共享权重汇总各样本贡献。下面继续使用刚才的输入、参数与损失，逐项算出五组梯度。",
+        "comparison": {
+          "title": "五组导数：公式、形状与本例数值",
+          "columns": [
+            "变量",
+            "梯度形状",
+            "计算规则",
+            "数值（保留六位）"
+          ],
+          "rows": [
+            [
+              "W₂",
+              "[2,3]",
+              "\\(G^\\top A\\)",
+              "[[0.164583, −0.010500, 0.022917], [−0.038750, −0.044333, 0.021583]]"
+            ],
+            [
+              "b₂",
+              "[2]",
+              "沿 Batch 求和 G",
+              "[0.101667, −0.096667]"
+            ],
+            [
+              "W₁",
+              "[3,2]",
+              "\\(\\Delta_1^\\top X\\)",
+              "[[0.060750, −0.198500], [0.074917, 0.015958], [0.030750, −0.031833]]"
+            ],
+            [
+              "b₁",
+              "[3]",
+              "沿 Batch 求和 Δ₁",
+              "[0.041500, −0.028667, 0.038167]"
+            ],
+            [
+              "X",
+              "[3,2]",
+              "Δ₁W₁",
+              "[[0.067667, −0.019333], [−0.031867, 0.039183], [0.023800, −0.047600]]"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "activations",
+        "title": "ReLU、GELU、SiLU 与饱和",
+        "body": [
+          "\\(\\operatorname{ReLU}(x)=\\max(0,x)\\)，在正半轴导数为 1，在负半轴导数为零。PyTorch 在零点采用零导数。某条样本的一个激活为零是正常稀疏性；一个神经元对几乎所有训练样本都落在负区间，且长期无法更新，才值得怀疑为失活。过大的学习率、偏置变化和输入尺度都可能改变激活分布，因此排查应统计一批数据及多个训练步骤。",
+          "GELU 用 xΦ(x) 平滑调制输入，SiLU 使用 x·sigmoid(x)。它们不像 ReLU 那样把整个负半轴精确截成零，但也不意味着梯度永远足够大或训练一定更好。Sigmoid 与 tanh 在输入绝对值很大时会饱和，导数接近零；这在输出范围约束中可能有意义，在深层隐藏网络里则需要关注尺度。不同激活的值域和导数会影响初始化与优化，不能只把名称换掉。",
+          "在一个不跨越 ReLU 零点的局部区域，激活开关可以写成对角矩阵 \\(D(x)\\)，按列向量约定，输入 Jacobian 为 \\(W_2D(x)W_1\\)，其秩受输入维度、输出维度和有效隐藏单元数共同限制。输入跨过边界时 \\(D(x)\\) 改变，网络换成另一段仿射映射。局部低秩与全局只能线性表达不是一回事；非线性能力来自这些区域的组合。",
+          "输出层通常由目标语义决定。实数回归常使用线性输出；分类输出 logits，概率变换交给稳定的损失函数；若动作确实受已声明的固定上下界约束，可以使用缩放后的 tanh，但接近边界时梯度会变小。对所有输出使用 ReLU 会禁止负数预测，在最后一层使用 Softmax 会引入各维和为一的约束，这些都改变了问题定义。",
+          "在贯穿例中，第一条样本的第二个隐藏单元关闭，而其他样本仍能更新它。可在 manual-backprop 中只修改 b1[1]，重新记录 z 的符号和 Δ₁；统计初始化对批量开关分布的影响见[激活与初始化](#/learn/activation-init)。原有手写梯度练习仍使用不同尺寸测试，检验是否理解一般链式法则，而非仅记住这组数字。",
+          "本章从零构造的小 MLP 选用 ReLU，便于同时观察分段响应、手算梯度与初始化。接入已有 Transformer 或视觉骨干时，沿用其 GELU、SiLU 或门控结构，再按任务比较适配；需要概率或有界动作时，则在输出接口上按监督语义单独选择。各函数的典型场景见[激活与初始化的选用表](#/learn/activation-init?section=0)。"
+        ],
+        "formula": "\\operatorname{ReLU}(x)=\\max(0,x),\\quad \\operatorname{GELU}(x)=x\\Phi(x),\\quad \\operatorname{SiLU}(x)=x\\sigma(x)",
+        "takeaway": "隐藏激活服务于表达与优化，输出激活必须符合目标范围和概率语义。",
+        "lead": "激活函数是隐藏层中的逐元素非线性变换，既决定前向响应，也决定反向的局部斜率。ReLU 用分段截断，GELU 与 SiLU 用平滑调制，饱和则表示局部变化趋小。下面在同一个小网络中观察这些性质。",
+        "figures": [
+          {
+            "src": "/assets/figures/gelu-relu-commons.svg",
+            "alt": "ReLU 与精确 GELU 曲线对比：ReLU 的负半轴为零，GELU 在负区间平滑下探，正区间逐渐接近直线。",
+            "afterParagraph": 2,
+            "caption": "蓝线为 ReLU，绿线为 GELU；重点比较零附近的过渡和负半轴的下探。 图源：[Ringdongdang](https://commons.wikimedia.org/wiki/File:ReLU_and_GELU.svg)。",
+            "width": 246,
+            "height": 205
+          }
+        ]
+      }
+    ],
+    "advancedSections": [
+      {
+        "id": "constructive-approximation",
+        "title": "用有限个 ReLU 构造函数：表示能力的可检验证明",
+        "body": [
+          "“MLP 能逼近非线性函数”需要说明函数类别、误差度量和网络规模。先考虑一个可以完整构造的一维问题：给定紧区间 \\([a,b]\\) 和递增节点 \\(a=t_0<t_1<\\cdots<t_K=b\\)，已知实值函数 f 在这些节点上的值。令 \\(m_j=\\frac{f(t_{j+1})-f(t_j)}{t_{j+1}-t_j}\\)，\\(j=0,\\ldots,K-1\\)，它是第 j 个区间的线性插值斜率。",
+          "从 \\(f(a)+m_0(x-a)\\) 出发，在每个内部节点 \\(t_j\\) 加入 \\((m_j-m_{j-1})\\operatorname{ReLU}(x-t_j)\\)。这个新项在 \\(x\\le t_j\\) 时为零，不改变前面的区间；跨过节点后，导数增加 \\(m_j-m_{j-1}\\)。因此 \\(x\\in(t_i,t_{i+1})\\) 时，斜率逐项相消为 \\(m_0+\\sum_{j=1}^i(m_j-m_{j-1})=m_i\\)。函数连续且从 \\(f(a)\\) 出发，逐段便通过全部给定节点。这个证明同时确定了前向值和区间内部的导数。",
+          "在约定区间内 \\(x-a\\ge0\\)，第一段线性项也可写为 \\(m_0\\operatorname{ReLU}(x-a)\\)。因此一个 \\(1\\to K\\to1\\) 的单隐藏层网络就能精确实现该线性插值：第一层每个权重都为 1，偏置为 \\(-t_0,\\ldots,-t_{K-1}\\)；第二层权重依次为 \\(m_0,m_1-m_0,\\ldots,m_{K-1}-m_{K-2}\\)，输出偏置为 \\(f(a)\\)。这是显式给出参数的存在性证明，不需要先宣称训练成功。",
+          "插值准确到什么程度？进一步假设 f 在 \\([a,b]\\) 上二阶连续可微，并令 \\(M=\\sup_{x\\in[a,b]}|f^{\\prime\\prime}(x)|\\)、\\(h=\\max_j(t_{j+1}-t_j)\\)。固定内部点 \\(x\\in(t_j,t_{j+1})\\)，设该段插值为 s，令 \\(\\lambda=\\frac{f(x)-s(x)}{(x-t_j)(x-t_{j+1})}\\)。函数 \\(g(u)=f(u)-s(u)-\\lambda(u-t_j)(u-t_{j+1})\\) 在 \\(t_j\\)、x、\\(t_{j+1}\\) 三点为零；两次使用 Rolle 定理，可找到 \\(\\xi\\) 使 \\(g^{\\prime\\prime}(\\xi)=f^{\\prime\\prime}(\\xi)-2\\lambda=0\\)。因此误差等于 \\(\\frac12 f^{\\prime\\prime}(\\xi)(x-t_j)(x-t_{j+1})\\)。节点处误差本来就是零。",
+          "长度为 \\(\\Delta\\) 的区间内，\\(|(x-t_j)(x-t_{j+1})|\\) 的最大值为 \\(\\frac{\\Delta^2}{4}\\)，发生在中点，所以区间内的统一误差不超过 \\(\\frac{Mh^2}{8}\\)。对 \\(f(x)=x^2\\)、\\([a,b]=[0,1]\\)、K 个等长区间，\\(M=2\\)，最大误差恰为 \\(\\frac1{4K^2}\\)。代码用节点值、每段中点及避开节点的导数三种证据检验构造，宽度 4、8、16 的最大误差分别为 0.015625、0.00390625、0.0009765625。",
+          "这一结论的范围应与推导一致：它是紧区间上一维 \\(C^2\\) 函数的确定性构造；宽度增加带来的误差界依赖 M。连续但不够光滑的函数需要其他误差控制，多维问题需要处理区域划分和维度带来的规模增长，不能直接沿用这条一维 \\(K^{-2}\\) 公式。网络在区间外仍有某种延拓，但以上证明没有对外推误差作保证。",
+          "还应区分表示、学习和泛化。本构造直接使用指定节点的准确函数值，没有研究 SGD 能否从随机初值找到这些参数，也没有涵盖带噪标签、有限采样或数据分布改变。前面建立的反向传播只提供寻找参数的局部更新方向，是否找到这组构造仍需分析优化过程；链式法则可复习 [矩阵微分](#/learn/matrix-grad)。输入信息被读出步骤丢弃时，再大的网络也无法恢复未提供的信息。"
+        ],
+        "formula": "\\begin{gathered}s(x)=f(a)+m_0\\operatorname{ReLU}(x-a)+\\sum_{j=1}^{K-1}(m_j-m_{j-1})\\operatorname{ReLU}(x-t_j),\\quad x\\in[a,b],\\\\ \\|f-s\\|_{\\infty,[a,b]}\\le\\frac{M h^2}{8},\\qquad M=\\sup_{x\\in[a,b]}|f^{\\prime\\prime}(x)|.\\end{gathered}",
+        "lead": "函数逼近是用选定网络的输出在某个范围和误差标准下接近目标函数。它讨论是否存在合适参数，并不保证训练能找到它们。这里用有限个 ReLU 显式构造一维分段线性函数，使表达能力可以直接核验。"
+      },
+      {
+        "id": "initialization-scaling",
+        "title": "初始化与优化几何",
+        "body": [
+          "初始化需要避免信号经过多层后迅速放大或缩小。Xavier 根据输入与输出连接数设置尺度，Kaiming 常用于 ReLU 类网络，根据激活和 fan_in/fan_out 选择增益。这些推导依赖关于输入、权重和独立性的统计近似，不保证任意网络都稳定。nn.Linear 的默认初始化不能简单等同于手工设置 nonlinearity=\"relu\" 的 Kaiming 初始化；若需要后一种，应显式配置并检查权重朝向。",
+          "以 ReLU 为例，零均值独立权重给出 \\(\\mathbb E[z^2]\\approx\\mathrm{fan\\_in}\\,\\operatorname{Var}(w)\\,\\mathbb E[x^2]\\)；对称预激活经 ReLU 后二阶矩减半，因而取 \\(\\operatorname{Var}(w)=\\frac2{\\mathrm{fan\\_in}}\\)。保持的是初始化统计平均下的二阶矩，不是要求激活零均值，也不保证每个 Jacobian 方向都有合适增益。宽度变化时，保持前向尺度与保持反向尺度所需的 fan 还可能不同。",
+          "若同层单元的入边、偏置与出边都采用相同初始化，而且其余计算也保持单元交换对称，确定性梯度更新会让这些单元持续相同；全零 ReLU 网络还可能没有有效的隐藏层梯度。另一方面，在残差分支末端等特定结构中采用零初始化可能有设计目的，不能把“任何参数为零都错误”当作规则。理解初始化应同时看拓扑、激活和希望保持的前向/反向量，而不是机械选择一个函数名。",
+          "“多个 Linear 可以合并”只描述函数，不代表参数优化相同。标量 \\(y=abx\\)、\\(x=1\\)、目标为 0 时，\\(L=\\frac12(ab)^2\\)；\\((a,b)=(1,1)\\) 和 (100,0.01) 初始函数都为 \\(y=1\\)，参数梯度却分别是 (1,1) 和 (0.01,100)。相同 SGD 学习率会造成完全不同的函数变化。ReLU 的正齐次性也允许类似缩放：把一个隐藏单元的入边权重与偏置放大 \\(c>0\\)，再把出边权重除以 c，函数不变，但有限步优化、权重衰减和数值精度并不因此等价。",
+          "输入标准化也影响曲率。对固定特征的线性读出，\\(L=\\frac{\\lVert Xw-y\\rVert_2^2}{2B}\\)，Hessian 为 \\(H=\\frac{X^\\top X}{B}\\)。若某方向曲率 \\(\\lambda\\) 很大，误差更新倍率 \\(1-\\eta\\lambda\\) 就要求较小学习率；较小曲率方向又会学得慢。\\(H=\\operatorname{diag}(1,100)\\) 时，\\(\\eta=0.03\\) 会让第二方向按 −2 倍振荡放大，而 \\(\\eta=0.01\\) 又让第一方向每步仅减少 1%。这个简单二次模型解释了“数值全都有限，训练仍然病态”的情况。",
+          "输入包含不同单位时，应先声明量纲和统计流程。训练集拟合的均值、标准差必须随模型一起保存，并在验证与推理中复用。回归目标做标准化后，原单位下误差较大的维度不再天然主导目标；这等价于按标准差平方的倒数加权原始误差，是一个目标选择。推理时还需逆变换。用验证集拟合统计量会造成泄漏，遗漏逆变换则会让正确的标准化预测变成错误的实际动作。",
+          "逐维标准化能调整坐标尺度，却不会消除特征间的相关性：两列几乎重复的特征标准化后仍几乎重复。它也不同于对输出误差重新加权。输入变换影响参数坐标和优化条件，目标标准化影响所用误差度量；在共享有限参数模型中，两者都会影响最终训练结果，但机制不同。"
+        ],
+        "formula": "H=\\frac{X^\\top X}{B},\\quad e_{t+1}^{(i)}=(1-\\eta\\lambda_i)e_t^{(i)};\\qquad (\\tilde{\\hat y}_j-\\tilde y_j)^2=\\frac{(\\hat y_j-y_j)^2}{s_j^2}",
+        "takeaway": "初始化控制传播尺度，输入标准化调整优化坐标，目标标准化改变误差权重。",
+        "focus": {
+          "kind": "易错",
+          "title": "目标标准化也在改变误差的相对权重",
+          "explanation": "若第 j 维目标使用 \\(z_j=\\frac{y_j-\\mu_j}{\\sigma_j}\\)，归一化 MSE 对原单位平方误差的权重就是 \\(\\frac1{\\sigma_j^2}\\)。它能改善优化尺度，却不等于保持原物理单位下所有维度等权。统计量若用验证数据计算，还会引入数据泄漏。",
+          "check": "只在训练集拟合统计量；同时报告归一化损失和反归一化后的逐维误差，核对最终评估指标使用哪一个空间。"
+        },
+        "lead": "初始化为网络选择训练起点，标准化改变输入或目标的数值坐标。两者都影响信号与梯度的尺度，但分别作用于参数和数据。下面在已经明确的前反向计算上分析它们，而不把尺度规则当作收敛保证。"
+      },
+      {
+        "id": "objectives",
+        "title": "回归、单标签分类与多标签分类",
+        "body": [
+          "MSE 适合用平方误差定义的连续目标，默认 mean 会对所有元素取平均；[B,O] 的分母因此为 BO。若 O 个维度代表不同单位，或只有部分动作维度有效，需要显式定义权重、Mask 和分母。L1、Huber 等目标对误差的惩罚方式不同，不能仅因数值更小就判断模型更好。把可见性为假的目标填零后直接当真实零监督，会把缺失信息写进学习目标。",
+          "互斥的 C 类分类通常输出 [B,C] logits，CrossEntropyLoss 接收未归一化 logits 与类别索引，内部完成稳定的 LogSoftmax 与负对数似然计算。先手动 Softmax 再传入，会让 API 把概率误当作新的 logits。二分类或多个可以同时成立的标签可使用 BCEWithLogitsLoss，目标与 logits 形状一致；多标签不要求各标签概率和为一。类别索引和概率目标的含义也需要区分。",
+          "序列分类输出 [B,T,C] 时，可以将 logits 展成 [B×T,C]、标签展成 [B×T]，并用有效位筛选；或按所用 API 把类别维放到指定位置。仅凭 shape 能广播不代表监督正确。例如 [B,1] 的预测减去 [B] 目标会得到 [B,B]，把不同样本互相比较。应在损失前断言预测和回归目标形状相同，并对全无效 Batch 制定明确策略。",
+          "对具有有限二阶矩的连续目标，平方误差的最优确定性预测是给定输入后的条件均值。若同一观测下存在两个相距很远的可行动作，均值未必仍是可行动作。此时增加 MLP 宽度不能消除确定性均值目标的局限，需要检查条件信息是否不足，或用混合分量、条件潜变量、扩散或流匹配等方法表示条件动作分布，并另行定义生成方式。单峰监督的小回归例子不能代表这类多模态问题。 固定的逐维正权重不会改变不受限制预测函数的每维最优条件均值；有限容量和共享参数下的取舍则会改变。若权重还依赖标签，在相关加权期望有限且分母为正时，最优值一般变成 \\(\\mathbb E[wY\\mid x]/\\mathbb E[w\\mid x]\\)，需要重新解释学到的统计量。"
+        ],
+        "formula": "L_{\\rm CE}=-z_y+\\log\\sum_{c=1}^{C}\\exp(z_c)",
+        "code": "assert prediction.shape == target.shape\nregression_loss = (prediction - target).square().mean()\nclassification_loss = torch.nn.functional.cross_entropy(logits, class_index)",
+        "codeExplanation": "两个 loss 对应不同任务；实际使用时选择符合监督语义的一项。 本片段依赖已定义且形状正确的 prediction、target、logits、class_index 与 torch；不单独执行两个不同任务的训练。",
+        "example": {
+          "title": "一次静默广播会怎样改变 MSE",
+          "steps": [
+            "两个样本的预测是 [[1],[3]]，形状 [2,1]；标签应为 [[2],[4]]。正确误差为 [-1,-1]，\\(\\operatorname{MSE}=\\frac{1+1}{2}=1\\)。",
+            "若标签被写成 [2,4]，形状 [2]，相减会广播成 [2,2]：误差矩阵为 [[-1,-3],[1,-1]]，\\(\\operatorname{MSE}=\\frac{1+9+1+1}{4}=3\\)。",
+            "错误目标把每个样本的预测与整个 Batch 的标签比较。正确目标对两个预测的梯度均为 -1，错误目标的梯度却是 [-2,0]。"
+          ],
+          "conclusion": "即使 loss 有限且能下降，训练任务也可能已经变了。回归损失前应显式检查预测与标签的完整形状。"
+        },
+        "focus": {
+          "kind": "常用",
+          "title": "先确定监督的概率含义，再决定输出层",
+          "explanation": "互斥单标签分类通常输出 C 个 logits，再交给 CrossEntropyLoss；多标签分类中每一维是独立的二元目标，常用 BCEWithLogitsLoss；连续回归需要根据目标范围决定最后一层。Softmax 不适用于上述所有任务。",
+          "check": "先写下一个样本的标签：是一个类别索引、多个独立的0/1，还是连续向量；再核对标签 dtype、模型输出和损失输入。"
+        },
+        "comparison": {
+          "title": "输出、标签与损失的常用组合",
+          "columns": [
+            "任务",
+            "模型输出",
+            "标签",
+            "常用损失与检查"
+          ],
+          "rows": [
+            [
+              "连续向量回归",
+              "[B,O] 连续值",
+              "同形连续标签",
+              "MSE / L1；先检查单位、范围和归约轴"
+            ],
+            [
+              "互斥单标签分类",
+              "[B,C] 未归一化 logits",
+              "[B] long 类别索引",
+              "CrossEntropyLoss；标准用法不先做 Softmax"
+            ],
+            [
+              "多标签二元判断",
+              "[B,C] 每类独立 logits",
+              "[B,C] 浮点 0/1",
+              "BCEWithLogitsLoss；各维不要求总和为1"
+            ]
+          ]
+        },
+        "lead": "回归预测连续量，单标签分类从互斥类别中选一个，多标签分类则分别判断多个标签是否成立。这些任务可以使用相似的 MLP，却要求不同输出含义与损失。先定义要预测什么，再确定激活、标签形状与归约。",
+        "codeKind": "fragment"
+      },
+      {
+        "id": "training-loop",
+        "title": "把小网络训练成一个可检查的实验",
+        "body": [
+          "一个训练步骤至少包含读取正确的 Batch、前向、按声明的归约计算损失、清除旧梯度、反向和更新。zero_grad 放在 backward 前，optimizer.step 放在 backward 后。训练多个微批次时则有意识地累积梯度，不能一边累积一边清空。计划由优化器更新的参数，需要既参与损失的计算图，也出现在优化器参数组中；使用 nn.Module 管理模型时，还应正确注册其子模块与状态。需要更新的张量被 detach，或在创建优化器后才新加模块，都可能出现损失有值却没有预期学习的情况。 具体而言，普通 Python 列表不会像 ModuleList 那样注册子模块；在 forward 中每次新建 Linear 会不断生成新参数。检查 named_parameters 和 step 前后的参数位移，可区分结构存在、梯度存在与实际更新这三个条件。",
+          "调试时先固定一小批数据，关闭不必要的随机增强，检查网络能否降低这批数据的损失。同时记录输入/目标范围、预测均值、各层梯度范数和参数更新幅度。训练损失下降只说明这条固定优化链路在工作；验证泛化需要独立数据划分、正确 eval 模式及任务指标。不能用“成功记住一个 Batch”替代性能评估，也不应在完全无法拟合少量干净样本时先堆复杂正则化。",
+          "train()/eval() 控制 Dropout、BatchNorm 等模块行为，no_grad() 控制是否记录求导图，它们解决不同问题。推理通常同时 eval 与 no_grad；训练冻结骨干时，如果骨干前面还有需要学习的输入适配器，不能把整个骨干前向无条件放进 no_grad。第二个完整演示保存了输入/输出统计缓冲区，展示从原始单位到标准化训练再回到原始单位的完整过程，并分别报告训练和留出损失。"
+        ],
+        "takeaway": "通过小批数据、梯度和实际参数位移检查优化链路，再分析大规模训练与泛化。",
+        "lead": "训练循环是在同一组参数上反复执行取样、前向、计算损失、反向和更新的过程。它把已经手算过的一次变化变成从数据学习的算法。下面用小数据核对各步顺序与实际参数变化。"
+      },
+      {
+        "id": "tokens-readout",
+        "title": "非线性与池化的顺序",
+        "body": [
+          "对 [B,T,D] 逐 token 应用同一个 MLP，不会在该 MLP 内交换 token 信息。若输入来自已经混合上下文的 Transformer，单个 token 可能含有全局信息，但那是上游网络的结果。要把 T 个 token 变成一个预测，需声明读出方式：选定汇聚 token、有效平均池化、固定顺序拼接，或用查询注意力读出。这些方式的假设和计算开销不同，不是等价的 shape 操作。",
+          "有效平均池化需要在特征维广播 [B,T] 的 Mask，分母是每条样本的有效 token 数。Padding 值可能不为零；甚至可能包含非有限占位值，因此先用 masked_fill 或 where 替换无效位置更稳妥，单纯乘零不能消除 NaN。全无效样本应拒绝或使用明确定义的缺失分支。把整批有效数作为每条样本的分母，会错误地让样本之间互相影响。",
+          "平均池化对输入 token 的共同重排不变。若上游特征没有编码必要的空间、相机或时间信息，两个不同场景可能得到同一均值，之后再大的 MLP 也无法区分。位置编码可能在特征中保留一部分信息，但均值映射仍不是一般可逆的。具身模型可把本体状态或任务条件与视觉表示拼接后读出，也可使用更结构化的 token；选择应通过信息保留、监督一致性和受控消融来判断。",
+          "池化前后的 MLP 并不等价。比较 \\(\\rho(\\operatorname{mean}h)\\) 与 \\(\\rho(\\operatorname{mean}\\phi(h))\\)：前者只看到原特征均值，后者先把每个 token 映射成可学习的特征，再统计这些特征的均值。集合 \\(\\{-1,1\\}\\) 与 \\(\\{0,0\\}\\) 的原均值同为 0，但取 \\(\\phi=\\operatorname{ReLU}\\) 后，均值分别是 0.5 与 0，后续读出因此可以区分。调整非线性位置改变了被保留的统计信息，并非只改网络宽度。",
+          "先进行非线性映射再汇聚，仍不会自动保留顺序信息；同一个多重集合共同重排后的输出仍相同。平均还会丢失整体重复次数：{a,b} 与 {a,a,b,b} 的平均嵌入相同，若任务依赖数量，需要显式计数、求和或另一种保留数量的表示。Deep Sets 研究的是这种置换不变结构；它不意味着任意平均池化都能表示所有集合任务。上游位置和上下文编码改变了 token 内含的信息，应与当前读出层的作用分开分析。"
+        ],
+        "formula": "\\bar h_b=\\frac{\\sum_{t=1}^{T}m_{bt}h_{bt}}{\\sum_{t=1}^{T}m_{bt}},\\qquad \\hat y_b=f_\\theta([\\bar h_b;s_b])",
+        "takeaway": "非线性在池化前还是池化后，决定读出能看到哪种统计量；排列不变性与数量信息是另外两项结构假设。",
+        "example": {
+          "title": "为什么要先选出有效 token，再求平均",
+          "steps": [
+            "一条序列的有效标量 token 为 2、6，第三个位置是 Padding。有效平均是 \\(\\frac{2+6}{2}=4\\)；填零后直接对长度3取 mean 得到 \\(\\frac83\\)。",
+            "把 Padding 换成1000，若未使用 Mask，均值会变成336。换成 NaN 后，先乘0也不能清除它，因为 NaN×0 仍为 NaN。",
+            "正确做法先用 masked_fill 或等价选择把无效输入替换为0，再以有效数量2归约；若整条序列有效数为0，应按明确约定拒绝或单独处理。"
+          ],
+          "conclusion": "Mask 同时规定参与求和的元素和归约分母。追加任意无效 token 后输出不变，是一个有意义的测试。"
+        },
+        "focus": {
+          "kind": "常用",
+          "title": "通用池化模型的能力边界",
+          "explanation": "对 token 均值做 MLP 可以解决依赖集合统计的分类或回归，但它默认不区分共同重排后的序列。顺序任务需要位置、时序交互或其他保留顺序的机制。此处的合成集合回归任务用于验证有效汇聚与非线性映射。",
+          "check": "将 token 与 Mask 一起重新排列：均值模型的输出应相同；若真实任务要求输出随顺序改变，就需要调整表示或结构。"
+        },
+        "code": "import torch\n\na = torch.tensor([-1., 1.])\nb = torch.tensor([0., 0.])\nassert a.mean() == b.mean()\nassert a.relu().mean().item() == 0.5\nassert b.relu().mean().item() == 0.\ntorch.testing.assert_close(a.relu().mean(), a.repeat(2).relu().mean())\nprint(\"mean before ReLU:\", a.mean().relu().item(), b.mean().relu().item())\nprint(\"ReLU before mean:\", a.relu().mean().item(), b.relu().mean().item())",
+        "codeExplanation": "前两项均值相同，因此池化之后再加多少确定性层都无法区分；先做非线性映射可以保留这一差异。最后一个断言说明平均嵌入仍不能识别整体重复次数。",
+        "lead": "读出是把网络内部表示变成最终预测的操作，池化是其中汇总多个位置的一种方式。逐位置 MLP 本身不交换 Token 信息，因此非线性在汇总前后的位置会改变保留的信息。先定义读出，再比较其顺序。",
+        "codeKind": "runnable"
+      },
+      {
+        "id": "diagnosis",
+        "title": "容量、泛化与故障定位的顺序",
+        "body": [
+          "训练损失高时，优先检查目标是否可预测、样本与标签是否对齐、数值范围是否合理、损失分母是否正确，以及参数是否真的更新。检查 grad=None 与数值为零的梯度有助于区分没有参与计算和导数为零，但要结合计算图：并非所有参数都应在每条分支中出现。梯度存在也不代表更新有效，还要看优化器参数列表、学习率、裁剪和精度缩放。",
+          "若小批数据可以拟合，而独立验证集表现差，才继续分析数据覆盖、模型容量、正则化和划分方式。训练/验证来自同一条轨迹的相邻帧可能让结果过于乐观；验证集上反复调参也会影响独立性。增加隐藏宽度能提高某些函数的拟合能力，但可能加剧记忆噪声。Dropout、权重衰减和早停各有作用，不能取代检查标签与输入的因果关系。",
+          "线性读出与非线性 MLP 读出的比较可以帮助判断表示的可用程度，但它不是对“信息是否存在”的绝对检验：有限数据、优化难度和评价指标都会影响结果。头部训练成功不等于冻结骨干学到了新能力；同样，训练失败也不直接证明骨干完全没有信息。报告实验时应说明骨干是否冻结、读出头结构、输入池化、目标标准化、数据划分，以及实际评价的量。",
+          "读出实验还应防止使用未来信息。例如预测当前动作时，输入特征若由整段轨迹包含未来帧的编码器生成，离线拟合可以很好，实际执行却无法获得相同条件。检查特征缓存时应保存其模型版本、处理方式和时间范围，核对训练所需的信息在推理时确实可用。这样的输入可用性检查与选择网络宽度同样重要。",
+          "一个 MLP 的完整计算由仿射层、非线性、读出和损失构成，训练再沿同一依赖回传梯度并更新参数。能解释这条链以后，表达能力、初始化和泛化就成为对同一个模型不同层面的分析。"
+        ],
+        "takeaway": "将数据、接口、优化、容量和泛化逐层分开验证，避免用一个损失曲线解释所有问题。",
+        "lead": "容量限制、优化失败和泛化不足分别指函数族不够、参数没有学到合适解、以及学得结果无法适用于目标数据。它们可能产生相似误差。下面按输入、计算图、更新和数据分布逐项区分。"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "\\(B\\) / \\(T\\)",
+        "shape": "前导维",
+        "meaning": "Batch 大小 / token 或时间位置数"
+      },
+      {
+        "name": "\\(D\\) / \\(H\\) / \\(O\\)",
+        "shape": "特征维",
+        "meaning": "输入特征、隐藏特征、输出特征数"
+      },
+      {
+        "name": "\\(W_1\\) / \\(W_2\\)",
+        "shape": "[H,D] / [O,H]",
+        "meaning": "两层线性映射权重，采用 PyTorch 朝向"
+      },
+      {
+        "name": "\\(Z\\) / \\(A\\)",
+        "shape": "[B,H]",
+        "meaning": "第一层预激活 / 激活后的隐藏矩阵；H 专门表示隐藏宽度"
+      },
+      {
+        "name": "\\(G\\)",
+        "shape": "[B,O]",
+        "meaning": "损失对网络预测的上游梯度"
+      },
+      {
+        "name": "\\(m\\)",
+        "shape": "[B,T]",
+        "meaning": "有效 token 指示，True 表示计入池化"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "线性层可以合并，为什么把一个 Linear 拆成两个后，训练结果仍可能不同？",
+        "answer": [
+          "合并关系只说明有效矩阵 \\(W=W_2W_1\\) 表示同一个函数；对 \\(W_1\\)、\\(W_2\\) 求梯度时，分别还要乘另一个矩阵，所以直接更新 W 与更新两个因子后再相乘，不是同一个参数更新。瓶颈还可能限制 W 的秩。",
+          "标量 \\(y=ab\\) 的反例尤其清楚：(1,1) 与 (100,0.01) 都给出 1，但平方损失的梯度是 (1,1) 与 (0.01,100)。同一学习率下，一组小幅改动输出，另一组可能越过目标并增大损失。",
+          "因此“可合并”不能推出相同的优化速度、正则化效果或数值稳定性。判断增加深度是否有价值，需要分别讨论函数约束、参数化和所用优化器。"
+        ]
+      },
+      {
+        "question": "把 [B,T,D] 输入 Linear(D,H)，为什么不会在时间维交换信息？",
+        "answer": [
+          "Linear 在每个前导位置应用同一组 D→H 权重，计算 y[b,t] 时只使用该位置的输入向量。T 是批量位置而非被求和的特征轴。",
+          "如果该 token 已经过 Attention，它可能含上下文，但这来自上游。想让原始 token 在当前模块里交互，需要显式混合 T 轴、卷积、Attention 或声明的汇聚操作。"
+        ]
+      },
+      {
+        "question": "同一批样本为什么得到两组不同形状的偏置梯度？损失值是否可以直接当作梯度？",
+        "answer": [
+          "损失是标量 \\(0.092791666\\ldots\\)，对预测的导数却是六个元素组成的 \\(G=(\\widehat Y-Y)/6\\)。第二层偏置被三条样本共享，所以其梯度是 G 沿 Batch 求和，得到 \\([0.101666\\ldots,-0.096666\\ldots]\\)。",
+          "第一层偏置还要经过 W₂ 与 ReLU 导数，先计算 \\(\\Delta_1=(GW_2)\\odot\\mathbf1\\{Z>0\\}\\)，再沿 Batch 求和，得到三维梯度 \\([0.0415,-0.028666\\ldots,0.038166\\ldots]\\)。这与每层偏置自身的形状一致，不能由 loss 的数值或输出形状猜测。"
+        ]
+      }
+    ],
+    "advancedKnowledgeChecks": [
+      {
+        "question": "目标标准化为何不能只当成“不改变问题的数值技巧”？",
+        "answer": [
+          "标准化后的平方误差等于原误差除以各维标准差的平方，改变了不同输出维度在总损失中的相对权重。若这是有意的平衡方式，应明确记录。",
+          "还要只用训练集拟合统计量、保存尺度并在推理中逆变换。评价真实误差时回到原单位，避免用标准化后的数值直接解释物理精度。",
+          "这也有成立边界：不受函数族约束时，每维固定正权重不会改变其最优条件均值；共享参数和有限容量会让各维发生取舍。不能把“损失度量改变”与“所有情形下统计最优值都改变”混为一谈。"
+        ]
+      },
+      {
+        "question": "小批次能拟合，是否已经证明这个读出头可用于真实机器人？",
+        "answer": [
+          "只能说明固定样本上的输入、目标和优化链路至少能够让该网络降低损失。它不覆盖分布外观测、闭环误差积累、时间同步或控制约束。",
+          "接下来要使用按轨迹/任务等合理粒度划分的独立数据，核验预处理与动作逆变换，再做与任务相符的闭环评估。训练指标和执行指标应分别报告。"
+        ]
+      },
+      {
+        "question": "先 MLP 后平均，与先平均后 MLP，有哪些差异？",
+        "answer": [
+          "先平均后 MLP 只依赖原始均值。任何两个均值相同的输入集合，对任意确定性下游网络都会给出相同结果；这是一条由输入决定的不可区分性，不是网络不够宽。",
+          "先逐 token 非线性映射再平均，可以统计新的特征。例如 \\(\\{-1,1\\}\\) 和 \\(\\{0,0\\}\\) 均值相同，平均 ReLU 却为 0.5 和 0。训练能改变保留哪种统计量，但共享逐 token MLP 加平均仍对共同重排不变。",
+          "平均嵌入也不区分一个集合和它的完整重复。若目标需要顺序、位置或数量，必须检查这些信息是否已经被上游写入特征，或通过读出结构显式保留；改变隐藏层宽度不能恢复已经丢掉的信息。"
+        ]
+      },
+      {
+        "question": "已经构造出任意精细的 ReLU 插值，为什么还不能说增加宽度一定改善真实任务？",
+        "answer": [
+          "构造证明的是给定节点值后存在一组参数，并在一维 \\(C^2\\) 函数、指定紧区间和最大误差度量下给出精确界。它没有研究训练算法、带噪采样和分布外输入。",
+          "更宽的网络可以包含更好的候选函数，但优化器未必找到它，有限数据也未必足以辨认它。应分别评估表示限制、训练误差、独立验证以及输入信息是否充分。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "把 Linear 权重按 [in,out] 使用",
+        "detail": "形状恰好为方阵时，错误转置可能不会报错。",
+        "fix": "用非方形权重和手算输入，与 F.linear 输出对照。"
+      },
+      {
+        "title": "回归目标广播成跨样本矩阵",
+        "detail": "[B,1] 减 [B] 可广播到 [B,B]，损失仍能正常返回标量。",
+        "fix": "损失前断言预测与目标完全同形。"
+      },
+      {
+        "title": "两次归一化分类输出",
+        "detail": "先 Softmax 再 CrossEntropy 会把概率当作 logits，改变优化目标。",
+        "fix": "分类头输出原始 logits，概率仅在需要展示或采样时计算。"
+      },
+      {
+        "title": "无效 token 先乘零再池化",
+        "detail": "NaN×0 仍为 NaN，且固定除以 T 会受 Padding 数影响。",
+        "fix": "先替换无效值，逐样本除以有效数，并处理全无效行。"
+      }
+    ],
+    "advancedPitfalls": [
+      {
+        "title": "标准化统计与模型分离",
+        "detail": "推理使用另一套均值、遗漏尺度或逆变换，会改变输入与输出语义。",
+        "fix": "统计量写入 buffer 或有版本的处理器，并做保存恢复对照。"
+      },
+      {
+        "title": "看到 grad 就认为参数在学习",
+        "detail": "优化器可能漏掉参数、学习率可能为零，或更新量远小于数值分辨率。",
+        "fix": "比较参数身份、梯度范数和 optimizer.step 前后的真实位移。"
+      }
+    ],
+    "extraImplementations": [
+      {
+        "id": "manual-backprop",
+        "title": "手写前向与反传：对照 autograd 和有限差分",
+        "description": "同一个 17 参数、2→3→2 的网络贯穿三条输入、半均方误差、五组导数与一次 SGD；手算、autograd、有限差分及更新后的参数形成四种互相对应的证据。",
+        "runtime": "torch",
+        "source": "import torch\nfrom torch import nn\n\ntorch.manual_seed(7)\ntorch.set_num_threads(1)\ndtype = torch.float64\n# 每一行是一条样本；参数形状与 nn.Linear 完全相同。\nx = torch.tensor([[1., -2.], [.5, 1.], [-1., .25]], dtype=dtype)\ny = torch.tensor([[.5, -.1], [.7, .4], [-.2, .8]], dtype=dtype)\nw1 = torch.tensor([[.7, -.3], [-.4, .8], [.5, .2]], dtype=dtype)\nb1 = torch.tensor([.2, .1, .4], dtype=dtype)\nw2 = torch.tensor([[.6, -.2, .4], [-.3, .5, .7]], dtype=dtype)\nb2 = torch.tensor([.1, -.2], dtype=dtype)\n\n# 前向：B×2 -> B×3 -> B×2；平方误差对所有输出元素平均。\ndef forward(x, w1, b1, w2, b2):\n    z = x @ w1.T + b1\n    h = z.clamp_min(0)\n    prediction = h @ w2.T + b2\n    return prediction, z, h\n\nprediction, z, h = forward(x, w1, b1, w2, b2)\nerror = prediction - y\nloss = error.square().mean() / 2\nassert z.abs().min() > 1e-3  # 有限差分不跨过 ReLU 的折点。\n\n# 手写向量—Jacobian 乘积，不构造庞大的完整 Jacobian。\ndprediction = error / error.numel()\ndw2 = dprediction.T @ h\ndb2 = dprediction.sum(0)\ndh = dprediction @ w2\ndz = dh * (z > 0).to(dtype)\ndw1 = dz.T @ x\ndb1 = dz.sum(0)\ndx = dz @ w1\nmanual = [dx, dw1, db1, dw2, db2]\nassert torch.equal(dz[z < 0], torch.zeros_like(dz[z < 0]))\n\n# 独立让 autograd 求导；不要在手写结果上再调用 backward。\nvariables = [v.clone().requires_grad_() for v in (x, w1, b1, w2, b2)]\nxa, wa1, ba1, wa2, ba2 = variables\nreference, _, _ = forward(xa, wa1, ba1, wa2, ba2)\nreference_loss = (reference - y).square().mean() / 2\nautomatic = torch.autograd.grad(reference_loss, variables)\nfor name, actual, expected in zip((\"x\", \"w1\", \"b1\", \"w2\", \"b2\"), manual, automatic):\n    torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-10)\n    print(name, tuple(actual.shape), \"gradient agrees\")\n\n# 第三个证据：对第一层每个权重进行中心有限差分。\nepsilon = 1e-6\nfinite = torch.zeros_like(w1)\nfor row in range(w1.shape[0]):\n    for column in range(w1.shape[1]):\n        plus, minus = w1.clone(), w1.clone()\n        plus[row, column] += epsilon\n        minus[row, column] -= epsilon\n        p_plus = forward(x, plus, b1, w2, b2)[0]\n        p_minus = forward(x, minus, b1, w2, b2)[0]\n        l_plus = (p_plus - y).square().mean() / 2\n        l_minus = (p_minus - y).square().mean() / 2\n        finite[row, column] = (l_plus - l_minus) / (2 * epsilon)\ntorch.testing.assert_close(dw1, finite, rtol=1e-7, atol=1e-8)\n\n# 将同一组参数装进 nn.Module，验证权重朝向和偏置广播。\nmodel = nn.Sequential(nn.Linear(2, 3), nn.ReLU(), nn.Linear(3, 2)).to(dtype)\nwith torch.no_grad():\n    model[0].weight.copy_(w1)\n    model[0].bias.copy_(b1)\n    model[2].weight.copy_(w2)\n    model[2].bias.copy_(b2)\ntorch.testing.assert_close(model(x), prediction)\nassert sum(p.numel() for p in model.parameters()) == 17\nprint(\"loss =\", round(loss.item(), 6))\nprint(\"通过：前向、五组梯度、有限差分和 17 个参数。\")\n\n# 使用刚刚计算的旧参数梯度，同时更新四组参数；输入不由 optimizer 管理。\nlearning_rate = 0.1\nexpected_parameters = [parameter - learning_rate * gradient\n                       for parameter, gradient in zip((w1, b1, w2, b2), (dw1, db1, dw2, db2))]\ninput_before = x.clone()\noptimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)\noptimizer.zero_grad(set_to_none=True)\nmodule_loss = (model(x) - y).square().mean() / 2\nmodule_loss.backward()\noptimizer.step()\nfor actual, expected in zip(model.parameters(), expected_parameters):\n    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)\ntorch.testing.assert_close(x, input_before, rtol=0, atol=0)\nwith torch.no_grad():\n    updated_prediction = model(x)\n    updated_loss = (updated_prediction - y).square().mean() / 2\nassert abs(updated_loss.item() - 0.08276880316466285) < 1e-12\nassert updated_loss < loss\nprint(\"one SGD step:\", loss.item(), \"->\", updated_loss.item())\nprint(\"first updated prediction:\", updated_prediction[0].tolist())\nprint(\"输入保持不变；四组参数的手写更新与 SGD 一致。\")\n",
+        "explanations": [
+          {
+            "lines": "1–13",
+            "text": "建立 float64 小例子，权重布局与 PyTorch 一致，避免方阵掩盖转置错误。"
+          },
+          {
+            "lines": "16–25",
+            "text": "缓存每个中间张量，明确损失是对所有输出元素的半均方误差，并避开 ReLU 折点。"
+          },
+          {
+            "lines": "28–37",
+            "text": "从损失的上游梯度开始，按链式法则计算输入与两层参数梯度。"
+          },
+          {
+            "lines": "40–47",
+            "text": "复制原始变量让 autograd 独立求导，逐张量核对结果。"
+          },
+          {
+            "lines": "50–62",
+            "text": "中心有限差分给第一层梯度提供第三种检查证据。"
+          },
+          {
+            "lines": "65–74",
+            "text": "复制同一组权重验证 nn.Module 前向，并检查参数总数。"
+          },
+          {
+            "lines": "76–96",
+            "text": "四组参数统一使用旧点梯度，比较手动更新与真正 SGD 的结果；输入只用来验证导数，不加入优化器。更新后的 loss 只描述这一组参数与学习率。"
+          }
+        ],
+        "expected": "五组手写梯度与 autograd 一致；第一层梯度与中心有限差分一致；nn.Linear 前向一致，共 17 个参数。 固定学习率 0.1 时半均方误差从约 0.092791667 变为 0.082768803；四组参数与手工更新一致，输入保持不变。"
+      }
+    ],
+    "advancedImplementations": [
+      {
+        "id": "readout-training",
+        "title": "完整合成序列回归：有效池化、标准化、更新和恢复",
+        "description": "构造只依赖有效 token 均值的合成回归任务，以 CPU 训练小 MLP；训练统计随 state_dict 一起保存，留出误差与训练误差分别报告。",
+        "runtime": "torch",
+        "source": "import torch\nfrom torch import nn\n\ntorch.manual_seed(17)\ntorch.set_num_threads(1)\n\n# 合成任务刻意只依赖有效 token 的均值，不能据此推断空间定位能力。\ncount, time, features = 192, 5, 4\nraw = torch.randn(count, time, features) * torch.tensor([1., 10., .1, 3.])\nlengths = torch.randint(1, time + 1, (count,))\nvalid = torch.arange(time)[None, :] < lengths[:, None]\nraw = raw.masked_fill(~valid[..., None], 1000.)\n\ndef masked_mean(tokens, mask):\n    if mask.dtype != torch.bool or mask.shape != tokens.shape[:2]:\n        raise ValueError(\"mask 必须是与 B,T 对齐的 bool 张量\")\n    denominator = mask.sum(1, keepdim=True)\n    if (denominator == 0).any():\n        raise ValueError(\"每条样本至少需要一个有效 token\")\n    clean = tokens.masked_fill(~mask[..., None], 0)\n    return clean.sum(1) / denominator\n\npooled = masked_mean(raw, valid)\nbase = pooled / torch.tensor([1., 10., .1, 3.])\ntarget = torch.stack((.7 * base[:, 0].sin() + .3 * base[:, 1] * base[:, 2],\n                      .5 * base[:, 2] - .4 * base[:, 3].square()), dim=-1)\ntrain_x, test_x = pooled[:144], pooled[144:]\ntrain_y, test_y = target[:144], target[144:]\n# 只使用训练集统计；标准化目标也就明确了各输出维度的损失权重。\nx_mean = train_x.mean(0)\nx_std = train_x.std(0, correction=0).clamp_min(1e-6)\ny_mean = train_y.mean(0)\ny_std = train_y.std(0, correction=0).clamp_min(1e-6)\n\nclass Readout(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.register_buffer(\"x_mean\", x_mean.clone())\n        self.register_buffer(\"x_std\", x_std.clone())\n        self.register_buffer(\"y_mean\", y_mean.clone())\n        self.register_buffer(\"y_std\", y_std.clone())\n        self.network = nn.Sequential(nn.Linear(features, 32), nn.SiLU(), nn.Linear(32, 2))\n        for layer in self.network:\n            if isinstance(layer, nn.Linear):\n                nn.init.xavier_uniform_(layer.weight)\n                nn.init.zeros_(layer.bias)\n\n    def forward(self, x):\n        return self.network((x - self.x_mean) / self.x_std)\n\n    def predict(self, x):\n        return self(x) * self.y_std + self.y_mean\n\nmodel = Readout()\noptimizer = torch.optim.AdamW(model.parameters(), lr=.02, weight_decay=1e-4)\nnormalized_target = (train_y - model.y_mean) / model.y_std\nwith torch.no_grad():\n    initial = (model(train_x) - normalized_target).square().mean().item()\nfirst_weight = model.network[0].weight.detach().clone()\nmodel.train()\nfor step in range(240):\n    optimizer.zero_grad(set_to_none=True)\n    prediction = model(train_x)\n    loss = (prediction - normalized_target).square().mean()\n    loss.backward()\n    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())\n    if step == 0:\n        print(\"initial gradient norm =\", model.network[0].weight.grad.norm().item())\n    optimizer.step()\n\nmodel.eval()\nwith torch.no_grad():\n    final = (model(train_x) - normalized_target).square().mean().item()\n    holdout_mse = (model.predict(test_x) - test_y).square().mean().item()\nassert final < initial * .15  # 只检查这个固定合成任务的优化链路。\nassert not torch.equal(first_weight, model.network[0].weight)\nassert torch.isfinite(torch.tensor(holdout_mse))\n# 将无效内容改成 NaN，仍应得到同一有效均值。\npoisoned = raw.masked_fill(~valid[..., None], float(\"nan\"))\ntorch.testing.assert_close(masked_mean(poisoned, valid), pooled)\n# state_dict 同时包含网络参数和预处理统计。\nrestored = Readout()\nrestored.load_state_dict(model.state_dict())\nwith torch.no_grad():\n    torch.testing.assert_close(restored.predict(test_x), model.predict(test_x))\nprint(f\"train normalized MSE: {initial:.6f} -> {final:.6f}\")\nprint(f\"holdout MSE in original units: {holdout_mse:.6f}\")\nprint(\"通过：有效池化、训练更新、有限验证损失与含统计量的恢复。\")\n",
+        "explanations": [
+          {
+            "lines": "1–12",
+            "text": "生成不同长度、不同输入尺度的 token；无效区域故意填大值。"
+          },
+          {
+            "lines": "14–21",
+            "text": "先清除无效值，使用每条样本自己的有效数；拒绝全无效行。"
+          },
+          {
+            "lines": "23–33",
+            "text": "构造可学习的合成目标，并只使用训练切分拟合统计量。"
+          },
+          {
+            "lines": "35–52",
+            "text": "注册统计缓冲区和 MLP，明确训练输出为标准化值，predict 才恢复原单位。"
+          },
+          {
+            "lines": "54–69",
+            "text": "完整执行清梯度、前向、反向和更新，检查所有参数梯度。"
+          },
+          {
+            "lines": "71–88",
+            "text": "报告留出误差，验证 Padding 不变性、参数确实更新，以及 checkpoint 包含预处理统计。"
+          }
+        ],
+        "expected": "固定合成训练损失显著降低，所有梯度有限；Padding 改成 NaN 不改变池化；恢复后预测一致。留出损失只描述这个合成任务。"
+      },
+      {
+        "id": "constructive-spline",
+        "title": "构造 ReLU 插值网络并核对误差阶与导数",
+        "description": "不用优化器，直接把分段线性插值写成 \\(1\\to K\\to1\\) 网络，分别核对节点、最大误差和分段斜率。",
+        "runtime": "torch",
+        "source": "import torch\nfrom torch import nn\n\ntorch.set_num_threads(1)\ndtype = torch.float64\n\ndef interpolation_mlp(knots, values):\n    \"\"\"仅在 [knots[0], knots[-1]] 上使用；固定参数实现线性插值。\"\"\"\n    if knots.ndim != 1 or values.shape != knots.shape or knots.numel() < 2:\n        raise ValueError(\"需要至少两个一维节点和同形函数值\")\n    if not torch.all(knots[1:] > knots[:-1]):\n        raise ValueError(\"节点必须严格递增\")\n    slopes = (values[1:] - values[:-1]) / (knots[1:] - knots[:-1])\n    changes = torch.cat((slopes[:1], slopes[1:] - slopes[:-1]))\n    net = nn.Sequential(nn.Linear(1, len(slopes)), nn.ReLU(), nn.Linear(len(slopes), 1)).to(dtype)\n    with torch.no_grad():\n        net[0].weight.fill_(1.)\n        net[0].bias.copy_(-knots[:-1])\n        net[2].weight.copy_(changes[None, :])\n        net[2].bias.copy_(values[:1])\n    return net\n\nfor intervals in (4, 8, 16):\n    knots = torch.linspace(0., 1., intervals + 1, dtype=dtype)\n    net = interpolation_mlp(knots, knots.square())\n    torch.testing.assert_close(net(knots[:, None]).squeeze(-1), knots.square())\n    midpoints = (knots[:-1] + knots[1:]) / 2\n    error = net(midpoints[:, None]).squeeze(-1) - midpoints.square()\n    # 对 x²，每一段中点误差恰好是 h²/4，并非从训练曲线拟合的经验率。\n    torch.testing.assert_close(error, torch.full_like(error, 1 / (4 * intervals ** 2)))\n    probe = (knots[:-1] + (knots[1:] - knots[:-1]) / 3).requires_grad_()\n    slope = torch.autograd.grad(net(probe[:, None]).sum(), probe)[0]\n    expected_slope = (knots[1:].square() - knots[:-1].square()) / (knots[1:] - knots[:-1])\n    torch.testing.assert_close(slope, expected_slope)\n    print(f\"width={intervals}, max_error={error.max().item():.8f}, verified slopes\")\n\nprint(\"这是构造性表示实验，没有执行优化；它不保证训练能找到这组参数，也不刻画区间外误差。\")\n",
+        "explanations": [
+          {
+            "lines": "1–6",
+            "text": "使用 float64；这个实验的参数全部由插值节点确定，结果不依赖随机初始化。"
+          },
+          {
+            "lines": "7–22",
+            "text": "斜率的相邻差形成 ReLU 的输出系数，阈值由第一层偏置实现；定义域限定在节点区间内。"
+          },
+          {
+            "lines": "23–37",
+            "text": "分别检验插值节点、\\(x^2\\) 在中点的精确误差，以及避开折点后 Autograd 得到的区间斜率。"
+          }
+        ],
+        "expected": "宽度 4、8、16 时，\\(x^2\\) 的最大插值误差分别是 0.015625、0.00390625、0.0009765625；全部节点值和区间斜率一致。没有执行训练，结果不能解释为优化收敛率。"
+      }
+    ],
+    "mainImplementation": "manual-backprop",
+    "extraLabs": [
+      {
+        "id": "affine-from-loops",
+        "level": "入门",
+        "title": "用标准库写出仿射层并数参数",
+        "runtime": "python",
+        "prompt": "实现 affine_batch(x, weight, bias)，x 是 \\(B\\times D\\) 列表，weight 使用 \\(O\\times D\\) 约定，bias 为长度 O 列表；同时实现 parameter_count(widths)，统计全部相邻有偏置 Linear 的参数量。矩阵必须非空、每行长度一致，维度不匹配时抛 ValueError。不得使用第三方库。",
+        "starter": "def affine_batch(x, weight, bias):\n    # TODO: 核对三个对象的形状，逐样本逐输出做内积。\n    raise NotImplementedError(\"实现仿射层\")\n\ndef parameter_count(widths):\n    # TODO: 每层统计权重与偏置；widths 至少包含两个正整数。\n    raise NotImplementedError(\"计算参数量\")\n",
+        "solution": "def affine_batch(x, weight, bias):\n    if not x or not weight or not x[0]:\n        raise ValueError(\"矩阵必须非空\")\n    dimension = len(x[0])\n    if any(len(row) != dimension for row in x + weight):\n        raise ValueError(\"输入和权重的特征维必须相同\")\n    if len(bias) != len(weight):\n        raise ValueError(\"每个输出需要一个偏置\")\n    return [[sum(value * coefficient for value, coefficient in zip(row, w)) + b\n             for w, b in zip(weight, bias)] for row in x]\n\ndef parameter_count(widths):\n    if len(widths) < 2 or any(type(n) is not int or n <= 0 for n in widths):\n        raise ValueError(\"至少需要输入、输出两个正整数维度\")\n    return sum(before * after + after for before, after in zip(widths, widths[1:]))\n",
+        "tests": "x = [[1., 2., -1.], [0., -2., 3.]]\nw = [[2., -1., .5], [-3., 4., 1.]]\nassert affine_batch(x, w, [.5, -1.]) == [[0., 3.], [4., -6.]]\nassert affine_batch([[2.]], [[3.]], [-1.]) == [[5.]]\nassert parameter_count([6, 8, 3]) == 83\nassert parameter_count([2, 3, 2]) == 17\nfor bad_args in [([], w, [0, 0]), ([[1, 2]], w, [0, 0]), (x, w, [0])]:\n    try:\n        affine_batch(*bad_args)\n        raise AssertionError(\"应拒绝无效形状\")\n    except ValueError:\n        pass\nfor widths in [[], [2], [2, 0, 1], [2, 2.5, 1]]:\n    try:\n        parameter_count(widths)\n        raise AssertionError(\"应拒绝无效网络宽度\")\n    except ValueError:\n        pass\nprint(\"通过：非方形权重、Batch 共享、偏置和参数量。\")\n",
+        "hints": [
+          "输出的每个元素对应某一条输入行与某一条权重行的内积。",
+          "偏置个数是输出维度，不随 Batch 大小变化。"
+        ],
+        "explanation": "非方形 2×3 权重可以暴露把 W 当作 \\(D\\times O\\) 的错误；第二条样本确保所有样本复用同一参数。\\(6\\to8\\to3\\) 的参数量为 \\(6\\times8+8+8\\times3+3=83\\)。"
+      },
+      {
+        "id": "manual-gradient",
+        "level": "应用",
+        "title": "手写两层 ReLU 网络的全部梯度",
+        "runtime": "torch",
+        "prompt": "实现 manual_gradients(x,target,w1,b1,w2,b2)，返回 loss 和字典 grads，键为 x、w1、b1、w2、b2。损失固定为 0.5*((prediction-target)**2).mean()。只使用张量计算，函数内不得调用 backward、autograd.grad 或有限差分；ReLU 在零点导数取 0。",
+        "starter": "import torch\n\ndef manual_gradients(x, target, w1, b1, w2, b2):\n    # TODO: 前向缓存，再按链式法则返回五组梯度。\n    raise NotImplementedError(\"推导并实现 MLP 梯度\")\n",
+        "solution": "import torch\n\ndef manual_gradients(x, target, w1, b1, w2, b2):\n    z = x @ w1.T + b1\n    hidden = z.clamp_min(0)\n    prediction = hidden @ w2.T + b2\n    if prediction.shape != target.shape:\n        raise ValueError(\"预测和回归目标必须完全同形\")\n    error = prediction - target\n    loss = error.square().mean() / 2\n    upstream = error / error.numel()\n    dz = (upstream @ w2) * (z > 0).to(z.dtype)\n    grads = {\"x\": dz @ w1, \"w1\": dz.T @ x, \"b1\": dz.sum(0),\n             \"w2\": upstream.T @ hidden, \"b2\": upstream.sum(0)}\n    return loss, grads\n",
+        "tests": "torch.manual_seed(11)\ndtype = torch.float64\nvalues = [torch.randn(4, 3, dtype=dtype), torch.randn(5, 3, dtype=dtype),\n          torch.randn(5, dtype=dtype), torch.randn(2, 5, dtype=dtype),\n          torch.randn(2, dtype=dtype)]\ntarget = torch.randn(4, 2, dtype=dtype)\nloss, result = manual_gradients(values[0], target, *values[1:])\nauto_values = [v.clone().requires_grad_() for v in values]\nx, w1, b1, w2, b2 = auto_values\nprediction = torch.relu(x @ w1.T + b1) @ w2.T + b2\nexpected_loss = (prediction - target).square().mean() / 2\nexpected = torch.autograd.grad(expected_loss, auto_values)\ntorch.testing.assert_close(loss, expected_loss)\nfor key, gradient in zip((\"x\", \"w1\", \"b1\", \"w2\", \"b2\"), expected):\n    torch.testing.assert_close(result[key], gradient, rtol=1e-10, atol=1e-10)\n# 重复整个 Batch 不改变平均损失及参数梯度。\ndouble_loss, double_grads = manual_gradients(values[0].repeat(2, 1), target.repeat(2, 1), *values[1:])\ntorch.testing.assert_close(double_loss, loss)\nfor key in (\"w1\", \"b1\", \"w2\", \"b2\"):\n    torch.testing.assert_close(double_grads[key], result[key])\n# 所有预激活都为负：第一层与第二层权重的梯度均为零，输出偏置仍可学习。\na = torch.ones(2, 3, dtype=dtype)\n_, inactive = manual_gradients(a, torch.ones(2, 2, dtype=dtype),\n    torch.zeros(4, 3, dtype=dtype), -torch.ones(4, dtype=dtype),\n    torch.ones(2, 4, dtype=dtype), torch.zeros(2, dtype=dtype))\nassert all(torch.count_nonzero(inactive[k]) == 0 for k in (\"x\", \"w1\", \"b1\", \"w2\"))\nassert torch.count_nonzero(inactive[\"b2\"]) == 2\nprint(\"通过：全部梯度、平均归约和失活支路。\")\n",
+        "hints": [
+          "由损失定义先写出 `upstream = (prediction - target) / (B * O)`。",
+          "每个偏置在 Batch 上共享，因此偏置梯度沿 Batch 轴求和。",
+          "第一层反向要先乘 W2，再逐元素乘 ReLU 导数。"
+        ],
+        "explanation": "autograd 对照检查方向和链式法则，重复 Batch 检查 mean 的分母，完全负预激活检查局部零导数。这个函数返回的是显式计算出的梯度，PyTorch 不会自动把它们写入参数的 .grad。"
+      },
+      {
+        "id": "masked-readout",
+        "level": "诊断",
+        "title": "实现不受 Padding 污染的序列 MLP",
+        "runtime": "torch",
+        "prompt": "实现 MaskedMeanHead(input_dim,hidden_dim,output_dim)。属性 network 必须为 Linear→GELU→Linear，两层 Linear 均带偏置，GELU 使用默认精确形式；forward(tokens,mask) 接收 [B,T,D] 和 bool [B,T]，先有效平均池化再过 network，返回 [B,O]。拒绝 Mask 形状错误或含全无效样本的 Batch。无效 token 即使含 NaN 也不能污染预测或输入梯度。",
+        "starter": "import torch\nfrom torch import nn\n\nclass MaskedMeanHead(nn.Module):\n    def __init__(self, input_dim, hidden_dim, output_dim):\n        super().__init__()\n        # TODO: 注册 network。\n\n    def forward(self, tokens, mask):\n        # TODO: 检查合同、有效池化、MLP。\n        raise NotImplementedError(\"实现 MaskedMeanHead\")\n",
+        "solution": "import torch\nfrom torch import nn\n\nclass MaskedMeanHead(nn.Module):\n    def __init__(self, input_dim, hidden_dim, output_dim):\n        super().__init__()\n        self.network = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.GELU(),\n                                     nn.Linear(hidden_dim, output_dim))\n\n    def forward(self, tokens, mask):\n        if tokens.ndim != 3 or mask.dtype != torch.bool or mask.shape != tokens.shape[:2]:\n            raise ValueError(\"需要 B,T,D 输入与 bool B,T Mask\")\n        counts = mask.sum(dim=1, keepdim=True)\n        if (counts == 0).any():\n            raise ValueError(\"存在没有有效 token 的样本\")\n        clean = tokens.masked_fill(~mask[..., None], 0)\n        pooled = clean.sum(dim=1) / counts\n        return self.network(pooled)\n",
+        "tests": "torch.manual_seed(5)\nhead = MaskedMeanHead(3, 5, 2).double()\nassert isinstance(head.network, nn.Sequential) and len(head.network) == 3\nassert isinstance(head.network[0], nn.Linear) and isinstance(head.network[1], nn.GELU)\nassert isinstance(head.network[2], nn.Linear)\nassert head.network[0].weight.shape == (5, 3)\nassert head.network[2].weight.shape == (2, 5)\nassert head.network[0].bias is not None and head.network[2].bias is not None\nw1 = torch.tensor([[.6,-.2,.1],[-.3,.4,.5],[.2,.8,-.7],[-.9,.3,.2],[.5,-.4,.6]], dtype=torch.float64)\nb1 = torch.tensor([-.2,.1,.3,-.1,.05], dtype=torch.float64)\nw2 = torch.tensor([[.3,-.4,.2,.5,-.1],[-.6,.1,.4,-.2,.7]], dtype=torch.float64)\nb2 = torch.tensor([.2,-.3], dtype=torch.float64)\nwith torch.no_grad():\n    head.network[0].weight.copy_(w1)\n    head.network[0].bias.copy_(b1)\n    head.network[2].weight.copy_(w2)\n    head.network[2].bias.copy_(b2)\nmask = torch.tensor([[True, False, True], [False, True, False]])\nx = torch.randn(2, 3, 3, dtype=torch.float64)\nx[~mask] = float(\"nan\")\nx.requires_grad_()\ny = head(x, mask)\nexpected_pool = torch.stack((x[0, [0, 2]].mean(0), x[1, 1]))\n# 独立参考：不调用被测 network；用精确 GELU 的 erf 定义计算。\nz = expected_pool @ w1.T + b1\nhidden = .5 * z * (1 + torch.erf(z / (2 ** .5)))\nexpected = hidden @ w2.T + b2\ntorch.testing.assert_close(y, expected, rtol=1e-10, atol=1e-10)\nassert y.shape == (2, 2) and torch.isfinite(y).all()\npermutation = torch.tensor([2, 0, 1])\ntorch.testing.assert_close(head(x[:, permutation], mask[:, permutation]), y)\nextra = torch.full((2, 4, 3), float(\"nan\"), dtype=torch.float64)\nextra_mask = torch.zeros(2, 4, dtype=torch.bool)\ntorch.testing.assert_close(head(torch.cat((x, extra), 1), torch.cat((mask, extra_mask), 1)), y)\ny.square().sum().backward()\nassert torch.isfinite(x.grad).all() and torch.count_nonzero(x.grad[~mask]) == 0\nassert all(p.grad is not None and torch.isfinite(p.grad).all() for p in head.parameters())\ntry:\n    head(x.detach(), torch.zeros_like(mask))\n    raise AssertionError(\"不能静默处理全无效样本\")\nexcept ValueError:\n    pass\nprint(\"通过：指定 MLP、独立 GELU 参考、NaN Padding 隔离、每样本分母与梯度。\")\n",
+        "hints": [
+          "先替换无效值，再相加；NaN×0 仍是 NaN。",
+          "counts 的形状应为 [B,1]；不要对整个 Batch 求一个共同的有效数。",
+          "网络层必须赋给 nn.Module 的属性，才能被 parameters() 和优化器发现。"
+        ],
+        "explanation": "固定两层参数，用 erf 定义独立计算精确 GELU，核对 3→5→2 的网络合同，避免错误的单层头也与自身参考一致。再通过共同重排和追加任意无效 token 检查池化，用 NaN 占位识别“先乘 Mask 再平均”的错误，并检查 Padding 的梯度严格为零。该头刻意是集合均值读出，不提供通用的时间顺序或空间定位能力。"
+      }
+    ],
+    "advancedLabs": [
+      {
+        "id": "relu-spline",
+        "level": "推导验证",
+        "title": "从节点值构造一层 ReLU 插值网络",
+        "runtime": "torch",
+        "prompt": "实现 relu_interpolator(knots,values)，返回由 Linear(1,K)、ReLU、Linear(K,1) 组成的 nn.Sequential，其中 K=节点数−1。knots 与 values 为同设备、同浮点类型的一维有限张量，节点严格递增；在闭区间内，网络必须精确实现给定节点的分段线性插值。参数直接由节点构造，不执行梯度更新，不调用插值算子；保留输入类型与设备。节点少于两个、形状不符或不严格递增时抛 ValueError。测试避开折点核对导数。",
+        "starter": "import torch\nfrom torch import nn\n\ndef relu_interpolator(knots, values):\n    # 从相邻斜率之差确定每个 ReLU 的系数。\n    raise NotImplementedError(\"请实现 relu_interpolator\")\n",
+        "solution": "import torch\nfrom torch import nn\n\ndef relu_interpolator(knots, values):\n    if knots.ndim != 1 or knots.numel() < 2 or values.shape != knots.shape:\n        raise ValueError(\"节点与函数值必须是一维同形张量，至少含两个节点\")\n    if not torch.all(knots[1:] > knots[:-1]):\n        raise ValueError(\"节点必须严格递增\")\n    slope = (values[1:] - values[:-1]) / (knots[1:] - knots[:-1])\n    coefficients = torch.cat((slope[:1], slope[1:] - slope[:-1]))\n    width = knots.numel() - 1\n    net = nn.Sequential(nn.Linear(1, width), nn.ReLU(), nn.Linear(width, 1))\n    net = net.to(device=knots.device, dtype=knots.dtype)\n    with torch.no_grad():\n        net[0].weight.fill_(1.)\n        net[0].bias.copy_(-knots[:-1])\n        net[2].weight.copy_(coefficients[None, :])\n        net[2].bias.copy_(values[:1])\n    return net\n",
+        "tests": "torch.manual_seed(31)\nknots = torch.tensor([-1., -0.2, 0.5, 2.], dtype=torch.float64)\nvalues = torch.tensor([2., -1., 0.4, 3.], dtype=knots.dtype)\nnet = relu_interpolator(knots, values)\nassert sum(p.numel() for p in net.parameters()) == 3 * (len(knots) - 1) + 1\ntorch.testing.assert_close(net(knots[:, None]).squeeze(-1), values)\nfor fraction in (0.2, 0.5, 0.8):\n    x = (knots[:-1] + fraction * (knots[1:] - knots[:-1])).requires_grad_()\n    y = net(x[:, None]).squeeze(-1)\n    expected = (1 - fraction) * values[:-1] + fraction * values[1:]\n    torch.testing.assert_close(y, expected)\n    actual_slope = torch.autograd.grad(y.sum(), x)[0]\n    torch.testing.assert_close(actual_slope, (values[1:] - values[:-1]) / (knots[1:] - knots[:-1]))\nk = torch.linspace(0., 1., 9, dtype=torch.float64)\nquadratic = relu_interpolator(k, k.square())\nm = (k[:-1] + k[1:]) / 2\ntorch.testing.assert_close(quadratic(m[:, None]).squeeze(-1) - m.square(), torch.full_like(m, 1 / 256))\nfor bad_k, bad_v in ((torch.tensor([0., 0.]), torch.ones(2)),\n                     (torch.tensor([1.]), torch.ones(1)),\n                     (torch.tensor([0., 1.]), torch.ones(3))):\n    try:\n        relu_interpolator(bad_k, bad_v)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"无效节点应抛 ValueError\")\nprint(\"通过：非等距节点、分段前向与梯度、明确参数量、x² 误差界及无效输入\")\n",
+        "hints": [
+          "\\(\\operatorname{ReLU}(x-t_j)\\) 从 \\(t_j\\) 起增加一条恒定斜率；输出权重需要是斜率差。",
+          "在定义域内，第一段的 \\(x-t_0\\) 也等于 \\(\\operatorname{ReLU}(x-t_0)\\)。输出偏置设置起点函数值。"
+        ],
+        "explanation": "非等距节点检验斜率分母，负节点和值检验偏置与符号；Autograd 检验区间内部导数，节点值检验连续连接。宽度 K 的参数量为 \\(K+K+K+1\\)。\\(x^2\\) 的 \\(\\frac{h^2}{4}\\) 误差是解析结论；没有在优化器中搜索参数。"
+      }
+    ]
+  },
+  {
+    "id": "cnn-receptive-field",
+    "number": 24,
+    "module": "appendix",
+    "level": "P0",
+    "title": "CNN：卷积、采样与空间表示",
+    "subtitle": "局部连接与权重共享，如何决定表达能力、平移响应和空间信息。",
+    "minutes": 95,
+    "tags": [
+      "CNN",
+      "Conv2d",
+      "Receptive Field",
+      "Stride",
+      "Padding"
+    ],
+    "prerequisites": [
+      "tensor",
+      "mlp"
+    ],
+    "objectives": [
+      "解释 Conv2d 的通道求和及输出尺寸公式。",
+      "推导多层卷积的感受野与输入采样间隔。",
+      "用手写实现和输入梯度核对卷积计算，而不只检查形状。"
+    ],
+    "why": "读懂视觉编码器、Diffusion Policy 的 CNN 和 ViT 的 Patch 投影，都需要理解卷积如何聚合空间信息。小目标经过几次下采样后是否仍有足够分辨率，是具身视觉中的实际问题。",
+    "code": {
+      "title": "从单核互相关到七乘七感受野",
+      "source": "# [1] 手写一个有效二维互相关，没有翻转卷积核\nimport torch\nfrom torch.nn import functional as F\ntorch.manual_seed(35)\nx = torch.arange(1, 26, dtype=torch.float32).reshape(1, 1, 5, 5)\nkernel = torch.tensor([[1., 0., -1.], [2., 0., -2.], [1., 0., -1.]])\nweight = kernel[None, None]\nmanual = torch.empty(1, 1, 3, 3)\nfor row in range(3):\n    for col in range(3):\n        patch = x[0, 0, row:row+3, col:col+3]\n        manual[0, 0, row, col] = (patch * kernel).sum()\nreference = F.conv2d(x, weight)\ntorch.testing.assert_close(manual, reference)\nprint(\"单层输出形状:\", tuple(reference.shape))\n\n# [2] 两层卷积：先更新感受野，再更新输入间隔\nlayers = [(3, 2, 1), (3, 1, 1)]  # kernel, stride, dilation\nreceptive, jump = 1, 1\nfor k, stride, dilation in layers:\n    receptive += (k - 1) * dilation * jump\n    jump *= stride\nassert (receptive, jump) == (7, 2)\n\n# [3] 用全正权重和线性路径观察实际依赖支持\nimage = torch.zeros(1, 1, 9, 9, requires_grad=True)\nones = torch.ones(1, 1, 3, 3)\nhidden = F.conv2d(image, ones, stride=2, padding=1)\noutput = F.conv2d(hidden, ones, stride=1, padding=0)\noutput[0, 0, 1, 1].backward()\nsupport = image.grad[0, 0] != 0\nexpected = torch.zeros(9, 9, dtype=torch.bool)\nexpected[1:8, 1:8] = True\nassert torch.equal(support, expected)\nprint(\"中间 / 最终形状:\", tuple(hidden.shape), tuple(output.shape))\nprint(\"理论感受野:\", receptive, \"非零梯度像素:\", support.sum().item())\nprint(\"卷积与感受野检查通过\")\n",
+      "expected": "单层输出 [1,1,3,3]；两层为 [1,1,5,5] 和 [1,1,3,3]；感受野 7、非零梯度像素 49。",
+      "explanations": [
+        {
+          "lines": "1–16",
+          "text": "有效卷积输出为 3×3；手算使用同一个核遍历窗口，并与 PyTorch 对照。"
+        },
+        {
+          "lines": "17–24",
+          "text": "r 使用上一层的 jump。若先更新 jump，会把当前层的步长错误地重复计入范围。"
+        },
+        {
+          "lines": "25–37",
+          "text": "这个特定正权重网络的中心输出依赖 49 个像素；零输入仍能产生非零输入梯度，因为路径是线性的。"
+        }
+      ]
+    },
+    "exercise": {
+      "title": "计算输出尺寸和感受野",
+      "prompt": "实现 conv_geometry(size,layers)。每层为 (kernel,stride,padding,dilation)，返回 (最终尺寸,感受野,累计步长)。一维计算代表图像的一条轴；无效参数或无输出位置时抛出 ValueError。",
+      "runtime": "python",
+      "starter": "def conv_geometry(size, layers):\n    # TODO: 同时维护 size、receptive、jump\n    raise NotImplementedError(\"请完成卷积几何递推\")\n",
+      "solution": "def conv_geometry(size, layers):\n    if size <= 0:\n        raise ValueError(\"输入尺寸必须为正\")\n    receptive, jump = 1, 1\n    for kernel, stride, padding, dilation in layers:\n        if min(kernel, stride, dilation) <= 0 or padding < 0:\n            raise ValueError(\"卷积参数无效\")\n        size = (size + 2*padding - dilation*(kernel-1) - 1)//stride + 1\n        if size <= 0:\n            raise ValueError(\"没有有效输出位置\")\n        receptive += (kernel-1)*dilation*jump\n        jump *= stride\n    return size, receptive, jump\n",
+      "tests": "assert conv_geometry(9, [(3,2,1,1), (3,1,0,1)]) == (3,7,2)\nassert conv_geometry(7, [(3,1,2,2)]) == (7,5,1)\nassert conv_geometry(8, [(4,4,0,1)]) == (2,4,4)\nassert conv_geometry(5, []) == (5,1,1)\ntry:\n    conv_geometry(2, [(5,1,0,1)])\n    raise AssertionError(\"无有效输出应被拒绝\")\nexcept ValueError:\n    pass\nprint(\"通过：尺寸、Dilation、累计步长与感受野\")\n",
+      "hints": [
+        "输出尺寸公式中的有效核宽度为 \\(\\mathrm{dilation}\\,(\\mathrm{kernel}-1)+1\\)。",
+        "感受野先使用旧 jump 更新，随后执行 `jump *= stride`。"
+      ],
+      "explanation": "步长会改变下一层窗口在原输入上的跨度，所以感受野不能简单相加核尺寸。Padding 影响输出位置，不增加中央输出的理论核跨度。"
+    },
+    "pytorchTask": {
+      "prompt": "使用 F.unfold 实现 unfold_conv2d，与普通 groups=1、dilation=1 的 F.conv2d 对齐。支持非方形核、整数 stride/padding 和可选 bias。不得直接调用 conv2d。",
+      "starter": "import torch\nfrom torch.nn import functional as F\n\ndef unfold_conv2d(x, weight, bias=None, stride=1, padding=0):\n    # TODO: 展开窗口、跨输入通道求和，再还原空间轴\n    raise NotImplementedError(\"请实现展开形式的卷积\")\n",
+      "solution": "import torch\nfrom torch.nn import functional as F\n\ndef unfold_conv2d(x, weight, bias=None, stride=1, padding=0):\n    batch, channels, height, width = x.shape\n    out_channels, weight_channels, kh, kw = weight.shape\n    if channels != weight_channels:\n        raise ValueError(\"输入通道数不一致\")\n    patches = F.unfold(x, (kh, kw), padding=padding, stride=stride)\n    flat_weight = weight.reshape(out_channels, -1)\n    output = torch.einsum(\"oc,bcl->bol\", flat_weight, patches)\n    if bias is not None:\n        output = output + bias[None, :, None]\n    oh = (height + 2*padding - kh)//stride + 1\n    ow = (width + 2*padding - kw)//stride + 1\n    return output.reshape(batch, out_channels, oh, ow)\n",
+      "tests": "torch.manual_seed(35)\nx = torch.randn(2, 2, 6, 7, requires_grad=True)\nweight, bias = torch.randn(3, 2, 2, 3), torch.randn(3)\nactual = unfold_conv2d(x, weight, bias, stride=2, padding=1)\nexpected = F.conv2d(x, weight, bias, stride=2, padding=1)\ntorch.testing.assert_close(actual, expected, atol=1e-6, rtol=1e-5)\ntorch.testing.assert_close(unfold_conv2d(x, weight), F.conv2d(x, weight))\nactual.square().mean().backward()\nassert x.grad is not None and torch.isfinite(x.grad).all()\nprint(\"通过：多通道、非方形核、偏置、步长与梯度\")\n",
+      "hints": [
+        "unfold 的中间维已经合并 Cin、Kh、Kw，权重也要按同一顺序展平。",
+        "输出空间位置 L 仍保留在最后一维；einsum 要对窗口元素轴求和，不能对 L 求和。"
+      ],
+      "explanation": "展开后的每个窗口是一个向量，卷积等价于在所有窗口上复用同一个线性映射。测试使用两个输入通道和非方形核，能够暴露误把通道独立处理或交换 H/W 的错误。"
+    },
+    "sources": [
+      {
+        "title": "PyTorch · Conv2d",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html"
+      },
+      {
+        "title": "PyTorch · Unfold",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.Unfold.html"
+      },
+      {
+        "title": "PyTorch · BatchNorm2d",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.BatchNorm2d.html"
+      },
+      {
+        "title": "PyTorch · AdaptiveAvgPool2d",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.AdaptiveAvgPool2d.html"
+      },
+      {
+        "title": "PyTorch · ConvTranspose2d",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html"
+      },
+      {
+        "title": "Dosovitskiy et al. · An Image is Worth 16x16 Words",
+        "url": "https://arxiv.org/abs/2010.11929"
+      },
+      {
+        "title": "Zhang · Making Convolutional Networks Shift-Invariant Again",
+        "url": "https://proceedings.mlr.press/v97/zhang19a.html"
+      },
+      {
+        "title": "MobileNets：Depthwise Separable Convolution",
+        "url": "https://arxiv.org/abs/1704.04861"
+      },
+      {
+        "title": "PyTorch · pixel_shuffle",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.functional.pixel_shuffle.html"
+      },
+      {
+        "title": "Simonyan 与 Zisserman：Very Deep Convolutional Networks for Large-Scale Image Recognition",
+        "url": "https://arxiv.org/abs/1409.1556"
+      },
+      {
+        "title": "He 等：Deep Residual Learning for Image Recognition",
+        "url": "https://arxiv.org/abs/1512.03385"
+      },
+      {
+        "title": "Liu 等：A ConvNet for the 2020s",
+        "url": "https://arxiv.org/abs/2201.03545"
+      },
+      {
+        "title": "ConvNeXt 官方实现：空间卷积、通道 MLP、LayerScale 与残差",
+        "url": "https://github.com/facebookresearch/ConvNeXt/blob/main/models/convnext.py"
+      },
+      {
+        "title": "Luo 等：Understanding the Effective Receptive Field in Deep Convolutional Neural Networks",
+        "url": "https://arxiv.org/abs/1701.04128"
+      },
+      {
+        "title": "PyTorch · AvgPool2d：窗口平均与边界分母",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.AvgPool2d.html"
+      },
+      {
+        "title": "PyTorch · MaxPool2d：窗口选择与边界约定",
+        "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.MaxPool2d.html"
+      }
+    ],
+    "theoryTopic": "cnn",
+    "legacySectionMap": {
+      "0": "local-correlation",
+      "1": "spatial-shape",
+      "2": "receptive-field",
+      "3": "receptive-field",
+      "4": "groups-depthwise",
+      "5": "equivariance",
+      "6": "patch-embedding",
+      "7": "implementation-checks"
+    },
+    "legacyAnchorMap": {
+      "question-0": "section-local-correlation",
+      "question-1": "section-receptive-field",
+      "question-2": "section-receptive-field",
+      "pitfall-0": "section-local-correlation",
+      "pitfall-1": "section-receptive-field",
+      "pitfall-2": "question-8",
+      "pitfall-3": "section-receptive-field",
+      "pitfall-4": "section-equivariance"
+    },
+    "lead": "卷积神经网络（CNN）通过局部连接与参数共享处理空间数据：卷积与非线性提取、组合特征，读出模块把特征变成分类或空间预测。本章先看 LeNet 的完整流程，再沿同一个 SmallCNN 解释每一步：12×12 RGB 图像 → 两次卷积与 ReLU → 全局平均池化 → 两类输出。",
+    "sections": [
+      {
+        "id": "local-correlation",
+        "title": "先看完整网络，再理解局部卷积",
+        "body": [
+          "沿图从左向右看：卷积在局部窗口中提取特征，激活引入非线性，池化缩小空间网格；随后将特征展平，用全连接层输出各类别的分数。图中每叠小方片是一组特征通道。本章贯穿的 SmallCNN 将这条主线具体化为两次“卷积＋ReLU”，再通过全局平均池化与线性层完成分类。",
+          "二维卷积网络把图像表示为 [B,C,H,W]：B 是样本，C 是通道，H/W 是两个空间轴。一个普通卷积的输出通道，拥有覆盖所有输入通道的一组小核。例如 RGB 输入使用 3×3 核时，每个输出通道实际有 3×3×3 个权重。它在一个位置取出各通道的局部窗口，逐元素相乘后跨空间和通道求和，再加该输出通道的偏置。",
+          "PyTorch Conv2d 实际计算的是互相关：窗口与权重按对应位置相乘，不把核在空间上翻转。数学教材中的卷积常包含核翻转，使用固定边缘检测核对照时必须明确约定。对于学习到的核，这种命名差异不限制一般的可学习滤波器族，但实现核对时会影响具体数值。一个卷积核不是每次滑动时重新生成的；同一输出通道在所有位置复用相同权重。",
+          "输出通道不是简单等于输入颜色通道。一个输出通道可能混合多个输入通道中的局部模式，多个输出通道又使用不同参数寻找不同响应。没有非线性时，卷积对输入是仿射映射；ReLU 等激活放在哪里，会改变整段网络的函数。读取代码时应分别标记权重张量、输入特征图和输出特征图，避免把滤波器数量与每个滤波器内部的输入通道轴混淆。"
+        ],
+        "formula": "Y_{b,o,i,j}=b_o+\\sum_{c=0}^{C_{\\rm in}-1}\\sum_{u=0}^{K_h-1}\\sum_{v=0}^{K_w-1}W_{o,c,u,v}X_{b,c,\\,i s_h-p_h+u d_h,\\,j s_w-p_w+v d_w}",
+        "takeaway": "普通卷积对整个局部窗口求和，其中包括输入通道轴；PyTorch 不翻转核。",
+        "example": {
+          "title": "用一个 2×2 核算出四个输出",
+          "steps": [
+            "输入单通道图像为三行 [1,2,3]、[4,5,6]、[7,8,9]，核为两行 [1,0]、[0,-1]；stride=1、padding=0、bias=0。",
+            "左上输出使用窗口 [[1,2],[4,5]]，逐项相乘再求和：\\(1\\times1+2\\times0+4\\times0+5\\times(-1)=-4\\)。右上窗口得到 \\(2-6=-4\\)。",
+            "下方两个窗口分别得到\\(4-8=-4\\)、\\(5-9=-4\\)，因此输出为2×2且全部为-4。这里没有翻转核，是深度学习库常用的互相关约定。"
+          ],
+          "conclusion": "卷积的可学习之处是核里的数；相同核在各空间位置重复使用，多个输入通道的结果还要相加。"
+        },
+        "lead": "一个典型 CNN 先读取图像，通过若干组“卷积、激活、下采样”形成特征图，再将这些特征读成类别或空间预测。下图先用 LeNet 展示整条流程，随后再拆开其中的一个卷积窗口。",
+        "figures": [
+          {
+            "src": "/assets/figures/lenet-overview-d2l.svg",
+            "alt": "LeNet 的完整图像分类流程：二十八乘二十八图像经过两组卷积与池化，展平后通过多个全连接层，得到十类输出。",
+            "caption": "从左向右读：图像 → 卷积与池化 → 展平 → 全连接层 → 10 类输出。叠放的方片表示同一层的多个特征通道。图源：[《动手学深度学习》LeNet](https://d2l.ai/chapter_convolutional-neural-networks/lenet.html)。",
+            "afterParagraph": 0,
+            "width": 1416,
+            "height": 535
+          },
+          {
+            "src": "/assets/figures/conv-arithmetic-window.gif",
+            "alt": "一个 3×3 卷积核在 4×4 单通道输入上以步幅 1、无填充滑动，生成 2×2 输出。",
+            "caption": "观察下方蓝色输入上的深色 3×3 窗口：它每移动一格，就计算上方一个输出位置。这是单通道、无 Padding、Stride=1 的 4×4 → 2×2 例子；多输入通道时还要汇总各通道的乘积。原动图：Dumoulin & Visin，[Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)、[论文](https://arxiv.org/abs/1603.07285)。",
+            "afterParagraph": 2
+          }
+        ]
+      },
+      {
+        "id": "spatial-shape",
+        "title": "步幅、填充、空洞率与输出尺寸",
+        "body": [
+          "卷积窗口能放多少次，决定输出尺寸。dilation=d 会把大小 k 的核采样点拉开，使覆盖跨度变为 \\(d(k-1)+1\\)，但权重个数仍为 k。padding=p 在两边各提供 p 个填充值，使边界也可产生输出。stride=s 表示相邻输出窗口在输入上移动 s 个位置。三者一个改变窗口内部采样，一个改变边界，一个改变窗口之间的间距，不能相互替代。",
+          "把单个轴的输入长度记作 H，左、右填充分别为 \\(p_L\\)、\\(p_R\\)。补边后的合法索引为 \\(0,\\ldots,H+p_L+p_R-1\\)。第 q 个输出窗口的最左采样位置为 \\(qs\\)，最右为 \\(qs+d(k-1)\\)，其中 q 从 0 开始、s,d,k 为正整数。窗口存在必须满足 \\(qs+d(k-1)\\le H+p_L+p_R-1\\)；解出 q 的最大整数值，再将从 0 起计数的个数加 1，就得到输出公式。这个推导同时解释了 floor 的位置，以及为何有效核跨度为 \\(d(k-1)+1\\)。",
+          "对单个空间轴，先从输入加两侧填充的总长度中减去有效核跨度，再除以步长、向下取整，最后加 1。输入高 7、宽 9，核 3×2，stride=(2,1)、padding=(1,0)、dilation=(2,1) 时，有效核为 5×2，输出高为 \\(\\left\\lfloor\\frac{7+2-5}{2}\\right\\rfloor+1=3\\)，输出宽为 \\(9-2+1=8\\)。非方形例子可以暴露把 H/W 参数写反的错误。",
+          "输出公式要求存在至少一个合法位置；核跨度超过可用输入时应拒绝，而不是得到零或负维度。对称零填充只是常见设置，反射、复制和不对称填充改变边界语义。PyTorch 的 padding=\"same\" 有具体 API 限制，不能把它理解为任意步长下无条件保持原尺寸。图像预处理的 resize 与模型内部 stride 也不同：前者改变实际输入采样，后者改变特征采样，两处坐标变换要分开记录。"
+        ],
+        "formula": "\\begin{aligned}0\\le q&\\le\\frac{H+p_L+p_R-d(k-1)-1}{s},\\\\ H_{\\rm out}&=\\left\\lfloor\\frac{H+p_L+p_R-d(k-1)-1}{s}\\right\\rfloor+1;\\qquad p_L=p_R=p\\ \\text{时为对称填充}.\\end{aligned}",
+        "code": "import torch\n\nconv = torch.nn.Conv2d(4, 6, (3, 2), stride=(2, 1),\n                       padding=(1, 0), dilation=(2, 1), groups=2)\nassert conv(torch.randn(2, 4, 7, 9)).shape == (2, 6, 3, 8)",
+        "codeExplanation": "高度与宽度分别计算；groups 改变通道连接方式，不进入空间输出公式。",
+        "example": {
+          "title": "非方形几何需要把高和宽分开代入",
+          "steps": [
+            "设 H=15、W=20，kernel=(3,5)，stride=(2,3)，padding=(1,2)，dilation=(2,1)。有效核大小为 \\(\\bigl(2(3-1)+1,1(5-1)+1\\bigr)=(5,5)\\)。",
+            "输出高为 \\(\\left\\lfloor\\frac{15+2\\times1-5}{2}\\right\\rfloor+1=7\\)；输出宽为 \\(\\left\\lfloor\\frac{20+2\\times2-5}{3}\\right\\rfloor+1=7\\)。结果碰巧为7×7，但两个轴的计算过程并不相同。",
+            "若只把宽方向 stride 改成2，则输出宽变为 \\(\\left\\lfloor\\frac{19}{2}\\right\\rfloor+1=10\\)，高仍为7。不能把一个轴的参数直接套到另一轴。"
+          ],
+          "conclusion": "输出尺寸由窗口是否完全落入补边后的网格决定；向下取整会产生离散跳变。"
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "dilation 增大采样跨度，不增加核参数数量",
+          "explanation": "3×3核在dilation=2时覆盖5×5的外接范围，但仍只采9个位置；参数仍由3×3决定。把有效核大小5×5用到参数量公式，会高估参数，也会误以为中间所有像素都被直接观察。",
+          "check": "分别列出实际采样偏移、外接范围和权重形状。三者回答的是不同问题。"
+        },
+        "comparison": {
+          "title": "卷积配置改变了什么",
+          "columns": [
+            "配置",
+            "主要改变",
+            "固定其他参数时的权重数量"
+          ],
+          "rows": [
+            [
+              "kernel_size",
+              "局部采样点及覆盖范围",
+              "随核高×核宽改变"
+            ],
+            [
+              "stride",
+              "窗口移动间距与输出采样相位",
+              "不改变"
+            ],
+            [
+              "padding",
+              "边界补值与输出几何",
+              "不改变"
+            ],
+            [
+              "dilation",
+              "核内采样点之间的间距",
+              "不改变"
+            ],
+            [
+              "groups",
+              "每个输出连接哪些输入通道",
+              "与每组输入通道数相关"
+            ]
+          ]
+        },
+        "lead": "步幅是相邻窗口在输入上移动的间隔，填充是在边界补入数值，空洞率是核采样点之间的间隔。它们分别改变窗口位置、边界范围与覆盖跨度。输出尺寸由这些几何规则共同决定。",
+        "codeKind": "runnable",
+        "figures": [
+          {
+            "src": "/assets/figures/conv-padding-d2l.svg",
+            "alt": "三乘三输入外围补一圈零，再与二乘二卷积核做互相关，得到四乘四输出，蓝色标出首个窗口。",
+            "afterParagraph": 1,
+            "caption": "虚线外围是补零，蓝色是首个 2×2 窗口；补边让边界外也能放下窗口，输出增至 4×4。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#padding)。",
+            "width": 379,
+            "height": 160
+          },
+          {
+            "src": "/assets/figures/conv-stride-d2l.svg",
+            "alt": "带补零的二维互相关，窗口在高方向每次移动三格，在宽方向每次移动两格，得到二乘二输出。",
+            "afterParagraph": 2,
+            "caption": "窗口每次向下移动 3 格、向右移动 2 格，因此只留下 2×2 个输出位置。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/padding-and-strides.html#stride)。",
+            "width": 331,
+            "height": 159
+          }
+        ]
+      },
+      {
+        "id": "sharing-cost",
+        "title": "参数共享、参数量与计算量",
+        "body": [
+          "普通卷积的权重形状是 [Cout,Cin,Kh,Kw]，每个输出通道再有一个偏置。32 个输入通道、64 个输出通道、3×3 核，有 \\(64\\times32\\times3\\times3+64=18496\\) 个参数。输入从 64×64 换成 128×128 不会增加这组参数，但会产生更多输出位置。卷积的参数共享把“同一局部模式可出现在不同位置”写进结构，而全连接层通常为不同空间位置使用不同连接。",
+          "参数少不自动等于计算便宜。每个输出位置都要执行一次相应的局部内积，普通卷积乘加次数约为 \\(B H_{\\mathrm{out}}W_{\\mathrm{out}}C_{\\mathrm{out}}C_{\\mathrm{in}}K_hK_w\\)；分组卷积再除以组数。这个表达式把一次乘加视为一个 MAC，若用 FLOPs 报告，是否把乘法和加法分别计数必须说明。分辨率翻倍常使二维空间位置数约增为四倍，因此视觉骨干的激活与计算都可能显著增大。",
+          "卷积也可以写成一个稀疏且共享参数的矩阵映射。unfold 将窗口排成 [B,Cin×Kh×Kw,Hout×Wout]，每列对应一个输出位置的输入；展平的卷积核从左侧乘这组列，得到各位置的输出通道。重叠区域会出现在多列中，因此显式 unfold 可能增加内存开销。这种写法适合对照数学定义，实际卷积内核无需照搬它的中间存储方式。",
+          "把上面的估计用于后续同一个 SmallCNN：输入固定为 `[B,3,12,12]`，两层卷积依次为 3→8 与 8→12，均用 3×3、stride=1、padding=1，每层后接 ReLU，再做 GAP 与 Linear(12,2)。下表按单张输入计卷积/线性 MAC，忽略偏置加法、激活、池化求和与反向成本；它不是硬件延迟。参数包含偏置。两层 feature map 仍有 12×12 个位置，GAP 才消去空间轴。表中 \\(r\\) 是单个特征位置在输入上的理论覆盖跨度，\\(j\\) 是相邻特征位置在输入上的间隔；两者将在[感受野](#/learn/cnn-receptive-field?section=receptive-field)一节推导。"
+        ],
+        "formula": "P=C_{\\rm out}\\frac{C_{\\rm in}}{G}K_hK_w+C_{\\rm out},\\qquad \\operatorname{MACs}\\approx BH_{\\rm out}W_{\\rm out}C_{\\rm out}\\frac{C_{\\rm in}}G K_hK_w",
+        "takeaway": "参数由通道和核决定，计算还取决于输出空间位置；二者必须分开估算。",
+        "lead": "参数共享指不同空间位置使用同一组卷积核权重。参数量计数这组可学习数值，计算量还要计入它们被重复使用多少次。区分二者后，才能解释分辨率增加为何主要增加执行工作量而非核参数。",
+        "comparison": {
+          "title": "贯穿案例 SmallCNN：逐层形状与成本",
+          "columns": [
+            "算子",
+            "输出形状",
+            "参数",
+            "单样本 MAC",
+            "理论跨度 r / 间隔 j"
+          ],
+          "rows": [
+            [
+              "输入",
+              "[B,3,12,12]",
+              "0",
+              "—",
+              "1 / 1"
+            ],
+            [
+              "Conv 3→8, k=3, s=1, p=1",
+              "[B,8,12,12]",
+              "224",
+              "31,104",
+              "3 / 1"
+            ],
+            [
+              "ReLU",
+              "[B,8,12,12]",
+              "0",
+              "未计逐元素运算",
+              "3 / 1"
+            ],
+            [
+              "Conv 8→12, k=3, s=1, p=1",
+              "[B,12,12,12]",
+              "876",
+              "124,416",
+              "5 / 1"
+            ],
+            [
+              "ReLU",
+              "[B,12,12,12]",
+              "0",
+              "未计逐元素运算",
+              "5 / 1"
+            ],
+            [
+              "GAP → flatten",
+              "[B,12]",
+              "0",
+              "未计池化求和",
+              "覆盖全图；不再有相邻空间输出"
+            ],
+            [
+              "Linear 12→2",
+              "[B,2]",
+              "26",
+              "24",
+              "全局读出"
+            ],
+            [
+              "合计",
+              "2 个分类 logits",
+              "1,126",
+              "155,544",
+              "局部提取与全局汇聚分开"
+            ]
+          ]
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/cnn-small-network-v2.svg",
+            "alt": "SmallCNN 两层卷积保持空间网格，GAP 汇聚所有位置，再产生两类 logits 的结构图",
+            "caption": "两层 3×3 卷积的局部覆盖跨度依次为 3 和 5；GAP 再汇聚整幅特征图，形成分类输出。",
+            "width": 1120,
+            "height": 650
+          }
+        ]
+      },
+      {
+        "id": "groups-depthwise",
+        "title": "分组与深度可分离卷积的秩限制",
+        "body": [
+          "groups=G 把输入通道和输出通道分别分成 G 组，每组输出只连接对应组的输入。因此 Cin 和 Cout 都需要被 G 整除，权重第二维为 Cin/G。它不是把同一普通卷积计算 G 遍，而是删去了组间连接。实现时应将窗口和权重都按相同组顺序重排；若只有权重分组而输入通道顺序未对齐，形状可能正确，计算仍会错误。",
+          "当 \\(G=C_{\\mathrm{in}}\\)，且 \\(C_{\\mathrm{out}}=KC_{\\mathrm{in}}\\) 时，每个输入通道对应 K 个独立空间滤波器，这叫 depthwise convolution，K 是通道倍增系数。这个操作本身不在不同输入通道之间混合信息。后接 groups=1 的 1×1 pointwise 卷积，才可在每个空间位置混合通道。深度可分离卷积因此由不同作用的两个步骤构成，不能直接声称等价于任意同尺寸普通卷积。",
+          "为什么要分成这两步？对通道倍增系数为一、忽略偏置的 \\(k\\times k\\) 核，普通卷积有 \\(k^2C_{\\rm in}C_{\\rm out}\\) 个权重，depthwise 加 pointwise 则为 \\(k^2C_{\\rm in}+C_{\\rm in}C_{\\rm out}\\)。前一项只在各通道内提取空间响应，后一项在每个位置重新组合这些响应。成本降低来自空间与通道作用的分解，接下来要检验这种分解能否覆盖原来的全部卷积核。",
+          "Depthwise+pointwise 的限制可以精确写出。先假设倍增系数 \\(K=1\\)，两层之间没有激活或其他输入相关变换，并忽略偏置。等效核为 \\(W_{ocuv}=P_{oc}D_{cuv}\\)。固定输入通道 c，所有输出空间核都是同一个 D[c] 的倍数，所以将这一切片排成 \\(C_{\\mathrm{out}}\\times(K_hK_w)\\) 矩阵，其秩最多为 1。一个普通卷积若要从同一输入通道提取两种线性独立的空间模板，就无法由这种组合精确表示。",
+          "例如一个输出需要水平差分核，另一个输出需要垂直差分核，两者不成比例；\\(K=1\\) 无法同时表达，\\(K\\ge2\\) 才可能提供两个独立空间方向。一般 K 个 depthwise 核给出至多 K 个外积之和，秩上限变为 K。两层间加入非线性后，不能再合并成一个固定卷积核，但通道连接仍受结构限制。参数节省来自受限的因子分解，不是无代价地保留任意卷积。",
+          "1×1 卷积的空间窗口只有一个位置，但仍能执行 \\(C_{\\mathrm{in}}\\to C_{\\mathrm{out}}\\) 的线性特征变换。它与对每个像素向量应用共享 Linear 等价，前提是布局和权重朝向一致。若设置 stride>1，它还会对子采样位置进行读出。分组、深度与逐点卷积常用于控制成本；决定是否适用时，应同时考虑表达限制、后续通道混合和实际硬件实现，而不只看参数量。"
+        ],
+        "formula": "W_{o,c,u,v}=\\sum_{a=1}^{K}P_{o,c,a}D_{c,a,u,v},\\qquad \\operatorname{rank}\\!\\left(W_{:,c,:}\\right)\\le K",
+        "takeaway": "Depthwise 负责逐通道空间滤波，普通 1×1 卷积负责位置内的通道混合。",
+        "example": {
+          "title": "分组卷积省掉的是哪些连接",
+          "steps": [
+            "普通卷积 Cin=8、Cout=16、kernel=3×3且有bias，参数数为\\(16\\times8\\times9+16=1168\\)。",
+            "groups=4时，每组仅连接2个输入通道，每个输出核权重形状为[2,3,3]；总参数为\\(16\\times2\\times9+16=304\\)。",
+            "若先使用8通道depthwise，再用1×1投影到16通道，两层均有bias，则参数为\\((8\\times9+8)+(16\\times8+16)=224\\)。它属于不同结构，不能仅凭输出形状就认为与任意普通卷积等价。"
+          ],
+          "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。",
+          "afterParagraph": 3
+        },
+        "lead": "分组卷积只允许对应的通道组相互连接；深度可分离卷积则通常先逐通道做空间滤波，再用逐点卷积混合通道。这些结构通过限制连接降低成本，也限制了可表示的变换。下面先看连接，再分析秩。"
+      },
+      {
+        "id": "receptive-field",
+        "title": "感受野跨度、支持集与路径数",
+        "body": [
+          "先取一维、无填充且步幅为一的两层三点卷积。第一层的第 \\(i\\) 个输出可能依赖 \\(x_i,x_{i+1},x_{i+2}\\)；第二层的第 \\(i\\) 个输出读取第一层的第 \\(i,i+1,i+2\\) 项。把这些项的输入范围取并集，得到 \\(x_i,\\ldots,x_{i+4}\\)，跨度为五。扩大感受野来自间接组合已有窗口，而不是某一层的核突然变大。",
+          "感受野回答某个输出可能依赖输入中的哪些位置。对一条空间轴，令 j 表示相邻特征位置在原输入上的间隔，r 表示理论覆盖跨度，初始 \\(j_0=r_0=1\\)。经过核 k、dilation d、stride s 的一层后，r 增加 \\((k-1)d\\) 乘以上一层的 \\(j\\)，而 j 再乘当前 s。顺序很重要：新核在上一层特征图上滑动，上一层相邻格子本来就可能隔着多个原始像素。",
+          "递推也可由极端位置推出。上一层每个单元对应原输入中宽为 \\(r_{\\ell-1}\\) 的潜在覆盖区间，相邻单元的区间平移 \\(j_{\\ell-1}\\)。本层选中的第一个和最后一个上层单元相距 \\((k_\\ell-1)d_\\ell\\) 个上层格点，因此两个覆盖区间的最外端总跨度是 \\(r_{\\ell-1}+(k_\\ell-1)d_\\ell j_{\\ell-1}\\)。而本层窗口索引每加 1，会在上一层移动 \\(s_\\ell\\) 个格点，因此新间距为 \\(j_\\ell=s_\\ell j_{\\ell-1}\\)。即使区间内有空洞，这个包围跨度仍成立。",
+          "二维的高宽轴可以分别重复上述推理。若第一层 stride=2、第二层 stride=1，第一层后 \\(j=2\\)，第二层新增跨度为 \\(2\\times2=4\\)，所以总跨度为 7，最终相邻输出仍相隔 2 个原始像素。这不是把两个核边长简单相加。核非方形或高宽步长不同时，应分别沿两个轴递推。池化等局部操作也会改变这些量。",
+          "理论跨度不等于实际参与的不同像素数量，更不等于实际贡献强度。dilation 可能在跨度内部留下空洞，边界填充不是来自真实图像；特定权重为零、非线性关闭或路径相消，也会让某些输入的实际导数为零。可用输出对输入的梯度观察一个具体输入下的有效依赖，但它只是该输入与当前参数的局部证据。涉及坐标定位时还需记录采样原点与 padding 引起的偏移，仅有 stride 无法完整描述几何关系。",
+          "稀疏支持集可以直接按偏移集合相加。两层 k=3、dilation=2、stride=1 的一维卷积，每层偏移为 \\(\\{0,2,4\\}\\)，两层合成偏移为 \\(\\{0,2,4,6,8\\}\\)：跨度是 9，但只有 5 个位置可达。所有权重为 1 时，通往这些位置的路径数分别为 1、2、3、2、1。二维同样设置得到 25 个可达像素，并非 9×9 的每个位置都参与；这正是仅记录感受野尺寸无法反映的结构。",
+          "还需跟踪第一个输出的理论感受野中心 \\(a_\\ell\\)。这里以图像左边界为坐标原点，规定第一个像素中心 \\(a_0=\\frac12\\)；与[视觉预处理](#/learn/vision-preprocessing?section=3)中首像素中心为 0 的 \\(u\\) 坐标相差半个像素，即 \\(a=u+\\frac12\\)。原点平移不改变覆盖跨度 \\(r\\) 和间隔 \\(j\\)。初始 \\(r_0=j_0=1\\)；对左侧填充 \\(p_{L,\\ell}\\)，本层第一个核从上层位置 \\(-p_{L,\\ell}\\) 开始，末端在 \\(-p_{L,\\ell}+(k_\\ell-1)d_\\ell\\)，二者中点给出 \\(a_\\ell=a_{\\ell-1}+\\left[\\frac{(k_\\ell-1)d_\\ell}{2}-p_{L,\\ell}\\right]j_{\\ell-1}\\)。它是理想支持区间的中心，边界上的虚拟填充值也被计入，不能直接当作真实图像贡献的质心。",
+          "例如长度 6、k=3、s=2、d=1，总 padding=1 时，左补 1 右补 0 与左补 0 右补 1 都输出 3 个位置，\\(r=3\\)、\\(j=2\\) 也完全相同；但第一个理论中心分别是 0.5 与 1.5。两条特征分支即使尺寸一致，也可能错开一个输入像素。多尺度融合、空间 token 与标注坐标对齐时，需要同时检查 r、j、a，不能只用 tensor.shape 判断几何一致。",
+          "回到贯穿网络，第二层内部位置 `(6,6)` 的潜在输入支持落在行列索引 4…8 的 5×5 窗口。代码对该位置求输入梯度，断言窗外导数为零；窗口内的导数仍由权重、第一层 ReLU 和路径相消决定，不承诺全部非零。分类 loss 则先经 GAP 汇总所有 feature map 位置，因此最终任务损失可以影响整个 12×12 输入。把这两种梯度对象分开，才不会把“局部特征感受野”误认成“整个分类器只能看见 5×5”。"
+        ],
+        "formula": "\\begin{aligned}r_\\ell&=r_{\\ell-1}+(k_\\ell-1)d_\\ell j_{\\ell-1},\\\\ j_\\ell&=j_{\\ell-1}s_\\ell,\\\\ a_\\ell&=a_{\\ell-1}+\\left(\\frac{(k_\\ell-1)d_\\ell}{2}-p_{L,\\ell}\\right)j_{\\ell-1},\\qquad(r_0,j_0,a_0)=(1,1,\\tfrac12).\\end{aligned}",
+        "takeaway": "递推时先用上一层的间隔计算新增跨度，再更新本层累计步长。",
+        "example": {
+          "title": "stride 与 dilation 如何共同扩大感受野",
+          "steps": [
+            "起点的感受野 R=1、相邻位置间距 J=1。第一层k=3、s=2、d=1，更新后 \\(R=1+(3-1)\\times1\\times1=3\\)，\\(J=2\\)。",
+            "第二层k=3、s=1、d=2，它在上一层上跨2个格点取样，因此 \\(R=3+(3-1)\\times2\\times2=11\\)，J仍为2。",
+            "若第二层dilation改回1，\\(R=3+2\\times1\\times2=7\\)。常说“两层3×3得到5×5”只适用于两层stride与dilation均为1的对应设置。"
+          ],
+          "conclusion": "递推时先用上一层J增加感受野，再更新J；把顺序颠倒会得到错误范围。",
+          "afterParagraph": 2
+        },
+        "focus": {
+          "kind": "易错",
+          "title": "理论覆盖范围不等于每个像素实际贡献相同",
+          "explanation": "感受野递推描述可能影响输出的输入范围，无法直接说明每个位置的梯度强度。激活、权重、边界补零以及稀疏采样都可能让实际影响很不均匀。",
+          "check": "一方面用几何递推核对范围，另一方面对一个指定输出反向求输入梯度；两种检查回答不同层次的问题。"
+        },
+        "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.zeros(1, 1, 9, dtype=torch.float64, requires_grad=True)\nw = torch.ones(1, 1, 3, dtype=x.dtype)\nfirst = F.conv1d(x, w, dilation=2)\nout = F.conv1d(first, w, dilation=2)\nout.sum().backward()\nexpected = torch.tensor([1., 0., 2., 0., 3., 0., 2., 0., 1.], dtype=x.dtype)\ntorch.testing.assert_close(x.grad.flatten(), expected)\nprint(\"输入导数:\", x.grad.flatten().tolist())\nprint(\"可达偏移:\", x.grad.flatten().nonzero().flatten().tolist())\n\n# 输出形状相同，并不保证采样中心一致。\npositions = torch.arange(6, dtype=torch.float64)[None, None, :] + 0.5\nkernel = torch.ones(1, 1, 3, dtype=positions.dtype) / 3\nleft_pad = F.conv1d(F.pad(positions, (1, 0)), kernel, stride=2)\nright_pad = F.conv1d(F.pad(positions, (0, 1)), kernel, stride=2)\nassert left_pad.shape == right_pad.shape == (1, 1, 3)\n# 只比较中间窗口，避开人工补零边界；线性坐标的窗口均值恰好等于中心。\ntorch.testing.assert_close(left_pad[0, 0, 1], torch.tensor(2.5, dtype=positions.dtype))\ntorch.testing.assert_close(right_pad[0, 0, 1], torch.tensor(3.5, dtype=positions.dtype))\nprint(\"同形输出的中间采样中心:\", left_pad[0, 0, 1].item(), right_pad[0, 0, 1].item())\n",
+        "codeExplanation": "输入全零仍有非零导数，因为这里是无激活的线性卷积。全一卷积核让导数直接等于路径数；用非零梯度找支持集，而不是从输出值是否为零推断连接。两层输出只有一个位置，避免混合多个输出的感受野。 后半段用线性坐标输入验证左、右不对称填充导致的采样中心偏移，选择不含补零的窗口，使均值与几何中心可直接对应。",
+        "lead": "感受野是一个输出位置可能依赖的原始输入区域。覆盖跨度、实际有路径相连的支持集、以及当前输入下梯度显著的区域是不同对象。先将两层局部窗口的依赖合并，再区分这三种范围。",
+        "codeKind": "runnable"
+      }
+    ],
+    "advancedSections": [
+      {
+        "id": "activation-pooling",
+        "title": "激活与池化：先看主模型，再比较归一化",
+        "body": [
+          "把一层卷积展成线性算子 \\(C\\)，带偏置的输出为 \\(z=Cx+b\\)。只串联这类操作仍得到仿射函数；逐元素激活得到 \\(h_i=\\phi(z_i)\\)，其局部 Jacobian 为 \\(J=\\operatorname{diag}(\\phi^{\\prime}(z))C\\)。对 ReLU，正预激活的导数为一、负预激活为零，所以不同输入会启用不同局部映射。零点不可导，PyTorch 选择零导数作为实现约定；这不意味着所有框架必须采用同一种折点约定。",
+          "若上游梯度为 \\(g=\\nabla_hL\\)，传回预激活的梯度就是 \\(g\\odot\\mathbf1\\{z>0\\}\\)。负位置的这条路径会被关闭，但同一权重仍可通过其他样本或其他空间位置获得更新；有残差时还可能存在旁路。多层卷积与激活由此形成输入相关的分段仿射结构。滤波器的实际含义由训练决定，不能把每一层机械指定为边缘、纹理或物体检测器。",
+          "池化在每个通道内对窗口集合 \\(\\Omega_u\\) 汇聚，其中 \\(u\\) 是输出位置。无填充且窗口包含 \\(K\\) 个元素时，平均池化为 \\(y_u=K^{-1}\\sum_{j\\in\\Omega_u}x_j\\)，最大池化为 \\(y_u=\\max_{j\\in\\Omega_u}x_j\\)。前者是固定线性组合，后者是由输入选择分支的分段线性函数。两者的步幅都决定输出窗口如何移动，因此需要继续沿用前面感受野与采样间距的分析。",
+          "平均池化满足 \\(\\partial y_u/\\partial x_j=1/K\\)（\\(j\\in\\Omega_u\\)），唯一最大值位于 \\(j_u^*\\) 时，最大池化满足 \\(\\partial y_u/\\partial x_j=\\mathbf1\\{j=j_u^*\\}\\)。如果输入位置被多个窗口覆盖，它的梯度还要将各个窗口贡献相加。并列最大值处不可导，实现会选取一种梯度分配，不能声称平均分给所有并列位置是最大池化的必然行为。",
+          "当池化步幅大于一时，还发生空间下采样。平均池化等价于先用方框核做局部平均再取样，能够衰减部分高频，但这个有限滤波器并非理想带限滤波，不能保证完全消除混叠。最大池化是非线性选择，也不自动满足下采样所需的频率条件。改变输入采样相位后，即使边界使用周期约定，池化结果也可能变化；下一节将用频率和奇偶相位进一步解释。",
+          "全局平均池化（GAP）将整个空间轴变成一个窗口：\\(\\bar F_{b,c}=(HW)^{-1}\\sum_{i,j}F_{b,c,i,j}\\)。特征图 \\([4,0;0,0]\\) 与 \\([0,0;0,4]\\) 的响应位置不同，GAP 却都为一；任何只读取该单通道均值的后续函数都无法区分二者。其反向把同一输出梯度除以 \\(HW\\) 分配给每个位置。这个反例针对当前特征图到均值的映射：若上游已把空间关系写进其他通道，GAP 仍可能保留任务需要的信息，不能仅凭最后一个平均算子判断整网空间能力。",
+          "边界约定也会改变池化的函数。`AvgPool2d` 的 `count_include_pad` 决定补零是否进入平均分母；`MaxPool2d` 的隐式填充值是负无穷，不是普通卷积的零。用全负输入或边界窗口核对这些差异，再根据任务选择保持空间 token、多尺度特征或全局汇聚。代码页的[激活、批次统计与池化的梯度对照](#/learn/cnn-receptive-field?tab=code&anchor=demo-activation-pooling-gradients)将上述公式与 Autograd 逐项比较。",
+          "BatchNorm2d 保持 `[B,C,H,W]` 形状，对每个通道分别在样本、高和宽三个轴上统计。固定通道 \\(c\\)，令 \\(N=BHW\\)，将该通道的元素编号为 \\(x_{c,1},\\ldots,x_{c,N}\\)。训练前向为 \\[\\mu_c=\\frac1N\\sum_nx_{c,n},\\quad v_c=\\frac1N\\sum_n(x_{c,n}-\\mu_c)^2,\\quad z_{c,n}=\\frac{x_{c,n}-\\mu_c}{r_c},\\quad y_{c,n}=\\gamma_cz_{c,n}+\\beta_c,\\quad r_c=\\sqrt{v_c+\\epsilon}.\\]均值和尺度都由当前输入计算，\\(\\gamma_c,\\beta_c\\) 则是每个通道共享的可学习参数。",
+          "BN 的反向不能只把上游梯度除以标准差。记 \\(g_{c,n}=\\partial L/\\partial y_{c,n}\\)、\\(q_{c,n}=\\gamma_cg_{c,n}\\)，沿相同统计集合取平均，有 \\[\\frac{\\partial L}{\\partial x_{c,n}}=\\frac{q_{c,n}-\\operatorname{mean}(q_c)-z_{c,n}\\operatorname{mean}(q_c\\odot z_c)}{r_c}.\\]第一项来自输入直接变化，第二项修正均值的变化，第三项修正方差的变化；完整微分见[归一化的 Jacobian](#/learn/normalization?tab=theory&section=2)。因此某个像素的梯度会依赖同通道其他位置甚至其他样本，BN 不是逐像素的固定缩放。",
+          "训练时使用当前批次的总体式方差，并更新运行统计；默认评估时用保存的运行均值和方差，此时它们对当前输入是常数。PyTorch 更新 `running_var` 使用对应的无偏批次方差，不能把它和训练前向的分母混为一谈。小批次、相关视频帧或分布变化会影响统计估计；冻结 \\(\\gamma,\\beta\\) 并不会停止训练模式下的 Buffer 更新。需要固定视觉编码器时，应分别决定参数冻结、Norm 模式与梯度路径，而不是把 `requires_grad=False` 当作全部冻结。",
+          "贯穿 SmallCNN 没有 BatchNorm，便于直接观察卷积、ReLU 和 GAP 的局部路径。对 logits 的交叉熵梯度先乘分类器权重，得到 `[B,12]` 的汇聚特征梯度；GAP 再将每个通道的该梯度以 \\(1/144\\) 分给 12×12 个位置。代码逐元素验证这一式子，然后观察 ReLU 将哪些位置置零。若加入训练态 BN，样本和空间之间又增加统计依赖，此时不能继续套用“一个局部输出只依赖局部输入”的纯卷积结论。"
+        ],
+        "formula": "\\begin{aligned}\\frac{\\partial L}{\\partial x_j}&=\\sum_{u:j\\in\\Omega_u}g_u\\frac{\\partial y_u}{\\partial x_j},\\\\\\frac{\\partial y_u^{\\rm avg}}{\\partial x_j}&=\\frac1K\\quad(j\\in\\Omega_u),\\\\\\frac{\\partial y_u^{\\rm max}}{\\partial x_j}&=\\mathbf1\\{j=j_u^*\\}\\quad\\text{（唯一最大值）}.\\end{aligned}",
+        "code": "import torch\nimport torch.nn.functional as F\n\ndtype = torch.float64\nx = torch.tensor([[[[1., 4.], [3., 2.]]]], dtype=dtype,\n                 requires_grad=True)\navg = F.avg_pool2d(x, 2)\nmaximum = F.max_pool2d(x, 2)\ng_avg, = torch.autograd.grad(avg.sum(), x)\ng_max, = torch.autograd.grad(maximum.sum(), x)\ntorch.testing.assert_close(g_avg, torch.full_like(x, 0.25))\ntorch.testing.assert_close(g_max, torch.tensor(\n    [[[[0., 1.], [0., 0.]]]], dtype=dtype))\n\n# Same channel mean, different spatial locations.\nmaps = torch.tensor([[[[4., 0.], [0., 0.]]],\n                     [[[0., 0.], [0., 4.]]]], dtype=dtype)\npooled = F.adaptive_avg_pool2d(maps, 1)\nassert not torch.equal(maps[0], maps[1])\ntorch.testing.assert_close(pooled, torch.ones_like(pooled))\nprint(\"平均/最大池化的梯度和 GAP 空间反例均通过。\")\n",
+        "codeExplanation": "先用唯一最大值窗口隔离两种梯度分配，再用两个响应位置不同、均值相同的特征图验证 GAP 的不可区分性。这里没有训练随机模型，断言检验的是明确算子的性质。完整实现进一步检查重叠窗口、BN 反向和运行统计。",
+        "lead": "激活使卷积特征发生非线性变化，池化汇总空间响应，归一化则调整指定集合的统计尺度。主案例使用 ReLU 和全局平均池化，不包含 BatchNorm。先认识这条实际路径，再用归一化作结构对照，分别追踪前向与反向。",
+        "codeKind": "runnable",
+        "example": {
+          "title": "同一个窗口，平均池化与最大池化怎样前传和回传",
+          "afterParagraph": 4,
+          "steps": [
+            "窗口为 \\(\\begin{bmatrix}1&4\\\\3&2\\end{bmatrix}\\)，平均池化得到 \\((1+4+3+2)/4=2.5\\)，最大池化得到 4。输出形状相同，保留的信息不同。",
+            "若该输出的上游梯度为 1，平均池化给四个位置各传回 1/4；最大池化在唯一最大值的右上位置传回 1，其余为零。",
+            "再看重叠窗口：输入 [1,3,2]、核宽 2、步幅 1，对两个输出求和，平均池化输入梯度为 [0.5,1,0.5]，最大池化为 [0,2,0]。中间元素被两个窗口使用，贡献必须相加。"
+          ],
+          "conclusion": "先写出窗口内的前向汇总，再把上游梯度按同一依赖关系分回输入；重叠窗口需要累加，不能覆盖写回。"
+        },
+        "figures": [
+          {
+            "src": "/assets/figures/pooling-d2l.svg",
+            "alt": "三乘三输入经过窗口二乘二、步幅一的最大池化，得到四、五、七、八组成的二乘二输出。",
+            "afterParagraph": 3,
+            "caption": "蓝色窗口取 max(0,1,3,4)=4；继续滑动得到 5、7、8。每个输出保留对应窗口的最大响应。 图源：[《动手学深度学习》](https://d2l.ai/chapter_convolutional-neural-networks/pooling.html)。",
+            "width": 248,
+            "height": 108
+          }
+        ]
+      },
+      {
+        "id": "equivariance",
+        "title": "平移等变、采样相位与混叠",
+        "body": [
+          "共享卷积在无限网格上对整数平移等变：卷积后再平移，与先平移输入再卷积得到相同结果。有限图像要额外规定边界；stride=1 的内部区域可以检验这一关系，零填充和裁剪的全图结果不能不加条件地套用。等变意味着输出跟着移动，分类所需的不变性与空间预测所需的等变性也应分别讨论。",
+          "stride=s 的卷积相当于先计算稠密响应，再每隔 s 个位置采样。输入移动 s 的整数倍时还能对齐输出网格，移动一个像素通常无法对应整数个输出位置。取周期序列 \\(x[n]=(-1)^n\\)，stride=2 得到全 +1；把输入移动一个位置，得到全 −1。这个例子没有边缘补零，却仍发生剧烈变化，原因就是采样相位。",
+          "混叠描述不同频率在采样后不可区分。对 stride=2，\\(e^{i\\omega(2m)}\\) 与 \\(e^{i(\\omega+\\pi)(2m)}\\) 完全相同；超过新网格可区分频段的内容会折叠进其他频率。下采样前低通滤波可以降低混叠，但会削弱细节，也不能保证有限边界下的任意平移不变。相邻两点平均会将交替的高频序列变成零，这是有信息代价的稳定化。",
+          "实际网络的非线性还可能产生新的高频，因此仅在输入处模糊一次，并不保证后续所有下采样都无混叠。应该明确每次下采样前的操作，并比较奇数、偶数平移与边缘位置。平移图像做数据增强时，空间标签还需遵守相同坐标变换。"
+        ],
+        "formula": "f(T_\\Delta x)=T_\\Delta f(x)\\ \\text{表示等变};\\qquad f(T_\\Delta x)=f(x)\\ \\text{表示不变}",
+        "takeaway": "先定义任务希望保留的几何变化，再决定池化、增强和下采样策略。",
+        "focus": {
+          "kind": "常用",
+          "title": "平移等变的检查要控制 stride 和边界",
+          "explanation": "stride=1的共享卷积在理想无限网格上满足平移等变；有限图像的padding会改变边缘输入，stride>1还固定了采样相位。把图像平移1像素后比较整幅输出，差异可能来自采样与边界，不一定是代码错误。",
+          "check": "先在足够大的图像内部区域比较，再测试与总stride相匹配的平移，并记录padding约定。"
+        },
+        "code": "import torch\n\n# 用循环边界排除 Padding 的干扰。\nx = torch.tensor([1., -1.] * 4, dtype=torch.float64)\nshifted = x.roll(1)\nsample = lambda v: v[::2]\nlowpass = lambda v: (v + v.roll(-1)) / 2\nassert torch.equal(sample(x), torch.ones(4, dtype=x.dtype))\nassert torch.equal(sample(shifted), -torch.ones(4, dtype=x.dtype))\ntorch.testing.assert_close(sample(lowpass(x)), sample(lowpass(shifted)))\nprint(\"直接采样:\", sample(x).tolist(), sample(shifted).tolist())\nprint(\"先平均再采样:\", sample(lowpass(x)).tolist())\n",
+        "codeExplanation": "roll 使用周期边界，因而两次结果的差异来自步幅采样。两点平均在这个特定最高频例子上完全消除振荡；它不是理想低通滤波器，也不证明所有图像平移后结果相同。",
+        "lead": "平移等变指输入平移后，输出按照对应规则一起平移；平移不变则指输出保持不变。卷积共享结构有助于前者，下采样、边界与池化还会改变具体关系。先分清这两个目标，再讨论采样相位与混叠。",
+        "codeKind": "runnable"
+      },
+      {
+        "id": "architecture-design",
+        "title": "CNN 架构演进：如何分配空间混合、通道混合与梯度路径",
+        "body": [
+          "VGG 用连续小核增加深度。假设各层通道数均为 C、stride=dilation=1，两层 3×3 的理论感受野为 5×5，权重数为 \\(18C^2\\)；一层 5×5 为 \\(25C^2\\)。三层 3×3 的感受野为 7×7、参数为 \\(27C^2\\)，而一层 7×7 为 \\(49C^2\\)。中间非线性让堆叠能够按输入改变局部计算区域，因此“同样的感受野”不等于“同一个线性算子”；删掉非线性后也仍存在多层核因式分解的约束，不能仅凭覆盖范围声称任意大核都能等价替换。",
+          "ResNet 同时改变了深层网络的参数化：\\(y=x+F(x)\\) 让块学习增量，并引入恒等梯度项，具体条件与反例见 [残差连接](#/learn/residual)。对于通道 \\(C\\to b\\to b\\to C\\) 的 1×1、3×3、1×1 瓶颈分支，权重数为 \\(2Cb+9b^2\\)。先用 1×1 压缩通道，使空间卷积在较小的 b 上计算，再投影回 C；这会限制分支的中间表示，却不能把整个残差块误认为只剩 b 个通道，因为旁路仍保留原来的 C 维表示。降采样或改通道数时，旁路投影与主分支的几何必须一致。",
+          "MobileNet 的 depthwise 与 pointwise 分工进一步拆开空间和通道计算：一个 k×k depthwise 核先独立处理每个输入通道，再用 1×1 将 \\(C_{\\mathrm{in}}\\) 个通道混合成 \\(C_{\\mathrm{out}}\\) 个通道。权重数从普通卷积的 \\(k^2C_{\\mathrm{in}}C_{\\mathrm{out}}\\) 降为 \\(k^2C_{\\mathrm{in}}+C_{\\mathrm{in}}C_{\\mathrm{out}}\\)，但这个算子族包含怎样的限制，必须结合前面的分组卷积秩推导理解。参数数或乘加次数下降也不保证相同比例的实际延迟下降；内存访问、算子融合、硬件内核和特征图尺寸都会影响执行时间。",
+          "ConvNeXt 的官方块采用 7×7 depthwise 空间混合、沿通道的 LayerNorm、扩张到 4C 的逐位置 Linear、GELU 和投影回 C，再与输入相加。这里 Linear 只混合通道、不混合空间位置；NCHW 与 NHWC 的变换是为使最后一维对应通道，数学上同一逐位置 Linear 可以写成 1×1 卷积。官方实现还包含 LayerScale 和 stochastic depth；下方教学块明确省略这些项、偏置与 Norm 仿射，隔离主要路径，权重数因而恰为 \\(49C+8C^2\\)，不能把它当成完整模型的参数统计。",
+          "阶段式骨干通常逐步降低空间分辨率、增加通道宽度。以两个相邻阶段内部的同宽 3×3 卷积为例，若高宽各减半、C 加倍，单层主要乘加次数 \\(HWC^2\\) 的量级可近似保持，而中间激活元素 HWC 约减半、卷积参数量却增至四倍。这个算式解释了不同资源指标为何变化方向不同；它省略了降采样过渡层、归一化和具体实现成本，也不能推出定位细节已经被无损保留。",
+          "视觉特征如何用于策略，取决于训练目标和保留下来的信息。分类监督下的全局读出、局部空间 token、不同分辨率特征图，提供的是不同观测接口。应检查下采样后的有效分辨率是否支持小物体与接触位置，是否需要多个尺度，以及预训练时的图像标准化和 Norm 模式。骨干名称或“高层语义更强”不能代替这些分析；保留空间位置后的 token 交互可继续阅读 [视觉 token 与多模态融合](#/learn/multimodal)。"
+        ],
+        "formula": "\\begin{aligned}P_{\\rm bottleneck}&=2Cb+9b^2,\\\\ P_{\\rm dw+pw}&=k^2C_{\\rm in}+C_{\\rm in}C_{\\rm out},\\\\ P_{\\rm teaching\\ block}&=49C+8C^2.\\end{aligned}",
+        "code": "import torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(29)\ntorch.set_num_threads(1)\n\nclass SpatialChannelBlock(nn.Module):\n    \"\"\"隔离空间混合和通道混合的教学块，省略仿射 Norm、偏置和 LayerScale。\"\"\"\n    def __init__(self, channels):\n        super().__init__()\n        self.spatial = nn.Conv2d(channels, channels, 7, padding=3, groups=channels, bias=False)\n        self.norm = nn.LayerNorm(channels, eps=1e-6, elementwise_affine=False)\n        self.expand = nn.Linear(channels, 4 * channels, bias=False)\n        self.project = nn.Linear(4 * channels, channels, bias=False)\n\n    def forward(self, x):\n        h = self.spatial(x).permute(0, 2, 3, 1)  # B,H,W,C；Norm 只统计通道。\n        h = self.project(F.gelu(self.expand(self.norm(h))))\n        return x + h.permute(0, 3, 1, 2)\n\nchannels = 8\nblock = SpatialChannelBlock(channels).double()\nx = torch.randn(2, channels, 5, 7, dtype=torch.float64, requires_grad=True)\ny = block(x)\nassert y.shape == x.shape\nassert sum(p.numel() for p in block.parameters()) == 49 * channels + 8 * channels ** 2 == 904\n\n# 逐像素 Linear 与 1×1 Conv2d 的等价依赖布局变换，不能直接 reshape 交换轴。\nh = block.norm(block.spatial(x).permute(0, 2, 3, 1))\nlinear = block.expand(h).permute(0, 3, 1, 2)\npointwise = F.conv2d(h.permute(0, 3, 1, 2), block.expand.weight[:, :, None, None])\ntorch.testing.assert_close(linear, pointwise)\ny.square().mean().backward()\nassert all(p.grad is not None and torch.isfinite(p.grad).all() for p in block.parameters())\n\n# 末端投影置零使分支严格为零，验证残差恒等关系。\nwith torch.no_grad():\n    block.project.weight.zero_()\ntorch.testing.assert_close(block(x), x)\nprint(\"通过：904 个参数、空间/通道接口、Linear/1×1 等价、梯度与零投影恒等。\")\n",
+        "codeExplanation": "C=8 时显式数出 904 个权重；检查 NCHW/NHWC 接口与 Linear/1×1 Conv 等价，核对各参数梯度有限，并以末端投影置零验证恒等旁路。它检验结构关系，不比较各架构的识别准确率或延迟。",
+        "lead": "CNN 架构是卷积、非线性、下采样和旁路等模块的组织方式。不同网络主要改变何时扩大空间上下文、何时混合通道，以及怎样保留梯度路径。下面按这些设计选择理解代表结构，再比较其参数与感受野。",
+        "codeKind": "runnable",
+        "comparison": {
+          "title": "四项代表工作：把结构名称对应到设计问题",
+          "columns": [
+            "代表工作",
+            "主要设计特点",
+            "学习与迁移时关注什么"
+          ],
+          "rows": [
+            [
+              "[VGG（2014）](https://arxiv.org/abs/1409.1556)",
+              "堆叠 3×3 小核，用规则结构研究深度与表示。",
+              "适合理解局部算子的层层组合；同等覆盖跨度不表示与单个大核等价。"
+            ],
+            [
+              "[ResNet（2015）](https://arxiv.org/abs/1512.03385)",
+              "让块学习残差；深层版本用瓶颈控制通道混合成本。",
+              "可作为深层视觉骨干的结构参照；检查旁路投影、降采样与预训练统计，恒等路径不保证任意训练都稳定。"
+            ],
+            [
+              "[MobileNet v1（2017）](https://arxiv.org/abs/1704.04861)",
+              "用 depthwise 与 pointwise 分解空间/通道计算，并以宽度和分辨率调节成本。",
+              "面向移动与嵌入式计算约束；使用时同时检查细节分辨率和实测延迟，不能只按 MAC 推断速度。"
+            ],
+            [
+              "[ConvNeXt（2022）](https://arxiv.org/abs/2201.03545)",
+              "重新组织纯卷积骨干，结合较大 depthwise 核、通道 MLP 与 LayerNorm。",
+              "适合比较卷积空间混合与 ViT 的 token 交互；预训练目标与保留的特征层仍决定具体接口。"
+            ]
+          ]
+        }
+      },
+      {
+        "id": "patch-embedding",
+        "title": "Patch 投影何时可逆",
+        "body": [
+          "一个大小为 P×P 的图像块可以按固定顺序展成长度 \\(C_{\\mathrm{in}}P^2\\) 的向量，再通过共享 Linear 映射成 D 维 token。当 Conv2d 的 kernel_size=P、stride=P、padding=0 且图像尺寸可整除 P 时，它恰好对不重叠图像块做同一件事。卷积输出为 [B,D,H/P,W/P]，把空间轴展平并移到 token 轴后得到 [B,N,D]。",
+          "等价需要对齐展平顺序和权重布局。PyTorch unfold 的窗口通常按输入通道、核高、核宽组织；Conv2d 的权重也可以把后三维展平为 [D,Cin×P×P]。先把图像重排成另一种 HWC patch 顺序，却直接复用原来的卷积权重，会得到不同数值。完整演示比较了所有 token 的输出，并额外用直接切片检查第一块像素顺序。",
+          "这种等价只说明 patch 投影这一层的计算，不代表 CNN 和 Transformer 整体相同。非重叠 patch 的初始投影不在不同 patch 之间混合信息，后续 Attention 与位置表示才决定 token 如何交流。卷积可以使用重叠窗口和多个阶段，也可以输出视觉 token 供 Transformer 使用。理解这些连接有助于读代码：先辨认局部投影、空间下采样、token 重排，再看全局信息交换。",
+          "下采样不必然意味着信息丢失。一个 patch 有 \\(n=C_{\\mathrm{in}}P^2\\) 个输入数，线性投影 \\(W\\in\\mathbb R^{D\\times n}\\) 的秩最多为 \\(\\min(D,n)\\)。\\(D<n\\) 时必有非零零空间，存在不同 patch 得到相同 token；\\(D\\ge n\\) 且列满秩时，单个 patch 的线性映射则可以是单射。若输出通道随空间缩小而增加，也可能只是把空间重排进通道。下面用 stride=2 的卷积分别提取 2×2 的四个像素，再通过 pixel_shuffle 精确重建原输入。它说明应检查总维数和映射秩，而不是看到 stride>1 就断言不可逆。",
+          "共享的局部线性投影把卷积窗口与 Patch Token 联系起来。得到序列后，位置编码负责保留区域身份，Transformer 再建立跨 Patch 交互；这条数据流继续见[Embedding 与位置编码](#/learn/embeddings)和[Transformer](#/learn/transformer)。"
+        ],
+        "formula": "n=C_{\\rm in}P^2,\\quad z=Wp,\\quad \\operatorname{rank}(W)\\le\\min(D,n),\\quad \\ker W=\\{0\\}\\ \\Longleftrightarrow\\ \\operatorname{rank}(W)=n",
+        "takeaway": "Patch embedding 可用卷积实现；等价对象是一层共享局部线性投影。",
+        "focus": {
+          "kind": "易错",
+          "title": "卷积 patch 投影与 Linear 等价需要元素顺序一致",
+          "explanation": "无重叠patch可以用kernel=stride=P的Conv2d实现。与逐patch共享Linear核对时，patch向量必须使用与卷积权重相同的通道、行、列展开顺序；HWC与CHW混用不会改变元素总数，却会改变乘法配对。",
+          "check": "用递增像素值手工取第一个patch，核对展开向量，再比较所有token的数值与梯度。"
+        },
+        "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.arange(16., dtype=torch.float64).reshape(1, 1, 4, 4)\n# 每个输出通道只选取 2×2 窗口中的一个位置。\nw = torch.eye(4, dtype=x.dtype).reshape(4, 1, 2, 2)\npacked = F.conv2d(x, w, stride=2)   # [1,4,2,2]\nrestored = F.pixel_shuffle(packed, upscale_factor=2)\ntorch.testing.assert_close(restored, x, rtol=0, atol=0)\nprint(\"空间缩小、通道增加:\", tuple(x.shape), \"->\", tuple(packed.shape))\nprint(\"重建最大误差:\", (restored - x).abs().max().item())\n",
+        "codeExplanation": "eye(4) 的四行分别选择左上、右上、左下、右下像素。空间位置少了四倍，通道增加四倍，总元素数不变；pixel_shuffle 按对应顺序还原。普通学习到的 patch 投影是否可逆仍取决于秩，后续池化或非线性也可能继续丢失信息。",
+        "lead": "Patch 投影是把每个图像小块映射为一个特征向量、形成视觉 Token 序列的操作。特定配置的卷积可实现同一映射，但压缩后的向量未必保留原小块全部信息。先建立计算等价，再判断何时可逆。",
+        "codeKind": "runnable"
+      },
+      {
+        "id": "spatial-readout",
+        "title": "空间期望的梯度与双峰歧义",
+        "body": [
+          "空间读出要沿用前处理与特征网格的坐标约定。Resize、Crop、Letterbox 会改变像素位置；累计 stride 决定间距，核和 padding 决定中心偏移。将热图坐标直接乘一个缩放常数，仅在这些约定一致时才成立。练习使用像素中心对应的 [0,1] 坐标，并用非方形网格区分 x/y 轴。",
+          "设网格中第 \\(j\\) 个位置的坐标为 \\((x_j,y_j)\\)，模型给出 logits \\(z_j\\)，温度为 \\(\\tau>0\\)。先构造 \\(p_j=\\operatorname{softmax}(z/\\tau)_j\\)，再以 \\(\\hat x=\\sum_jp_jx_j\\)、\\(\\hat y=\\sum_jp_jy_j\\) 读出位置期望。这是一个可微坐标函数；这些归一化权重是否具有校准的物理概率意义，仍取决于目标与训练。",
+          "固定网格坐标，Softmax 导数给出 \\(\\partial p_j/\\partial z_k=p_j(\\delta_{jk}-p_k)/\\tau\\)。代入期望的求和：\\[\\frac{\\partial\\hat x}{\\partial z_k}=\\sum_jx_j\\frac{\\partial p_j}{\\partial z_k}=\\frac{p_kx_k-p_k\\sum_jp_jx_j}{\\tau}=\\frac{p_k(x_k-\\hat x)}\\tau.\\]纵坐标同理。提高当前位置分数，会把期望拉向该格点；这个方向与[注意力的加权读出梯度](#/learn/attention?tab=theory&section=2)具有相同结构。",
+          "降低温度有两种同时发生的作用：显式的 \\(\\frac1\\tau\\) 放大项，以及概率分布变尖后 \\(p_k\\)或 \\(x_k-\\hat x\\) 变小。不能只看 \\(\\frac1\\tau\\) 就断言梯度总会增大。唯一最大值在 \\(\\tau\\to0\\) 时趋向 argmax，分数有并列最大值时却仍在这些位置之间分配概率；两个等高峰的期望可落在没有目标的中间。温度不能自动解决目标本身的多模态歧义。",
+          "期望监督还可能有“不同热图、同一坐标”的不可辨识性：集中在中间的单峰和对称双峰可以有相同均值，因此仅用坐标误差无法保证热图形状正确。是否增加热图监督、分布目标或其他结构约束，应取决于标注和任务，而不是把可微坐标读出当作自动定位机制。",
+          "需要预测图像位置时，可以从保留 [B,C,H,W] 网格的特征生成热图，再进行空间读出。SmallCNN 的 GAP 则把空间轴汇总为 [B,12]，供条纹分类使用；若增设定位分支，应从池化前的特征接出。读出的坐标随后按[视觉预处理](#/learn/vision-preprocessing)保存的 Resize、Crop 与补边变换还原到原图。"
+        ],
+        "formula": "p_j=\\operatorname{softmax}(z/\\tau)_j,\\qquad \\hat x=\\sum_jp_jx_j,\\qquad \\frac{\\partial\\hat x}{\\partial z_k}=\\frac{p_k}{\\tau}(x_k-\\hat x)",
+        "takeaway": "坐标读出需要明确图像处理、特征采样和网格约定；期望位置不等于峰值位置。",
+        "code": "import torch\n\nz = torch.tensor([.2, -.3, 1.0], dtype=torch.float64, requires_grad=True)\ngrid = torch.tensor([0., .5, 1.], dtype=z.dtype)\ntau = .7\np = (z / tau).softmax(-1)\nmean = p @ grid\nactual, = torch.autograd.grad(mean, z)\nmanual = p * (grid - mean) / tau\ntorch.testing.assert_close(actual, manual)\npeaks = torch.tensor([1., -1., 1.], dtype=z.dtype)\nfor temperature in (1., .1, .01):\n    coord = (peaks / temperature).softmax(-1) @ grid\n    torch.testing.assert_close(coord, torch.tensor(.5, dtype=z.dtype))\nprint(\"坐标导数:\", actual.tolist())\nprint(\"两个并列峰在低温下仍读出中点\")\n",
+        "codeExplanation": "第一部分逐项核对坐标对 logits 的导数。第二部分把两侧峰值设成严格相同，使任何温度下的期望都为 0.5；实际训练中的微小不对称可能打破并列，但不能依赖它保证选中正确目标。",
+        "lead": "空间读出是把带位置的特征图转换为坐标或位置分布的操作。空间期望将归一化热图按网格坐标加权求和，因此可微，却可能落在多个峰之间。下面先定义坐标与读出，再推导梯度和双峰歧义。",
+        "codeKind": "runnable",
+        "example": {
+          "title": "两张不同热图，也能读出同一坐标",
+          "steps": [
+            "取一行三个格点，横坐标为 [0,0.5,1]。热图权重 [0.49,0.02,0.49] 是两端高、中间低的双峰，期望为 0×0.49+0.5×0.02+1×0.49=0.5。",
+            "权重 [0.01,0.98,0.01] 则集中在中间，期望仍是 0.5。若真实目标坐标为 0.5，两者的坐标误差都为零。",
+            "坐标损失监督的是均值；如果任务还要求热图集中在真实目标，需要相应的热图或分布监督来区分这两种解。"
+          ],
+          "conclusion": "可微读出连接热图与坐标，监督目标决定模型需要学会哪些空间信息。",
+          "afterParagraph": 5
+        }
+      },
+      {
+        "id": "implementation-checks",
+        "title": "卷积转置、重叠累加与梯度对照",
+        "body": [
+          "验证一个卷积实现时，先选择能暴露错误的输入：非方形图像和核、多输入通道、不相等的步长与 dilation、不同分组数，以及非对称权重。全零、全一或空间对称的数据可能掩盖核翻转、通道遗漏和轴交换错误。除了前向数值，还应给输出施加一个明确的上游梯度，比较输入、权重和偏置的梯度；只检查 shape 不足以证明可训练性。",
+          "unfold 后每列是一个窗口，重叠区域的反向贡献需要相加。Fold 对重叠块也使用累加，因此 Fold(Unfold(x)) 一般等于覆盖计数乘 x，并不自动等于 x。无偏置卷积可写成线性矩阵 C；当边界、步幅和输出形状匹配时，ConvTranspose2d 实现对应的转置算子 \\(C^\\top\\)。它满足内积恒等式 \\(\\langle Cx,z\\rangle=\\langle x,C^\\top z\\rangle\\)，这是反向传播需要的性质，而不是 \\(C^\\top C=I\\)。",
+          "取一维核 [1,2]、输入长度 3，\\(C=\\begin{bmatrix}1&2&0\\\\0&1&2\\end{bmatrix}\\)。输入 [1,2,3] 得到 [5,8]，再转置卷积得到 [5,18,16]，显然没有恢复原输入。向量 [4,−2,1] 又在 C 的零空间里，x 与 \\(x+[4,-2,1]\\) 具有相同卷积输出，任何逆函数都无法从这一输出同时恢复两者。output_padding 解决某些输出尺寸歧义，不会补回已经丢掉的数值信息。",
+          "第二个演示采用无外部依赖的合成条纹分类，完整执行训练切分、前向、交叉熵、反向、更新和留出评价。这能检查示例的训练路径，不代表真实图像或机器人场景的泛化。实际视觉后训练还应检查预训练输入约定、相机遮挡、数据增强与标签同步、轨迹划分和闭环行为。训练失败时，可先检查一个小 Batch 的预测、梯度和参数变化，再判断是否需要调整网络。",
+          "CNN 从局部共享计算开始，经非线性、多层组合和采样得到空间表示，再由读出形成任务输出。核参数、感受野、分辨率与信息可恢复性描述不同层面，只有沿同一图像的数据流才能把它们联系起来。"
+        ],
+        "takeaway": "先证明运算与梯度一致，再证明指定训练任务能优化；两种证据回答不同问题。",
+        "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.tensor([1., 2., 3.], dtype=torch.float64).reshape(1, 1, 1, 3)\nw = torch.tensor([1., 2.], dtype=x.dtype).reshape(1, 1, 1, 2)\ny = F.conv2d(x, w)\nback = F.conv_transpose2d(y, w)\ntorch.testing.assert_close(y.flatten(), torch.tensor([5., 8.], dtype=x.dtype))\ntorch.testing.assert_close(back.flatten(), torch.tensor([5., 18., 16.], dtype=x.dtype))\nnull = torch.tensor([4., -2., 1.], dtype=x.dtype).reshape_as(x)\ntorch.testing.assert_close(F.conv2d(x + null, w), y)\nz = torch.tensor([2., -1.], dtype=x.dtype).reshape_as(y)\ntorch.testing.assert_close((y * z).sum(), (x * F.conv_transpose2d(z, w)).sum())\nprint(\"卷积后再转置卷积:\", back.flatten().tolist())\nprint(\"转置的内积恒等式成立，但它不是逆映射\")\n",
+        "codeExplanation": "用高度为 1 的 Conv2d 表示一维例子，同时覆盖输出值、零空间反例与转置的内积定义。这里 stride=1 且无 padding，输出尺寸唯一；更复杂配置还需对齐 output_padding，才能比较同一线性算子的转置。",
+        "lead": "卷积转置是卷积线性算子的转置所对应的运算，用于理解输出梯度怎样回到输入，通常不是恢复原图的逆运算。重叠窗口的贡献必须在相同输入位置累加。下面用前向、内积关系与梯度对照检验这一点。",
+        "codeKind": "runnable"
+      }
+    ],
+    "shapes": [
+      {
+        "name": "\\(B\\) / \\(C_{\\mathrm{in}}\\) / \\(C_{\\mathrm{out}}\\)",
+        "shape": "输入 [B,Cin,H,W]，输出 [B,Cout,Ho,Wo]",
+        "meaning": "Batch 大小 / 输入通道数 / 输出通道数"
+      },
+      {
+        "name": "\\(K_h\\) / \\(K_w\\)",
+        "shape": "权重 [Cout,Cin/G,Kh,Kw]",
+        "meaning": "卷积核的高、宽，不含 dilation 间隔"
+      },
+      {
+        "name": "\\(s\\) / \\(p\\) / \\(d\\) / \\(G\\)",
+        "shape": "空间参数可分别指定高宽",
+        "meaning": "步长 / 每侧对称填充 / 空洞间隔 / 分组数"
+      },
+      {
+        "name": "\\(r\\) / \\(j\\)",
+        "shape": "每个空间轴独立递推",
+        "meaning": "理论感受野跨度 / 相邻输出在原输入上的间隔"
+      },
+      {
+        "name": "\\(L\\)",
+        "shape": "Unfold 的最后一维",
+        "meaning": "窗口总数，等于输出位置数 \\(H_{\\mathrm{out}}W_{\\mathrm{out}}\\)"
+      },
+      {
+        "name": "\\(\\tau\\)",
+        "shape": "标量",
+        "meaning": "空间 Softmax 的正温度"
+      },
+      {
+        "name": "\\(a\\) / \\(p_L\\)",
+        "shape": "原图像素中心从 \\(\\frac12\\) 起；逐层追踪几何",
+        "meaning": "首个理论感受野中心 / 该轴左侧填充"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "一个 RGB→64 的 3×3 卷积核包含多少输入通道？每个输出是否只依赖一种颜色？",
+        "answer": [
+          "权重张量为 [64,3,3,3]。可以理解为 64 组滤波器，每组都包含覆盖三个输入颜色通道的 3×3 权重，普通 groups=1 卷积会把这些响应求和。",
+          "因此一个输出通道通常混合所有输入颜色；只有显式分组或 depthwise 设置才限制通道连接。输出通道数与核内部输入通道数是不同轴。"
+        ]
+      },
+      {
+        "question": "输入分辨率翻倍，为什么参数量不变，计算和显存却会增加？",
+        "answer": [
+          "同一组核权重在所有空间位置共享，所以权重和偏置个数不变。输出高宽通常随输入增大，二维输出位置数可能约增为四倍，每个位置仍需一次局部内积。",
+          "训练还会保存更多中间特征和反向信息。应分别报告参数量、输出分辨率、激活规模及计算约定，不能用参数量单独估计运行成本。"
+        ]
+      },
+      {
+        "question": "两层 3×3 的第一层 stride=2，为什么第二层的感受野是 7 而不是 5？",
+        "answer": [
+          "第一层覆盖跨度为 3，输出相邻格子在原输入上的间隔为 2。第二层再覆盖三个这样的格子，新增跨度为 \\((3-1)\\times2=4\\)，所以总跨度为 7。",
+          "最终累计步长仍为 2。这个 7 是理论包围跨度；边界填充、空洞采样或特定输入下关闭的激活，会让真实参与或有效贡献与 7×7 不同。"
+        ]
+      },
+      {
+        "question": "CNN 是否对任意图像平移都保持相同预测？",
+        "answer": [
+          "不是。理想 stride=1 卷积主要体现平移等变，即特征跟着移动；它并不直接意味着输出不变。有限边界和下采样还会限制理想等变关系。",
+          "分类读出可能通过池化获得一定位置鲁棒性，空间定位却要随物体移动改变预测。应先定义任务的几何要求，再测试平移、裁剪和标签同步。"
+        ]
+      }
+    ],
+    "advancedKnowledgeChecks": [
+      {
+        "question": "Conv2d(kernel=P,stride=P) 为什么能替代一层 patch Linear，却不能替代完整 Transformer？",
+        "answer": [
+          "不重叠窗口展平成 \\(C_{\\mathrm{in}}P^2\\) 向量后，卷积在每个窗口复用同一权重，等价于一次共享 Linear，前提是通道与空间的展平顺序一致。",
+          "这种局部投影尚未混合不同 patch。Transformer 后续还有位置表示、Attention、前馈网络等计算，不能由这一层投影等价推导出整个架构等价。"
+        ]
+      },
+      {
+        "question": "坐标误差为零，是否能证明热图已正确锁定一个目标？",
+        "answer": [
+          "不能。空间期望只约束分布的一个矩；中间单峰与对称双峰都可以有同样的均值。坐标正确不意味着概率集中在真实目标上。",
+          "并列峰在温度趋近零时仍可能共享概率，均值落在峰之间。可结合任务需要检查分布形状、局部监督或多目标假设，但不能从坐标 Loss 一个数推断热图正确。"
+        ]
+      },
+      {
+        "question": "为什么“depthwise 后接 1×1 卷积”并不等价于任意普通卷积？",
+        "answer": [
+          "在两层之间没有非线性、depthwise 倍增系数 \\(K=1\\) 时，等效核 \\(W_{ocuv}=P_{oc}D_{cuv}\\)。固定 c，所有输出的空间核都成比例，因此这一 \\(C_{\\mathrm{out}}\\times K_hK_w\\) 切片秩最多为 1。",
+          "若两个输出需要来自同一输入通道的线性独立空间核，如横向和纵向差分，这个结构不能精确表达。K 个独立 depthwise 核将秩上限提高到 K；加入非线性后则不再能用一个固定等效核比较。"
+        ]
+      },
+      {
+        "question": "stride=2 是否必然丢失信息？抗混叠是否能同时保证所有细节和任意平移不变？",
+        "answer": [
+          "不必然。用四个输出通道分别存储每个 2×2 patch 的四个像素，就是可逆的空间到通道重排。一般线性 patch 投影是否单射取决于输入输出维数与矩阵秩。",
+          "同一通道直接降采样会把某些频率混叠。低通滤波能降低混叠，但通过削弱高频实现，不能同时承诺原样保留全部细节。有限边界、后续非线性与新一轮采样还会影响平移响应。"
+        ]
+      },
+      {
+        "question": "两个特征图形状、累计 stride 和感受野都相同，是否可以直接逐位置融合？",
+        "answer": [
+          "还需要检查采样原点与中心偏移。不对称 padding 的左右分配不同，可以保持输出个数、r 和 j 相同，却使 a 不同。逐元素加法在张量维度上合法，不代表对应位置观察同一原图区域。",
+          "为每条分支按相同像素坐标约定记录 r、j、a，并结合 resize、crop 等预处理变换核对。边界补值与真实图像支持不同，理论中心也不等于实际贡献质心。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "只在单通道方阵上验证卷积",
+        "detail": "通道求和、核转置和高宽混淆可能被对称样例掩盖。",
+        "fix": "采用非方形输入/核、多输入输出通道和非对称值，与官方实现比较数值及梯度。"
+      },
+      {
+        "title": "把 dilation 当成增加核权重数",
+        "detail": "dilation 扩大采样间隔，不直接增加核中的权重数。",
+        "fix": "分别记录核点数 \\(K_hK_w\\) 与有效跨度 \\(d(k-1)+1\\)。"
+      },
+      {
+        "title": "分组后仍然混合所有输入通道",
+        "detail": "groups 限制的是连接结构，错误 reshape 可能导致组间串线。",
+        "fix": "按同一组顺序拆分输入窗口与权重，测试 depthwise 特例。"
+      },
+      {
+        "title": "将全局池化用于任何空间任务",
+        "detail": "汇总后可能无法区分需要不同坐标输出的空间排列。",
+        "fix": "对比空间 token、热图或显式位置读出，并检验不同场景是否被汇成相同表示。"
+      }
+    ],
+    "advancedPitfalls": [
+      {
+        "title": "冻结参数却忽略 BatchNorm 运行统计",
+        "detail": "训练模式下 running_mean/variance 仍可能变化，导致冻结编码器实际行为改变。",
+        "fix": "分别核对参数梯度、train/eval 模式、缓冲区和预处理配置。"
+      },
+      {
+        "title": "把恢复图像尺寸当成恢复原图",
+        "detail": "ConvTranspose 或上采样得到相同 H/W，并不保证逆转下采样和信息丢失。",
+        "fix": "区分几何尺寸与信息可逆性，用已知输入和任务相关指标验证重建或定位。"
+      }
+    ],
+    "extraImplementations": [
+      {
+        "id": "cnn-training-and-patches",
+        "title": "完整小 CNN 训练与 Patch 投影等价验证",
+        "description": "保留原有条纹分类网络与训练设置，先逐层追踪形状、1126 个参数、每样本 155544 MAC 及激活/参数梯度；验证局部感受野和 GAP 梯度，再完成训练、留出评价及 patch 投影等价对照。",
+        "runtime": "torch",
+        "source": "import copy\nimport torch\nfrom torch import nn\nfrom torch.nn import functional as F\n\ntorch.manual_seed(31)\ntorch.set_num_threads(1)\n\n# 不依赖外部图像：RGB 三通道共享同一条亮线，颜色不作为标签捷径。\ncount, side = 160, 12\nimages = .04 * torch.randn(count, 3, side, side)\nlabels = torch.arange(count) % 2  # 0=竖线，1=横线。\npositions = torch.randint(3, 8, (count,))\nfor index, position in enumerate(positions.tolist()):\n    if labels[index] == 0:\n        images[index, :, 2:10, position:position + 2] += 1.\n    else:\n        images[index, :, position:position + 2, 2:10] += 1.\norder = torch.randperm(count)\nimages, labels = images[order], labels[order]\ntrain_x, test_x = images[:120], images[120:]\ntrain_y, test_y = labels[:120], labels[120:]\nassert train_x.shape == (120, 3, 12, 12)\n\nclass SmallCNN(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.features = nn.Sequential(\n            nn.Conv2d(3, 8, 3, padding=1), nn.ReLU(),\n            nn.Conv2d(8, 12, 3, padding=1), nn.ReLU())\n        self.pool = nn.AdaptiveAvgPool2d(1)\n        self.classifier = nn.Linear(12, 2)\n\n    def forward(self, x):\n        feature_map = self.features(x)  # B,12,H,W；两层卷积的局部感受野为 5×5。\n        pooled = self.pool(feature_map).flatten(1)\n        return self.classifier(pooled)  # 原始 logits，不提前 Softmax。\n\nmodel = SmallCNN()\n# 在同一个 SmallCNN 上追踪前向、参数量、MACs 与反向，不另建架构。\ndef trace_network(original, sample, target):\n    network = copy.deepcopy(original)\n    x = sample.detach().clone().requires_grad_()\n    values = [(\"input\", x)]\n    h = x\n    total_parameters, total_macs = 0, 0\n    r, j = 1, 1\n    for index, layer in enumerate(network.features):\n        h = layer(h)\n        h.retain_grad()\n        values.append((f\"features.{index}\", h))\n        parameters = sum(p.numel() for p in layer.parameters())\n        macs = 0\n        if isinstance(layer, nn.Conv2d):\n            k, s, d = layer.kernel_size[0], layer.stride[0], layer.dilation[0]\n            r += (k - 1) * d * j\n            j *= s\n            macs = h.shape[-2] * h.shape[-1] * layer.out_channels * layer.in_channels * k * k\n        total_parameters += parameters\n        total_macs += macs\n        print(values[-1][0], tuple(h.shape), \"params\", parameters, \"MAC/sample\", macs, \"r,j\", r, j)\n    assert (r, j) == (5, 1)\n    pooled = network.pool(h).flatten(1)\n    pooled.retain_grad()\n    logits = network.classifier(pooled)\n    logits.retain_grad()\n    loss = F.cross_entropy(logits, target)\n    loss.backward()\n    # CE -> Linear -> GAP，梯度在每个通道的 144 个位置均分。\n    upstream = logits.detach().softmax(-1)\n    upstream[torch.arange(len(target)), target] -= 1\n    upstream /= len(target)\n    torch.testing.assert_close(logits.grad, upstream)\n    expected_pooled = upstream @ network.classifier.weight.detach()\n    torch.testing.assert_close(pooled.grad, expected_pooled)\n    torch.testing.assert_close(h.grad, (expected_pooled[:, :, None, None] / 144).expand_as(h))\n    for name, value in values:\n        assert value.grad is not None and torch.isfinite(value.grad).all()\n        print(\"activation gradient\", name, \"shape\", tuple(value.grad.shape), \"norm\", value.grad.norm().item())\n    for name, parameter in network.named_parameters():\n        assert parameter.grad is not None and torch.isfinite(parameter.grad).all()\n        print(\"parameter gradient\", name, tuple(parameter.grad.shape), parameter.grad.norm().item())\n    total_parameters += sum(p.numel() for p in network.classifier.parameters())\n    total_macs += 12 * 2\n    assert total_parameters == 1126 and total_macs == 155544\n    # 此处考察局部卷积输出，不是含 GAP 的分类 loss。\n    local_x = sample[:1].detach().clone().requires_grad_()\n    local = network.features[:3](local_x)\n    local_gradient, = torch.autograd.grad(local[0, :, 6, 6].sum(), local_x)\n    outside = torch.ones_like(local_gradient, dtype=torch.bool)\n    outside[:, :, 4:9, 4:9] = False\n    assert torch.count_nonzero(local_gradient[outside]) == 0\n    assert torch.count_nonzero(local_gradient) > 0\n    print(\"local output support within 5x5; total params=1126, MAC/sample=155544\")\n\ntrace_network(model, train_x[:4], train_y[:4])\noptimizer = torch.optim.Adam(model.parameters(), lr=.01)\nwith torch.no_grad():\n    initial = F.cross_entropy(model(train_x), train_y).item()\noriginal_weight = model.features[0].weight.detach().clone()\nmodel.train()\nfor step in range(100):\n    optimizer.zero_grad(set_to_none=True)\n    logits = model(train_x)\n    loss = F.cross_entropy(logits, train_y)\n    loss.backward()\n    assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())\n    optimizer.step()\n\nmodel.eval()\nwith torch.no_grad():\n    final = F.cross_entropy(model(train_x), train_y).item()\n    holdout_logits = model(test_x)\n    holdout_loss = F.cross_entropy(holdout_logits, test_y).item()\n    holdout_accuracy = (holdout_logits.argmax(-1) == test_y).float().mean().item()\n    assert model(torch.randn(2, 3, 10, 14)).shape == (2, 2)\nassert final < initial * .3  # 仅验证固定条纹任务的训练链路。\nassert not torch.equal(original_weight, model.features[0].weight)\nassert sum(p.numel() for p in model.parameters()) == 1126\nprint(f\"train CE: {initial:.6f} -> {final:.6f}\")\nprint(f\"holdout CE: {holdout_loss:.6f}, accuracy: {holdout_accuracy:.3f}\")\n\n# 再验证 ViT 常见的 patch embedding：不重叠 patch 的共享线性映射。\npatch_size, embedding_dim = 4, 7\npatch_layer = nn.Conv2d(3, embedding_dim, patch_size, stride=patch_size)\nsample = test_x[:2]\nconv_tokens = patch_layer(sample).flatten(2).transpose(1, 2)\npatches = F.unfold(sample, kernel_size=patch_size, stride=patch_size).transpose(1, 2)\nlinear_tokens = F.linear(patches, patch_layer.weight.flatten(1), patch_layer.bias)\nassert conv_tokens.shape == (2, 9, 7)\ntorch.testing.assert_close(conv_tokens, linear_tokens, rtol=1e-5, atol=1e-6)\n# 第一片按 C、局部 H、局部 W 展平，与 F.unfold 的列顺序一致。\ntorch.testing.assert_close(patches[0, 0], sample[0, :, :4, :4].reshape(-1))\nprint(\"通过：卷积分类训练、独立留出评价、参数量与 patch 线性投影等价。\")\nprint(\"此处输入尺寸可变仅是形状性质，不代表对新分辨率的泛化保证。\")\n",
+        "explanations": [
+          {
+            "lines": "1–24",
+            "text": "固定条纹任务、切分和随机初值，避免使用外部图像依赖。"
+          },
+          {
+            "lines": "25–40",
+            "text": "原来的两层 SmallCNN：没有 BN，保留空间图后才做 GAP，输出未归一化 logits。"
+          },
+          {
+            "lines": "41–96",
+            "text": "同一模型副本追踪成本与五级激活梯度，独立验证 CE 导数、Linear 反向、GAP 的 1/144 系数以及局部 5×5 支持。副本不改变后续训练的参数或 RNG。"
+          },
+          {
+            "lines": "97–109",
+            "text": "原模型执行真实训练，每次检查梯度并更新参数。"
+          },
+          {
+            "lines": "110–122",
+            "text": "分别报告训练与留出结果，输入尺寸变化仅核验形状，不声称泛化。"
+          },
+          {
+            "lines": "123–135",
+            "text": "保留 patch Conv/Linear 数值等价与首块元素顺序验证；它只验证局部投影层。"
+          }
+        ],
+        "expected": "固定条纹任务的训练交叉熵降低，参数发生更新，1126 个参数；卷积与 Linear patch token 数值相同。留出表现仅描述这个合成分布。 额外检查每层激活/参数梯度有限、GAP 反向均分以及局部卷积输出窗外梯度为零；卷积和 Linear 的单样本 MAC 共 155544，不包含激活、池化、偏置与反向开销。"
+      }
+    ],
+    "advancedImplementations": [
+      {
+        "id": "unfold-convolution",
+        "title": "用 Unfold 手写分组卷积并比较三组梯度",
+        "description": "一次覆盖普通卷积、分组卷积和 depthwise multiplier=2；非方形输入/核与不相等的空间参数用于暴露实现错误。",
+        "runtime": "torch",
+        "source": "import torch\nfrom torch.nn import functional as F\n\ntorch.manual_seed(23)\ntorch.set_num_threads(1)\n\n# 教学实现：支持二维整数 tuple、对称零填充和分组，不处理字符串 padding。\ndef pair(value):\n    return (value, value) if isinstance(value, int) else tuple(value)\n\ndef unfold_conv(x, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):\n    sh, sw = pair(stride)\n    ph, pw = pair(padding)\n    dh, dw = pair(dilation)\n    batch, channels, height, width = x.shape\n    out_channels, per_group, kh, kw = weight.shape\n    if groups <= 0 or channels % groups or out_channels % groups:\n        raise ValueError(\"输入输出通道必须能被 groups 整除\")\n    if per_group != channels // groups:\n        raise ValueError(\"权重第二维必须等于 Cin/groups\")\n    if min(sh, sw, dh, dw, kh, kw) <= 0 or min(ph, pw) < 0:\n        raise ValueError(\"卷积几何参数无效\")\n    oh = (height + 2 * ph - dh * (kh - 1) - 1) // sh + 1\n    ow = (width + 2 * pw - dw * (kw - 1) - 1) // sw + 1\n    if min(oh, ow) <= 0:\n        raise ValueError(\"没有有效输出位置\")\n    # B,Cin*Kh*Kw,L：最后一轴是输出位置，每列是一个局部窗口。\n    columns = F.unfold(x, (kh, kw), dilation=(dh, dw), padding=(ph, pw), stride=(sh, sw))\n    assert columns.shape[-1] == oh * ow\n    grouped_columns = columns.reshape(batch, groups, per_group * kh * kw, oh * ow)\n    grouped_weights = weight.reshape(groups, out_channels // groups, per_group * kh * kw)\n    output = torch.einsum(\"goc,bgcl->bgol\", grouped_weights, grouped_columns)\n    output = output.reshape(batch, out_channels, oh, ow)\n    if bias is not None:\n        if bias.shape != (out_channels,):\n            raise ValueError(\"每个输出通道需要一个偏置\")\n        output = output + bias[None, :, None, None]\n    return output\n\n# 普通卷积、分组卷积、depthwise multiplier=2；均采用非方形核。\ncases = [(1, 3, 5), (2, 4, 6), (4, 4, 8)]\nfor groups, cin, cout in cases:\n    x = torch.randn(2, cin, 7, 9, dtype=torch.float64, requires_grad=True)\n    weight = torch.randn(cout, cin // groups, 3, 2, dtype=torch.float64, requires_grad=True)\n    bias = torch.randn(cout, dtype=torch.float64, requires_grad=True)\n    options = dict(stride=(2, 1), padding=(1, 0), dilation=(2, 1), groups=groups)\n    actual = unfold_conv(x, weight, bias, **options)\n    reference = F.conv2d(x, weight, bias, **options)\n    assert actual.shape == (2, cout, 3, 8)\n    torch.testing.assert_close(actual, reference, rtol=1e-10, atol=1e-10)\n    # 相同上游权重对应一个明确的向量—Jacobian 乘积。\n    upstream = torch.linspace(.1, 1., actual.numel(), dtype=x.dtype).reshape_as(actual)\n    actual_grads = torch.autograd.grad((actual * upstream).sum(), (x, weight, bias))\n    reference_grads = torch.autograd.grad((reference * upstream).sum(), (x, weight, bias))\n    for ours, expected in zip(actual_grads, reference_grads):\n        torch.testing.assert_close(ours, expected, rtol=1e-10, atol=1e-10)\n    print(\"groups =\", groups, \"shape =\", tuple(actual.shape), \"forward and gradients agree\")\n\n# 空间共享参数：固定一个卷积核，图像尺寸不进入参数总数。\nlayer = torch.nn.Conv2d(32, 64, kernel_size=3, bias=True)\nassert sum(p.numel() for p in layer.parameters()) == 18496\n# Unfold 会显式展开重叠窗口；这是理解用实现，不是性能优化建议。\nexample = torch.randn(1, 3, 16, 16)\nexpanded = F.unfold(example, kernel_size=3, padding=1)\nprint(\"unfold/input element ratio =\", expanded.numel() / example.numel())\nassert expanded.numel() == example.numel() * 9\nprint(\"通过：互相关、通道分组、非方形几何、输入/权重/偏置梯度。\")\n",
+        "explanations": [
+          {
+            "lines": "1–9",
+            "text": "设置确定性小样本环境，将整数几何参数转换成二元 tuple。"
+          },
+          {
+            "lines": "11–26",
+            "text": "核对通道分组和空间约定，独立计算 Hout 与 Wout。"
+          },
+          {
+            "lines": "28–38",
+            "text": "按组整理窗口和核，收缩窗口轴，恢复空间布局并广播偏置。"
+          },
+          {
+            "lines": "41–57",
+            "text": "使用相同上游梯度，与官方 conv2d 对照前向以及输入、权重、偏置梯度。"
+          },
+          {
+            "lines": "60–67",
+            "text": "检查共享参数数量，并显示 unfold 可能扩大的中间张量。"
+          }
+        ],
+        "expected": "三种分组的输出均为 [2,Cout,3,8]，前向与三组梯度一致；32→64 的 3×3 卷积有 18496 个参数。"
+      },
+      {
+        "id": "activation-pooling-gradients",
+        "title": "激活、批次统计与池化的梯度对照",
+        "description": "以 CPU float64 小张量逐项验证激活导数、BatchNorm 的统计轴和三条反向路径，再比较唯一最大值、重叠窗口、GAP 与采样相位。所有预期均由本文公式或明确数值反例给出。",
+        "runtime": "torch",
+        "source": "import torch\nimport torch.nn.functional as F\n\ntorch.manual_seed(31)\ntorch.set_num_threads(1)\ndtype = torch.float64\n\n# 1. ReLU: local derivative, including the framework's zero convention.\npre = torch.tensor([-2., 0., 3.], dtype=dtype, requires_grad=True)\nrelu_grad, = torch.autograd.grad(pre.relu().sum(), pre)\ntorch.testing.assert_close(relu_grad, torch.tensor([0., 0., 1.], dtype=dtype))\n\n# 2. BatchNorm2d: explicit batch/spatial statistics and all input gradients.\nx = torch.randn(2, 3, 2, 2, dtype=dtype, requires_grad=True)\nbn = torch.nn.BatchNorm2d(3, eps=0.03, momentum=0.3).to(dtype=dtype)\nwith torch.no_grad():\n    bn.weight.copy_(torch.tensor([1.2, -0.7, 0.5], dtype=dtype))\n    bn.bias.copy_(torch.tensor([0.1, 0.2, -0.4], dtype=dtype))\naxes = (0, 2, 3)                   # B, H, W; leave channel C intact.\nmu = x.mean(axes, keepdim=True)\nvar = (x - mu).square().mean(axes, keepdim=True)\nr = (var + bn.eps).sqrt()\nz = (x - mu) / r\ngamma = bn.weight[None, :, None, None]\nbeta = bn.bias[None, :, None, None]\nexpected = gamma * z + beta\ny = bn(x)\ntorch.testing.assert_close(y, expected)\ng = torch.linspace(-1.1, 2.3, x.numel(), dtype=dtype).reshape_as(x)\ndx, dgamma, dbeta = torch.autograd.grad(\n    (y * g).sum(), (x, bn.weight, bn.bias), retain_graph=True)\nq = g * gamma\nmanual_dx = (q - q.mean(axes, keepdim=True)\n             - z * (q * z).mean(axes, keepdim=True)) / r\ntorch.testing.assert_close(dx, manual_dx, rtol=1e-10, atol=1e-10)\ntorch.testing.assert_close(dgamma, (g * z).sum(axes))\ntorch.testing.assert_close(dbeta, g.sum(axes))\n\n# Running variance uses correction=1; training forward uses correction=0.\nN = x.numel() // x.shape[1]\ntorch.testing.assert_close(bn.running_mean, 0.3 * mu.flatten())\ntorch.testing.assert_close(bn.running_var,\n                           0.7 * torch.ones(3, dtype=dtype)\n                           + 0.3 * var.flatten() * N / (N - 1))\none_grad, = torch.autograd.grad(y[0, 0, 0, 0], x)\nassert one_grad[1, 0].abs().max().item() > 1e-8  # Cross-sample dependence.\ntorch.testing.assert_close(one_grad[:, 1:], torch.zeros_like(one_grad[:, 1:]))\n\n# 3. Eval fixes the statistics; freezing parameters alone does not do this.\nbn.eval()\nxe = x.detach().clone().requires_grad_(True)\nye = bn(xe)\neval_grad, = torch.autograd.grad(ye[0, 0, 0, 0], xe)\nexpected_grad = torch.zeros_like(xe)\nexpected_grad[0, 0, 0, 0] = bn.weight[0] / (bn.running_var[0] + bn.eps).sqrt()\ntorch.testing.assert_close(eval_grad, expected_grad)\nfor parameter in bn.parameters():\n    parameter.requires_grad_(False)\nbn.train()\nold_running_mean = bn.running_mean.clone()\nwith torch.no_grad():\n    bn(x.detach() + 2.)\nassert not torch.equal(old_running_mean, bn.running_mean)\n\n# 4. Pooling: unique maximum and accumulation from overlapping windows.\nwindow = torch.tensor([[[[1., 4.], [3., 2.]]]], dtype=dtype,\n                      requires_grad=True)\navg_grad, = torch.autograd.grad(F.avg_pool2d(window, 2).sum(), window)\nmax_grad, = torch.autograd.grad(F.max_pool2d(window, 2).sum(), window)\ntorch.testing.assert_close(avg_grad, torch.full_like(window, 0.25))\ntorch.testing.assert_close(max_grad, torch.tensor([[[[0., 1.], [0., 0.]]]],\n                                                dtype=dtype))\noverlap = torch.tensor([[[1., 3., 2.]]], dtype=dtype, requires_grad=True)\noa, = torch.autograd.grad(F.avg_pool1d(overlap, 2, stride=1).sum(), overlap)\nom, = torch.autograd.grad(F.max_pool1d(overlap, 2, stride=1).sum(), overlap)\ntorch.testing.assert_close(oa, torch.tensor([[[0.5, 1., 0.5]]], dtype=dtype))\ntorch.testing.assert_close(om, torch.tensor([[[0., 2., 0.]]], dtype=dtype))\n\n# 5. GAP cannot distinguish these maps; subsampling depends on phase.\nmaps = torch.tensor([[[[4., 0.], [0., 0.]]],\n                     [[[0., 0.], [0., 4.]]]], dtype=dtype)\nassert not torch.equal(maps[0], maps[1])\ntorch.testing.assert_close(F.adaptive_avg_pool2d(maps, 1),\n                           torch.ones(2, 1, 1, 1, dtype=dtype))\nalternating = torch.tensor([[[1., -1., 1., -1., 1., -1., 1., -1.]]], dtype=dtype)\nshifted = alternating.roll(1, dims=-1)\nassert not torch.equal(alternating[..., ::2], shifted[..., ::2])\ntorch.testing.assert_close(F.avg_pool1d(alternating, 2),\n                           F.avg_pool1d(shifted, 2))\n# Equal averages on this signal do not prove arbitrary shift invariance.\nperiodic = torch.tensor([[[0., 2., 1., 0.]]], dtype=dtype)\nassert not torch.equal(F.max_pool1d(periodic, 2),\n                       F.max_pool1d(periodic.roll(1, dims=-1), 2))\n\n# 6. Boundary rules change the averaging divisor and maximum selection.\nsingle = torch.ones(1, 1, 1, 1, dtype=dtype)\ntorch.testing.assert_close(F.avg_pool2d(single, 3, stride=1, padding=1), single / 9)\ntorch.testing.assert_close(F.avg_pool2d(single, 3, stride=1, padding=1,\n                                       count_include_pad=False), single)\ntorch.testing.assert_close(F.max_pool2d(-single, 3, stride=1, padding=1), -single)\nprint(\"通过：ReLU、BN 前向/反向/运行统计、池化梯度、GAP、采样相位与边界约定。\")\nprint(\"BN 输入梯度最大绝对误差：\", (dx - manual_dx).abs().max().item())\n",
+        "explanations": [
+          {
+            "lines": "8–12",
+            "text": "ReLU 的分段导数决定局部路径是否开放；零点断言检验 PyTorch 约定，不把不可导点说成唯一数学导数。"
+          },
+          {
+            "lines": "13–48",
+            "text": "沿 B/H/W 归约得到每通道统计。手写梯度包含输入、均值和尺度三条路径；仿射参数梯度则沿所有共享位置求和。单点输出还检验训练模式的跨样本依赖。"
+          },
+          {
+            "lines": "49–64",
+            "text": "固定运行统计后，单个输出只对同一输入位置产生导数。随后冻结全部仿射参数再切回 train，验证 Buffer 仍会变化，区分参数更新与状态更新。"
+          },
+          {
+            "lines": "65–78",
+            "text": "同一个窗口分别比较均分梯度与唯一最大位置的梯度。重叠窗口让中间输入接收两次贡献，验证反向需要累加而不是覆盖。"
+          },
+          {
+            "lines": "79–94",
+            "text": "两个不同空间排列具有相同 GAP。周期信号进一步隔离下采样相位，避免将边界填充与混叠混为一谈；对一个信号成立的平均不变性不能推广到全部输入。"
+          },
+          {
+            "lines": "95–102",
+            "text": "单像素边界案例分离平均池化的分母约定与最大池化的负无穷填充。输出的误差数值只属于这次运行，断言中的数学关系才是验证目标。"
+          }
+        ],
+        "expected": "全部断言通过。BN 的前向、输入梯度及仿射参数梯度与显式公式在 float64 容差内一致；eval 的统计依赖改变，冻结参数仍不能阻止 train 模式的运行统计更新。GAP 和采样反例不涉及训练效果或机器人泛化。"
+      }
+    ],
+    "mainImplementation": "cnn-training-and-patches",
+    "extraLabs": [
+      {
+        "id": "geometry-and-receptive-field",
+        "level": "入门",
+        "title": "推导非方形卷积尺寸与多层感受野",
+        "runtime": "python",
+        "prompt": "用标准库实现 conv_geometry(input_hw,kernel_hw,stride_hw=(1,1),padding_hw=(0,0),dilation_hw=(1,1))，返回 (Hout,Wout)；实现 receptive_field(layers)，layers 是单个空间轴上的 (kernel,stride,dilation) 列表，返回 (理论跨度,累计步长)。要求长度/核/步长/dilation 为正整数，padding 为非负整数；没有输出位置时抛 ValueError。",
+        "starter": "def conv_geometry(input_hw, kernel_hw, stride_hw=(1, 1), padding_hw=(0, 0), dilation_hw=(1, 1)):\n    # TODO: 高和宽分别使用完整公式，不能假设方形。\n    raise NotImplementedError(\"实现输出几何\")\n\ndef receptive_field(layers):\n    # TODO: 新增跨度用上一层 jump，然后再更新 jump。\n    raise NotImplementedError(\"递推感受野\")\n",
+        "solution": "def conv_geometry(input_hw, kernel_hw, stride_hw=(1, 1), padding_hw=(0, 0), dilation_hw=(1, 1)):\n    items = [input_hw, kernel_hw, stride_hw, padding_hw, dilation_hw]\n    if any(len(values) != 2 for values in items):\n        raise ValueError(\"几何参数必须为二维\")\n    output = []\n    for length, kernel, stride, padding, dilation in zip(*items):\n        if any(type(v) is not int or v <= 0 for v in (length, kernel, stride, dilation)):\n            raise ValueError(\"长度、核、步长和 dilation 必须为正整数\")\n        if type(padding) is not int or padding < 0:\n            raise ValueError(\"padding 必须为非负整数\")\n        size = (length + 2 * padding - dilation * (kernel - 1) - 1) // stride + 1\n        if size <= 0:\n            raise ValueError(\"没有有效输出位置\")\n        output.append(size)\n    return tuple(output)\n\ndef receptive_field(layers):\n    receptive, jump = 1, 1\n    for kernel, stride, dilation in layers:\n        if any(type(v) is not int or v <= 0 for v in (kernel, stride, dilation)):\n            raise ValueError(\"核、步长和 dilation 必须为正整数\")\n        receptive += (kernel - 1) * dilation * jump\n        jump *= stride\n    return receptive, jump\n",
+        "tests": "assert conv_geometry((7, 9), (3, 2), (2, 1), (1, 0), (2, 1)) == (3, 8)\nassert conv_geometry((8, 10), (3, 3), (2, 2), (1, 1)) == (4, 5)\nassert conv_geometry((5, 5), (1, 1)) == (5, 5)\nassert receptive_field([(3, 2, 1), (3, 1, 1)]) == (7, 2)\nassert receptive_field([(3, 1, 2), (3, 2, 1)]) == (7, 2)\nassert receptive_field([]) == (1, 1)\nfor args in [((2, 2), (5, 5)), ((7, 9), (3, 2), (0, 1)), ((7, 9), (3, 2), (1, 1), (-1, 0))]:\n    try:\n        conv_geometry(*args)\n        raise AssertionError(\"应拒绝无效几何\")\n    except ValueError:\n        pass\ntry:\n    receptive_field([(3, 0, 1)])\n    raise AssertionError(\"应拒绝零步长\")\nexcept ValueError:\n    pass\nprint(\"通过：非方形尺寸、向下取整、dilation 与感受野递推。\")\n",
+        "hints": [
+          "先求有效核跨度 \\(\\mathrm{dilation}\\,(\\mathrm{kernel}-1)+1\\)。",
+          "累计步长只影响后续层新增的感受野，不能提前乘本层 stride。"
+        ],
+        "explanation": "高宽不对称的 fixture 检查轴顺序，偶数输入加步长检查 floor 的位置，第一层 stride=2 的两层例子区分正确的 7 与错误的 5。理论跨度只是包围范围，不保证其中每个像素都被实际采样。"
+      },
+      {
+        "id": "grouped-convolution",
+        "level": "应用",
+        "title": "实现分组卷积并核对前向和梯度",
+        "runtime": "torch",
+        "prompt": "实现 grouped_conv(x,weight,bias=None,stride=1,padding=0,dilation=1,groups=1)。允许 F.unfold 与 einsum / matmul，不得调用 conv2d。输入为 NCHW，权重为 [Cout,Cin/groups,Kh,Kw]；stride/padding/dilation 支持整数或二元 tuple，采用对称零填充。保留所有输入梯度连接。",
+        "starter": "import torch\nfrom torch.nn import functional as F\n\ndef grouped_conv(x, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):\n    # TODO: 计算几何、展开窗口、按组收缩、恢复空间形状。\n    raise NotImplementedError(\"实现分组卷积\")\n",
+        "solution": "import torch\nfrom torch.nn import functional as F\n\ndef grouped_conv(x, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):\n    pair = lambda v: (v, v) if isinstance(v, int) else tuple(v)\n    sh, sw = pair(stride)\n    ph, pw = pair(padding)\n    dh, dw = pair(dilation)\n    batch, cin, height, width = x.shape\n    cout, cin_group, kh, kw = weight.shape\n    if groups <= 0 or cin % groups or cout % groups or cin_group != cin // groups:\n        raise ValueError(\"分组通道不匹配\")\n    if min(sh, sw, dh, dw) <= 0 or min(ph, pw) < 0:\n        raise ValueError(\"无效几何参数\")\n    oh = (height + 2 * ph - dh * (kh - 1) - 1) // sh + 1\n    ow = (width + 2 * pw - dw * (kw - 1) - 1) // sw + 1\n    if min(oh, ow) <= 0:\n        raise ValueError(\"没有有效输出\")\n    columns = F.unfold(x, (kh, kw), dilation=(dh, dw), padding=(ph, pw), stride=(sh, sw))\n    columns = columns.reshape(batch, groups, cin_group * kh * kw, oh * ow)\n    kernels = weight.reshape(groups, cout // groups, cin_group * kh * kw)\n    output = torch.einsum(\"goc,bgcl->bgol\", kernels, columns).reshape(batch, cout, oh, ow)\n    if bias is not None:\n        if bias.shape != (cout,):\n            raise ValueError(\"偏置形状错误\")\n        output = output + bias[None, :, None, None]\n    return output\n",
+        "tests": "torch.manual_seed(29)\nfor groups, cin, cout in [(1, 3, 4), (2, 4, 6), (4, 4, 8)]:\n    x = torch.randn(2, cin, 7, 9, dtype=torch.float64, requires_grad=True)\n    w = torch.randn(cout, cin // groups, 3, 2, dtype=torch.float64, requires_grad=True)\n    b = torch.randn(cout, dtype=torch.float64, requires_grad=True)\n    options = dict(stride=(2, 1), padding=(1, 0), dilation=(2, 1), groups=groups)\n    actual = grouped_conv(x, w, b, **options)\n    expected = F.conv2d(x, w, b, **options)\n    torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-10)\n    upstream = torch.randn_like(actual)\n    ours = torch.autograd.grad((actual * upstream).sum(), (x, w, b))\n    reference = torch.autograd.grad((expected * upstream).sum(), (x, w, b))\n    for left, right in zip(ours, reference):\n        torch.testing.assert_close(left, right, rtol=1e-10, atol=1e-10)\n# 无偏置、整数参数以及 1×1 特例。\nx = torch.randn(1, 2, 4, 5, dtype=torch.float64)\nw = torch.randn(3, 2, 1, 1, dtype=torch.float64)\ntorch.testing.assert_close(grouped_conv(x, w), F.conv2d(x, w))\ntry:\n    grouped_conv(x, w, groups=2)\n    raise AssertionError(\"应拒绝 Cout 不能被 groups 整除\")\nexcept ValueError:\n    pass\nprint(\"通过：普通、分组、depthwise、无偏置与三组梯度。\")\n",
+        "hints": [
+          "unfold 输出 [B,Cin×Kh×Kw,L]，先把输入通道轴拆成 groups 与 Cin/groups。",
+          "每组的权重是 [Cout/groups,Cin/groups×Kh×Kw]；只对窗口元素轴求和，不对 L 求和。",
+          "所有 reshape/einsum 都保留 autograd 图，不需要 clone().detach()。"
+        ],
+        "explanation": "官方 conv2d 提供独立参考；非方形几何和三种分组暴露轴混淆与跨组串线，随机上游梯度核对真实输入/权重/偏置导数。支持的 padding 是整数对称零填充，不涵盖字符串 same 或反射填充。"
+      }
+    ],
+    "advancedLabs": [
+      {
+        "id": "spatial-expectation",
+        "level": "诊断",
+        "title": "保留空间信息：从热图读出关键点坐标",
+        "runtime": "torch",
+        "prompt": "实现 spatial_expectation(logits,temperature=1.0)，logits 为 [B,K,H,W]，每个关键点在 H×W 上独立 Softmax。返回 [B,K,2]，最后一维按 x,y 排列，坐标采用像素中心 \\(\\left(\\frac{j+0.5}{W},\\frac{i+0.5}{H}\\right)\\)。拒绝非正温度和非四维输入，保留梯度。",
+        "starter": "import torch\n\ndef spatial_expectation(logits, temperature=1.0):\n    # TODO: 空间 Softmax，构造中心坐标网格，求期望。\n    raise NotImplementedError(\"实现空间读出\")\n",
+        "solution": "import torch\n\ndef spatial_expectation(logits, temperature=1.0):\n    if logits.ndim != 4 or temperature <= 0:\n        raise ValueError(\"需要 B,K,H,W 张量和正温度\")\n    batch, points, height, width = logits.shape\n    if min(height, width) <= 0:\n        raise ValueError(\"空间尺寸必须为正\")\n    probability = (logits / temperature).flatten(2).softmax(dim=-1)\n    ys = (torch.arange(height, device=logits.device, dtype=logits.dtype) + .5) / height\n    xs = (torch.arange(width, device=logits.device, dtype=logits.dtype) + .5) / width\n    yy, xx = torch.meshgrid(ys, xs, indexing=\"ij\")\n    coordinates = torch.stack((xx.flatten(), yy.flatten()), dim=-1)\n    return probability @ coordinates\n",
+        "tests": "uniform = torch.zeros(2, 3, 2, 4, dtype=torch.float64)\ntorch.testing.assert_close(spatial_expectation(uniform), torch.full((2, 3, 2), .5, dtype=torch.float64))\npeaked = torch.full((1, 2, 2, 3), -40., dtype=torch.float64)\npeaked[0, 0, 0, 2] = 40.\npeaked[0, 1, 1, 0] = 40.\nexpected = torch.tensor([[[5/6, 1/4], [1/6, 3/4]]], dtype=torch.float64)\ntorch.testing.assert_close(spatial_expectation(peaked), expected)\n# 两个等高峰的期望落在中间，说明返回的不是 argmax。\ntwo_peaks = torch.tensor([[[[20., -20., 20.]]]], dtype=torch.float64)\ntorch.testing.assert_close(spatial_expectation(two_peaks), torch.tensor([[[.5, .5]]], dtype=torch.float64))\ntorch.manual_seed(37)\nx = torch.randn(2, 2, 3, 5, dtype=torch.float64, requires_grad=True)\noutput = spatial_expectation(x, .7)\n(output.square().sum()).backward()\nassert torch.isfinite(x.grad).all() and torch.count_nonzero(x.grad) > 0\n# 每张热图加常数不改变空间概率。\ntorch.testing.assert_close(spatial_expectation(x.detach() + 17., .7), output.detach())\nfor t in [0., -1.]:\n    try:\n        spatial_expectation(x.detach(), t)\n        raise AssertionError(\"应拒绝非正温度\")\n    except ValueError:\n        pass\nprint(\"通过：空间归约、非方形 xy 顺序、中心坐标和可微期望。\")\n",
+        "hints": [
+          "Softmax 必须在展平后的 H×W 轴，不应沿关键点 K 轴归约。",
+          "坐标取像素中心，不是 linspace(0,1,W) 的两个边界端点。",
+          "先构建 y,x 网格，但输出应按 x,y 堆叠。"
+        ],
+        "explanation": "均匀热图检查期望居中，非方形双关键点检查 x/y 与 K 是否混淆，双峰案例展示均值不一定是可行目标。这个读出保留梯度，但并不保证热图具有正确几何语义；仍需适当监督和坐标逆变换。"
+      }
+    ]
+  }
+]
