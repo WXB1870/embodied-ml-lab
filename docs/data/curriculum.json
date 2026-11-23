@@ -141,5 +141,16 @@
     "closedloop": "policies",
     "foundations": "appendix",
     "neural": "appendix"
-  }
+  },
+  "legacySourceFiles": [
+    "foundations",
+    "architecture",
+    "vla",
+    "foundations_p0",
+    "architecture_p0",
+    "vla_p0",
+    "generative",
+    "policy-models",
+    "vla-architecture"
+  ]
 }
