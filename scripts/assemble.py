@@ -20,6 +20,18 @@ assert ids==set(order), {'missing':set(order)-ids,'unexpected':ids-set(order)}
 assert len(ids)==len(lessons)
 lookup={l['id']:l for l in lessons}
 lessons=[lookup[id] for id in order]
+legacy_lessons=[]
+for name in catalog.get('legacySourceFiles', []):
+    source=root/'content'/f'{name}.json'
+    if not source.exists():
+        raise SystemExit(f'Missing legacy content: {source}')
+    for lesson in json.loads(source.read_text()):
+        if lesson['id'] not in ids:
+            lesson['module']='legacy'
+            legacy_lessons.append(lesson)
+            ids.add(lesson['id'])
+lessons.extend(legacy_lessons)
+lookup={l['id']:l for l in lessons}
 for module in catalog['modules']:
     for id in module['lessons']:lookup[id]['module']=module['id']
 for number,l in enumerate(lessons,1):
