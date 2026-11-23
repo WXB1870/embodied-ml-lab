@@ -39,7 +39,7 @@ const LEGACY_LESSON_IDS={
  embeddings:'rope',normalization:'norm-ffn','tokenizer-autoregressive':'masking-autoregressive','kv-cache-inference':'kv-cache',
  'latent-variable-models':'vae','action-chunk':'action-chunking',finetuning:'lora',transformer:'attention',
  'action-representation':'behavior-cloning','partial-observability':'behavior-cloning','distribution-shift':'behavior-cloning',
- 'returns-bellman':'policy-gradient','vision-preprocessing':'multimodal','conditioning-fusion':'dit-adaln',
+ 'returns-bellman':'policy-gradient','vision-preprocessing':'multimodal','contrastive-pretraining':'multimodal','conditioning-fusion':'dit-adaln',
  probability:'tensor',losses:'tensor',numerical:'tensor',generalization:'tensor',residual:'norm-ffn',
  'data-quality':'behavior-cloning',evaluation:'generative-policy','execution-latency':'generative-policy',
  'train-infer-contract':'vla-architecture',modules:'autograd',dataloader:'training-loop',checkpoint:'training-loop',
