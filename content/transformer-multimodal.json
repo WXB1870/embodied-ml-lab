@@ -611,7 +611,7 @@
         "id": "gqa-reference",
         "title": "GQA 的显式参考实现",
         "description": "用 repeat_interleave 将 KV 头映射到 Query 头，作为正确性基线；实际高性能实现可避免显式复制。",
-        "source": "import torch\\nimport torch.nn.functional as F\\n\\ndef gqa(q, k, v):\\n    # q: [B,Hq,Tq,D], k/v: [B,Hkv,Tk,D] / [B,Hkv,Tk,Dv]\\n    b, hq, tq, d = q.shape\\n    hkv = k.shape[1]\\n    assert hq % hkv == 0\\n    groups = hq // hkv\\n    kq = k.repeat_interleave(groups, dim=1)\\n    vq = v.repeat_interleave(groups, dim=1)\\n    return F.scaled_dot_product_attention(q, kq, vq)\\n\\nq=torch.randn(2,8,5,16); k=torch.randn(2,2,7,16); v=torch.randn(2,2,7,16)\\ny=gqa(q,k,v)\\nassert y.shape==(2,8,5,16)\\nprint('GQA output:', y.shape)\\n",
+        "source": "import torch\nimport torch.nn.functional as F\n\ndef gqa(q, k, v):\n    # q: [B,Hq,Tq,D], k/v: [B,Hkv,Tk,D] / [B,Hkv,Tk,Dv]\n    b, hq, tq, d = q.shape\n    hkv = k.shape[1]\n    assert hq % hkv == 0\n    groups = hq // hkv\n    kq = k.repeat_interleave(groups, dim=1)\n    vq = v.repeat_interleave(groups, dim=1)\n    return F.scaled_dot_product_attention(q, kq, vq)\n\nq=torch.randn(2,8,5,16); k=torch.randn(2,2,7,16); v=torch.randn(2,2,7,16)\ny=gqa(q,k,v)\nassert y.shape==(2,8,5,16)\nprint('GQA output:', y.shape)\n",
         "explanations": [
           {
             "lines": "1–11",
@@ -1000,7 +1000,7 @@
           "参数量比较时需要计入三组矩阵，而不是只比较隐藏层宽度。"
         ],
         "formula": "\\operatorname{SwiGLU}(x)=(\\operatorname{SiLU}(xW)\\odot xV)W_2",
-        "code": "import torch\\nfrom torch import nn\\nclass SwiGLU(nn.Module):\\n def __init__(self,d,h):\\n  super().__init__(); self.w=nn.Linear(d,h,bias=False); self.v=nn.Linear(d,h,bias=False); self.out=nn.Linear(h,d,bias=False)\\n def forward(self,x): return self.out(torch.nn.functional.silu(self.w(x))*self.v(x))\\nm=SwiGLU(32,64); x=torch.randn(4,10,32); assert m(x).shape==x.shape; print(sum(p.numel() for p in m.parameters()))",
+        "code": "import torch\nfrom torch import nn\nclass SwiGLU(nn.Module):\n def __init__(self,d,h):\n  super().__init__(); self.w=nn.Linear(d,h,bias=False); self.v=nn.Linear(d,h,bias=False); self.out=nn.Linear(h,d,bias=False)\n def forward(self,x): return self.out(torch.nn.functional.silu(self.w(x))*self.v(x))\nm=SwiGLU(32,64); x=torch.randn(4,10,32); assert m(x).shape==x.shape; print(sum(p.numel() for p in m.parameters()))",
         "codeKind": "complete",
         "codeExplanation": "此代码片段用于将本节推导落实为可执行张量运算。"
       }
@@ -1062,9 +1062,9 @@
       "title": "手写 SwiGLU 前向",
       "prompt": "实现 swiglu(x,w_gate,w_value,w_out)，使用 SiLU(x @ w_gate) * (x @ w_value) 再投影。输入为二维列表，矩阵维度合法；返回二维列表。",
       "runtime": "python",
-      "starter": "def swiglu(x, w_gate, w_value, w_out):\\n    # TODO: 两路投影、SiLU 门控和输出投影\\n    raise NotImplementedError\\n",
-      "solution": "import math\\ndef matmul(a,b):\\n    return [[sum(a[i][k]*b[k][j] for k in range(len(b))) for j in range(len(b[0]))] for i in range(len(a))]\\ndef swiglu(x,w_gate,w_value,w_out):\\n    gate=matmul(x,w_gate); value=matmul(x,w_value)\\n    hidden=[[ (g/(1+math.exp(-g)))*v for g,v in zip(gr,vr)] for gr,vr in zip(gate,value)]\\n    return matmul(hidden,w_out)\\n",
-      "tests": "out=swiglu([[1.0,0.0]],[[1.0,0.0],[0.0,1.0]],[[0.0,1.0],[1.0,0.0]],[[1.0],[1.0]])\\nassert len(out)==1 and len(out[0])==1\\nassert out[0][0]>0\\nprint('SwiGLU forward test passed')\\n",
+      "starter": "def swiglu(x, w_gate, w_value, w_out):\n    # TODO: 两路投影、SiLU 门控和输出投影\n    raise NotImplementedError\n",
+      "solution": "import math\ndef matmul(a,b):\n    return [[sum(a[i][k]*b[k][j] for k in range(len(b))) for j in range(len(b[0]))] for i in range(len(a))]\ndef swiglu(x,w_gate,w_value,w_out):\n    gate=matmul(x,w_gate); value=matmul(x,w_value)\n    hidden=[[ (g/(1+math.exp(-g)))*v for g,v in zip(gr,vr)] for gr,vr in zip(gate,value)]\n    return matmul(hidden,w_out)\n",
+      "tests": "out=swiglu([[1.0,0.0]],[[1.0,0.0],[0.0,1.0]],[[0.0,1.0],[1.0,0.0]],[[1.0],[1.0]])\nassert len(out)==1 and len(out[0])==1\nassert out[0][0]>0\nprint('SwiGLU forward test passed')\n",
       "hints": [
         "先分别计算 gate 与 value 两路线性投影。",
         "SiLU(x)=x·sigmoid(x)，再逐元素相乘。"
@@ -1073,9 +1073,9 @@
     },
     "pytorchTask": {
       "prompt": "实现 RMSNorm：对最后一维计算均方根并乘以可学习缩放 gamma，不减均值。",
-      "starter": "import torch\\ndef rms_norm(x, gamma, eps=1e-6):\\n    # TODO\\n    raise NotImplementedError\\n",
-      "solution": "import torch\\ndef rms_norm(x,gamma,eps=1e-6):\\n    if x.shape[-1]==0 or gamma.shape!=(x.shape[-1],) or eps<=0: raise ValueError('invalid shape or eps')\\n    scale=torch.rsqrt(x.square().mean(dim=-1,keepdim=True)+eps)\\n    return x*scale*gamma\\n",
-      "tests": "x=torch.tensor([[3.,4.]],requires_grad=True); g=torch.ones(2,requires_grad=True)\\ny=rms_norm(x,g); torch.testing.assert_close(y,torch.tensor([[0.8485281,1.1313708]]),atol=1e-5,rtol=1e-5)\\ny.sum().backward(); assert x.grad is not None and g.grad is not None\\nprint('RMSNorm forward/backward passed')\\n",
+      "starter": "import torch\ndef rms_norm(x, gamma, eps=1e-6):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "import torch\ndef rms_norm(x,gamma,eps=1e-6):\n    if x.shape[-1]==0 or gamma.shape!=(x.shape[-1],) or eps<=0: raise ValueError('invalid shape or eps')\n    scale=torch.rsqrt(x.square().mean(dim=-1,keepdim=True)+eps)\n    return x*scale*gamma\n",
+      "tests": "x=torch.tensor([[3.,4.]],requires_grad=True); g=torch.ones(2,requires_grad=True)\ny=rms_norm(x,g); torch.testing.assert_close(y,torch.tensor([[0.8485281,1.1313708]]),atol=1e-5,rtol=1e-5)\ny.sum().backward(); assert x.grad is not None and g.grad is not None\nprint('RMSNorm forward/backward passed')\n",
       "hints": [
         "RMS 是 sqrt(mean(x**2)+eps)。",
         "用 rsqrt 避免先 sqrt 再除法；保留 gamma 的梯度。"
