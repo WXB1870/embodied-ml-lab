@@ -142,6 +142,7 @@ function canonicalRoute(){
  if(location.hash.startsWith('#/'))history.replaceState(null,'',routeHref(location.hash));
  let {path,params}=parseRoute(),href=null,pendingQuery=null;
  if(path.startsWith('/topics/'))href=routeHref(location.pathname+location.search);
+ if(path.startsWith('/learn/')&&LEGACY_LESSON_IDS[path.split('/')[2]])href=routeHref(location.pathname+location.search);
  if(path==='/learn'||path==='/topics'||path==='/p0')href='#/'+(params.get('module')?'?chapter='+encodeURIComponent(params.get('module')):'');
  if(path==='/reference'){pendingQuery=params.get('q');href='#/';}
  if(path==='/map')href=byId[params.get('node')]?lessonHref(params.get('node')):'#/';
