@@ -797,7 +797,7 @@
     "module": "generative",
     "title": "连续时间视角：Score Matching、SDE 与概率流 ODE",
     "subtitle": "围绕连续时间视角：Score Matching、SDE 与概率流 ODE，完成理论推导、PyTorch 实现与面试手撕训练。",
-    "minutes": 120,
+    "minutes": 100,
     "tags": [
       "Score Matching",
       "SDE",
@@ -845,20 +845,6 @@
           ],
           "conclusion": "Score 是局部对数密度的空间梯度。真正的反向 SDE 或概率流 ODE 还需要漂移、时间系数和相应的时间方向。"
         }
-      },
-      {
-        "id": "score-matching",
-        "title": "Score Matching 的未知目标如何通过分部积分消去",
-        "body": [
-          "如果真实 score 已知，可以最小化：",
-          "\\[J(\\theta)=\\frac12\\mathbb E_p\\|s_\\theta(X)-\\nabla\\log p(X)\\|^2\\]",
-          "但数据只提供样本，并不直接提供 \\(\\nabla\\log p\\)。展开平方后，只有交叉项涉及模型与未知 score 的乘积；真实 score 的平方期望对 \\(\\theta\\) 是常数 \\(C\\)。",
-          "利用 \\(p\\nabla\\log p=\\nabla p\\)，交叉项为 \\(-\\int s_\\theta(x)\\cdot\\nabla p(x)\\,dx\\)。对每个坐标分部积分，在边界项消失的条件下，它等于 \\(\\int p(x)\\nabla\\!\\cdot s_\\theta(x)\\,dx\\)。于是可训练目标只含模型场的平方与散度，均可在观测样本上估计。负号转换来自分部积分，不能把散度项的符号凭直觉修改。",
-          "这一步要求相应的可微性、可积性和尾部或边界条件。对于有限区间上的密度，边界通量未必为零；直接照抄无界欧氏空间公式可能得到错误目标。散度是 \\(\\sum_i\\frac{\\partial s_{\\theta,i}}{\\partial x_i}\\)，涉及模型对输入的导数；若 \\(s_\\theta\\) 又来自一个能量梯度，还会涉及能量对输入的二阶导数。",
-          "Denoising Score Matching 采用另一路径：构造已知的条件加噪核，利用条件 score 回归来得到边际 score。它避免在这个基本训练目标中直接计算高维 score 网络的散度，但并不表示散度在密度计算等其他任务里不再需要。"
-        ],
-        "formula": "\\begin{aligned}J(\\theta)&=\\tfrac12\\mathbb E_p\\|s_\\theta-\\nabla\\log p\\|^2\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2]-\\int s_\\theta(x)\\cdot\\nabla p(x)\\,dx+C\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2+\\nabla\\cdot s_\\theta]+C.\\end{aligned}",
-        "lead": "Score Matching 是通过匹配模型向量场与数据 Score 来学习分布信息的方法。真实 Score 通常未知，经典目标利用分部积分将它移出可优化表达式。下面说明这项改写依赖哪些边界条件。"
       },
       {
         "id": "denoising-identity",
@@ -1186,7 +1172,23 @@
         ]
       }
     ],
-    "lead": "Score 是对数概率密度对样本坐标的梯度，描述当前位置附近密度增加的方向和速率。随机微分方程（SDE）用漂移与随机扰动描述样本运动，概率流 ODE 则在相应条件下用确定性运动得到同一组边际分布。本章先认识这些对象，再说明怎样从加噪监督学习 Score，以及它怎样用于反向生成和速度场转换。"
+    "lead": "Score 是扩散与连续时间生成模型中的状态梯度。本章以条件去噪、反向动力学和概率流 ODE 为主线，重点理解它们如何连接噪声预测与 Flow Matching；经典 Score Matching 的分部积分推导放在可选拓展中。",
+    "advancedSections": [
+      {
+        "id": "score-matching",
+        "title": "Score Matching 的未知目标如何通过分部积分消去",
+        "body": [
+          "如果真实 score 已知，可以最小化：",
+          "\\[J(\\theta)=\\frac12\\mathbb E_p\\|s_\\theta(X)-\\nabla\\log p(X)\\|^2\\]",
+          "但数据只提供样本，并不直接提供 \\(\\nabla\\log p\\)。展开平方后，只有交叉项涉及模型与未知 score 的乘积；真实 score 的平方期望对 \\(\\theta\\) 是常数 \\(C\\)。",
+          "利用 \\(p\\nabla\\log p=\\nabla p\\)，交叉项为 \\(-\\int s_\\theta(x)\\cdot\\nabla p(x)\\,dx\\)。对每个坐标分部积分，在边界项消失的条件下，它等于 \\(\\int p(x)\\nabla\\!\\cdot s_\\theta(x)\\,dx\\)。于是可训练目标只含模型场的平方与散度，均可在观测样本上估计。负号转换来自分部积分，不能把散度项的符号凭直觉修改。",
+          "这一步要求相应的可微性、可积性和尾部或边界条件。对于有限区间上的密度，边界通量未必为零；直接照抄无界欧氏空间公式可能得到错误目标。散度是 \\(\\sum_i\\frac{\\partial s_{\\theta,i}}{\\partial x_i}\\)，涉及模型对输入的导数；若 \\(s_\\theta\\) 又来自一个能量梯度，还会涉及能量对输入的二阶导数。",
+          "Denoising Score Matching 采用另一路径：构造已知的条件加噪核，利用条件 score 回归来得到边际 score。它避免在这个基本训练目标中直接计算高维 score 网络的散度，但并不表示散度在密度计算等其他任务里不再需要。"
+        ],
+        "formula": "\\begin{aligned}J(\\theta)&=\\tfrac12\\mathbb E_p\\|s_\\theta-\\nabla\\log p\\|^2\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2]-\\int s_\\theta(x)\\cdot\\nabla p(x)\\,dx+C\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2+\\nabla\\cdot s_\\theta]+C.\\end{aligned}",
+        "lead": "Score Matching 是通过匹配模型向量场与数据 Score 来学习分布信息的方法。真实 Score 通常未知，经典目标利用分部积分将它移出可优化表达式。下面说明这项改写依赖哪些边界条件。"
+      }
+    ]
   },
   {
     "id": "flow-matching",
