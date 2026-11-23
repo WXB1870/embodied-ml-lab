@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff">
+<title>Robot Agent：自主决策、技能组合与持续进化 · Embodied ML Lab</title>
+<meta name="description" content="面向机器人自主决策、长时序 VLA 执行、World Model 技能调用与 Code Policy 持续进化的学习路线。">
+<link rel="icon" href="/embodied-ml-lab/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/embodied-ml-lab/vendor/katex/katex.min.css"><link rel="stylesheet" href="/embodied-ml-lab/styles.css?v=20261124-robot-agent">
+<link rel="canonical" href="https://wxb1870.github.io/embodied-ml-lab/robot-agent/">
+<style>
+.agent-hero{padding:25px 28px;background:linear-gradient(120deg,#f5f8fd,#fbfcfe);border:1px solid #e1e8f1;border-radius:8px;margin:25px 0 34px}
+.agent-hero h2{font-size:20px;margin:0 0 10px;color:#2c4568}.agent-hero p{font-size:14px;color:#586b83;margin:0;line-height:1.9}
+.agent-flow{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch;margin:22px 0}
+.agent-node{border:1px solid #dfe6ef;border-radius:7px;padding:15px;background:#fff}.agent-node h3{font-size:15px;margin:0 0 8px}.agent-node p{font-size:12px;color:#718096;margin:0;line-height:1.8}.agent-arrow{align-self:center;color:#8ca0bb;font-size:20px}
+.agent-skill-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:20px 0}
+.agent-skill{border:1px solid #e1e7ef;border-radius:6px;padding:14px 16px}.agent-skill strong{display:block;font-size:14px;margin-bottom:5px}.agent-skill span{font-size:12px;color:#718096;line-height:1.7}
+.agent-callout{padding:15px 18px;border-left:2px solid #91a9ca;background:#f7f9fc;margin:22px 0;font-size:14px;color:#52647c}
+.agent-priority{font:11px var(--mono);color:#6b83a5;margin-left:8px}
+.agent-project{border-top:1px solid var(--line);padding:19px 0}.agent-project h3{font-size:16px;margin:0 0 6px}.agent-project p{font-size:13px;color:#617187;margin:0 0 9px}.agent-project a{color:var(--blue);font-size:12px;margin-right:14px}
+.agent-code{background:#f7f9fc;border:1px solid #e3e8ef;border-radius:6px;padding:16px 18px;overflow:auto;font:12px/1.8 var(--mono);color:#43536b;white-space:pre}
+.agent-roadmap{counter-reset:agent;list-style:none;padding:0;margin:15px 0}.agent-roadmap li{counter-increment:agent;position:relative;padding:0 0 22px 43px;margin:0;border-left:1px solid #dfe6ef}.agent-roadmap li:before{content:counter(agent,decimal-leading-zero);position:absolute;left:-15px;top:0;width:29px;height:29px;border:1px solid #cbd7e6;border-radius:50%;background:#fff;display:grid;place-items:center;font:10px var(--mono);color:#6b83a5}.agent-roadmap li:last-child{border-left-color:transparent}.agent-roadmap h3{font-size:15px;margin:0 0 5px}.agent-roadmap p{font-size:13px;color:#66758a;margin:0;line-height:1.85}
+.agent-note{font-size:12px;color:#7a8798;line-height:1.8}
+@media(max-width:600px){.agent-flow{grid-template-columns:1fr}.agent-arrow{justify-self:center;transform:rotate(90deg)}.agent-skill-grid{grid-template-columns:1fr}.agent-hero{padding:20px}.agent-code{font-size:11px}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">跳到正文</a>
+<header class="site-header"><div class="header-inner">
+<a href="/embodied-ml-lab/" class="brand" aria-label="Embodied ML 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Embodied <b>ML</b></a>
+<nav aria-label="主导航"><a href="/embodied-ml-lab/">课程目录</a><a href="/embodied-ml-lab/practice/">课程练习</a><a class="active" href="/embodied-ml-lab/robot-agent/">Robot Agent</a></nav>
+</div></header>
+<main id="main" class="page narrow">
+<div class="article-context"><a href="/embodied-ml-lab/">Embodied ML Lab</a><span class="agent-priority">专题学习路线 · 08</span></div>
+<header class="article-heading"><h1>Robot Agent：自主决策、技能组合与持续进化</h1></header>
+<p class="article-intro">这部分不是通用 LLM Agent 教程。目标是理解并设计一个以 Agent 为决策核心、以异构 Skill 为执行能力、能够通过经验持续改进自身技能的机器人系统。</p>
+
+<div class="agent-hero">
+<h2>最终目标：Agent 决定做什么，Skill 负责把事情做好</h2>
+<p>Agent 接收任务和环境状态，判断下一步需要什么能力；它可以调用长时序 VLA、World Model、视觉感知、运动控制或 Code Policy。复杂技能还可以继续组合子技能。执行结果和经验返回 Agent，用于继续决策或改进技能。</p>
+</div>
+
+<section class="article-section" id="architecture">
+<h2><span class="section-number">01</span>先建立正确的系统边界</h2>
+<p class="section-lead">核心是 Agent-centric，而不是双系统必须并行。System 1 / System 2 可以作为同一个 Agent 的快速与深度推理模式；系统是否启用深度推理，由任务复杂度、风险和不确定性决定。</p>
+<div class="agent-flow">
+<div class="agent-node"><h3>Agent · 决策核心</h3><p>理解目标、维护任务状态、选择 Skill、检查进度、处理异常。简单情况走快速路径，复杂情况进入深度推理。</p></div>
+<div class="agent-arrow">→</div>
+<div class="agent-node"><h3>Skill Runtime · 执行能力</h3><p>调用 VLA、World Model、Code Policy、SAM/3D 感知、MPC 等能力；接收执行状态和可信结果。</p></div>
+</div>
+<div class="agent-skill-grid">
+<div class="agent-skill"><strong>VLA Skill</strong><span>可持续执行较长时序任务，内部处理观测—动作闭环，在子目标、异常或终止条件处回报。</span></div>
+<div class="agent-skill"><strong>World Model Skill</strong><span>预测未来状态、比较候选动作、进行反事实推演；不要求直接输出控制动作。</span></div>
+<div class="agent-skill"><strong>Code Policy Skill</strong><span>可执行程序或控制器，能够封装感知、策略、MPC 和恢复逻辑，并由经验驱动更新。</span></div>
+<div class="agent-skill"><strong>Perception / Geometry Skill</strong><span>SAM、检测、深度、点云、位姿估计和抓取候选生成，为决策提供结构化状态。</span></div>
+</div>
+<div class="agent-callout"><strong>重要边界：</strong>Agent 不需要接管每个控制周期。高频闭环留在 VLA、Policy 或实时控制器内部；Agent 在任务级、子目标级和异常节点做决策。</div>
+<p>System 1 / System 2 不应被写成两个固定 Agent 的强制协作协议。先掌握单 Agent 的决策闭环，再把快速响应与深度推理作为可选调度策略加入。</p>
+</section>
+
+<section class="article-section" id="curriculum">
+<h2><span class="section-number">02</span>学习路线：从 Agent 决策到持续进化</h2>
+<p class="section-lead">建议按下面顺序学习。每一部分都围绕一个系统问题展开，避免把课程变成零散术语清单。</p>
+<ol class="agent-roadmap">
+<li><h3>Agent Loop 与任务级决策 <span class="agent-priority">P0</span></h3><p>Observe–Reason–Act–Verify；任务状态、目标分解、工具调用、终止条件；快速路径与深度推理的触发机制。重点回答 Agent 如何决定“下一步做什么”。</p></li>
+<li><h3>Skill 抽象、接口与层级组合 <span class="agent-priority">P0</span></h3><p>Skill Contract、输入输出 Schema、前置条件、后置条件、超时、取消、状态反馈；Skill 可以嵌套子 Skill，也可以包含完整 Policy 和控制器。</p></li>
+<li><h3>长时序 VLA：作为执行型 Skill <span class="agent-priority">P0</span></h3><p>VLA 的长时序任务封装、动作块滚动执行、RTC / Receding Horizon、子目标检测、执行监控、终止与恢复。Agent 调用一次技能，不必逐 Chunk 指挥。</p></li>
+<li><h3>World Model：作为预测与评估 Skill <span class="agent-priority">P0</span></h3><p>状态预测、动作条件未来预测、候选动作评估、反事实推演、模型不确定性。学习 Agent 何时值得调用世界模型，以及如何把预测结果转成决策依据。</p></li>
+<li><h3>感知与几何工具链 <span class="agent-priority">P1</span></h3><p>VLM / SAM 分割、开放词汇检测、深度估计、2D-to-3D、场景图、抓取位姿和运动规划。重点是理解工具输出如何变成可供 Agent 使用的 World State。</p></li>
+<li><h3>Code-as-Policy 与程序生成 <span class="agent-priority">P0</span></h3><p>从自然语言目标生成可执行程序；程序结构、API 约束、参数化控制、子程序复用；把生成的程序封装成有明确契约的 Skill。</p></li>
+<li><h3>经验记忆与 Code Policy Evolution <span class="agent-priority">P0</span></h3><p>记录轨迹、状态、工具调用、失败原因和结果；检索相似经验；对现有程序做局部修改、组合或替换；在仿真/受控环境中评估，再晋升版本。</p></li>
+<li><h3>Meta-policy 与系统集成 <span class="agent-priority">P1</span></h3><p>学习何时调用哪种 Skill、何时探索、何时复用；技能发现、技能淘汰、多 Agent 协作；最终构建可观测、可验证、可持续改进的 Robot Agent。</p></li>
+</ol>
+</section>
+
+<section class="article-section" id="skill-contract">
+<h2><span class="section-number">03</span>关键知识：Skill 不是一个简单函数</h2>
+<p>一个可被 Agent 稳定调用的 Skill，至少要声明能力范围、输入、输出、执行状态和验证方式。它可以是一个原子工具，也可以是一个包含多个模型与控制器的长时序执行单元。</p>
+<div class="agent-code">Skill: open_drawer
+
+Input:
+  target_drawer
+  scene_state
+  constraints
+
+Runtime:
+  perception → handle_pose
+  world_model → candidate interaction
+  VLA / code_policy → execute
+  MPC → compliant motion
+  verifier → drawer_state
+
+Output:
+  status: succeeded | failed | uncertain
+  achieved_state
+  evidence
+  failure_reason
+  recovery_hint</div>
+<p>建议重点掌握 Skill Contract、层级 Skill、Skill Registry、异步执行、取消与超时、幂等性、执行日志、结果验证，以及 Tool 与 Skill 的边界。一个 Skill 可以调用另一个 Skill，但需要避免无限递归、隐式副作用和不可追踪的状态。</p>
+</section>
+
+<section class="article-section" id="long-vla">
+<h2><span class="section-number">04</span>关键知识：长时序 VLA 与 Agent 的分工</h2>
+<p>不要把 VLA 理解成每次只预测一小段动作的“低层工具”。VLA 可以在内部反复观察、预测动作块、执行、再观察，持续完成一个完整子任务。Agent 只在关键检查点接收状态并决定是否继续。</p>
+<div class="agent-code">Agent:
+  result = call_skill("pick_and_place_vla", goal)
+
+  while result.status == "running":
+      if result.event == "subgoal_reached":
+          update_task_state(result.evidence)
+      elif result.event == "needs_replanning":
+          choose_next_skill()
+      elif result.event == "failed":
+          diagnose_and_recover()
+
+  verify_task_completion(result.evidence)</div>
+<p>要深入学习 Skill 的生命周期：accepted、running、yielded、succeeded、failed、cancelled；还要区分“模型输出了动作”“控制器执行完成”“环境状态发生变化”和“任务成功”这四种不同事实。</p>
+<div class="agent-callout">Agent 不需要每 100 ms 重新推理。VLA 内部可以 5–20 Hz 或按模型自身频率闭环运行；Agent 的决策频率由任务层级、事件和风险决定，而不是固定跟随控制频率。</div>
+</section>
+
+<section class="article-section" id="world-model">
+<h2><span class="section-number">05</span>关键知识：World Model 是可调用的预测能力</h2>
+<p>世界模型不一定负责执行动作。它可以接收当前状态和候选动作，返回可能的未来状态、接触变化、成功概率或不确定性。Agent 根据这些结果选择是否执行、是否换一个技能，或是否进一步观察。</p>
+<div class="agent-code">predictions = world_model.predict(
+    state=current_world_state,
+    candidates=[
+        pull_handle(direction="forward"),
+        pull_handle(direction="left"),
+        change_base_pose(offset="small")
+    ]
+)
+
+decision = agent.choose(
+    predictions=predictions,
+    task_goal="open_drawer",
+    constraints=safety_constraints
+)</div>
+<p>重点学习状态表征、动作条件预测、潜空间动力学、模型预测控制、候选轨迹评估、反事实推理、模型不确定性与模型失配。不要把视频生成模型、潜状态预测模型和可直接用于规划的动力学模型混为一谈。</p>
+</section>
+
+<section class="article-section" id="code-evolution">
+<h2><span class="section-number">06</span>关键知识：Code Policy 如何通过经验持续进化</h2>
+<p>持续进化不是让 Agent 在真实机器人上随意修改并立即覆盖正在运行的程序。更合理的流程是：执行经验形成候选改进，候选版本经过测试与对照评估，达到标准后才替换当前稳定版本。</p>
+<ol>
+<li><strong>采集经验：</strong>保存观测摘要、任务条件、程序版本、动作、环境反馈、成功证据和失败原因。</li>
+<li><strong>检索经验：</strong>根据任务类型、物体属性、环境几何和失败模式寻找相似案例。</li>
+<li><strong>提出修改：</strong>生成新程序，或修改参数、控制逻辑、子技能组合和恢复分支。</li>
+<li><strong>验证候选：</strong>先做静态检查与接口测试，再在仿真或隔离环境中执行多次。</li>
+<li><strong>版本晋升：</strong>比较成功率、完成时间、安全约束和泛化表现；通过后才晋升，否则回滚。</li>
+<li><strong>持续积累：</strong>保留版本、失败案例和适用边界，让后续任务能够检索和复用。</li>
+</ol>
+<p>必须区分三种改进：改代码（程序结构和逻辑）、改参数（阈值、增益、轨迹参数）、改模型（训练权重或适配器）。它们的成本、风险和验证方式不同，不要把所有进步都称为“模型自进化”。</p>
+<div class="agent-callout"><strong>核心研究问题：</strong>如何让经验真正改变未来的技能选择与执行质量，而不是只积累越来越长的日志？要研究经验检索、失败归因、修改策略、评估协议和技能晋升机制。</div>
+</section>
+
+<section class="article-section" id="projects">
+<h2><span class="section-number">07</span>代表项目：按你的目标选择阅读重点</h2>
+<p>下面不是简单的“最好项目排行榜”，而是为不同知识问题选取的代表案例。项目之间并非互斥分类：一个系统可以同时包含 Agent Runtime、VLA、几何工具和经验进化。</p>
+<div class="agent-project">
+<h3>RAX · 机器人在线探索与 Code Policy 进化</h3>
+<p><strong>首要研究案例。</strong> Coding Agent 在机器人环境中探索任务、编写和执行代码、积累技能。重点看 Harness、session logs、代码/技能生成、反馈循环与评估分支。它与你希望实现的经验驱动 Code Policy 演化最贴近。</p>
+<a href="https://github.com/robot-agent-exploration/rax" target="_blank" rel="noopener">GitHub 源码</a><a href="https://arxiv.org/abs/2610.22496" target="_blank" rel="noopener">论文</a><a href="https://github.com/robot-agent-exploration/skills-lib" target="_blank" rel="noopener">Skill Library</a>
+</div>
+<div class="agent-project">
+<h3>OpenETA · 物理世界闭环 Agent</h3>
+<p>重点看 observe → reason → act → verify → observe 的因果闭环、Tool / Skill 分离、Host 与 Agent 的执行边界，以及经验如何经过验证后演化。适合学习一个真正的 Robot Agent Runtime 如何组织代码。</p>
+<a href="https://github.com/OpenMOSS/OpenETA" target="_blank" rel="noopener">GitHub 源码</a><a href="https://arxiv.org/abs/2608.03924" target="_blank" rel="noopener">论文</a><a href="https://github.com/OpenMOSS/OpenETA/blob/main/docs/architecture.md" target="_blank" rel="noopener">架构文档</a>
+</div>
+<div class="agent-project">
+<h3>Voyager · 持续学习与可复用代码技能</h3>
+<p>不是实体机器人项目，而是非常清晰的终身技能学习范例：自动课程、可增长的可执行技能库、执行反馈、自验证和程序迭代。重点迁移其技能检索与程序改进思想，不直接照搬 Minecraft 的环境接口。</p>
+<a href="https://github.com/MineDojo/Voyager" target="_blank" rel="noopener">GitHub 源码</a><a href="https://arxiv.org/abs/2305.16291" target="_blank" rel="noopener">论文</a>
+</div>
+<div class="agent-project">
+<h3>Q0-Preview · 多模态模型直接进行空间推理</h3>
+<p>代表“不把 VLA Action Head 作为唯一动作出口”的路线。模型通过空间点和世界坐标进行几何推理，再由控制器执行。重点看空间点定义、坐标系、夹爪姿态推导、工具调用与控制接口。</p>
+<a href="https://github.com/XPolicyLab/XPolicyLab/tree/main/policy/Q0_Preview" target="_blank" rel="noopener">Q0-Preview 代码</a><a href="https://github.com/XPolicyLab/XPolicyLab" target="_blank" rel="noopener">XPolicyLab 基础设施</a>
+</div>
+<div class="agent-project">
+<h3>HoloAgent-0 · 空间记忆与 Skill Graph</h3>
+<p>重点看 AgentOS、3D Spatial Memory、监控式 Skill Graph、长时序移动操作和恢复机制。注意：仓库 README 对 HoloAgent-0 的代码发布状态有明确说明，适合先研究论文、架构和已公开组件，不要假设完整系统源码均已开放。</p>
+<a href="https://github.com/HorizonRobotics/HoloAgent" target="_blank" rel="noopener">GitHub / 发布状态</a><a href="https://arxiv.org/abs/2606.23565" target="_blank" rel="noopener">论文</a>
+</div>
+<div class="agent-project">
+<h3>XPolicyLab · Policy Adapter 与标准化执行接口</h3>
+<p>它不是高层 Agent，而是值得作为配套基础设施学习：把不同策略的依赖、Checkpoint、Serving 和环境评测通过统一 Adapter 接起来。适合理解如何把 VLA、World-Action 和其他 Policy 变成可替换的执行能力。</p>
+<a href="https://github.com/XPolicyLab/XPolicyLab" target="_blank" rel="noopener">GitHub 源码</a>
+</div>
+</section>
+
+<section class="article-section" id="reading-order">
+<h2><span class="section-number">08</span>代码阅读顺序</h2>
+<p>不要从头到尾通读仓库。每个项目都按同一组问题追踪一次真实任务：</p>
+<ol>
+<li>入口在哪里？任务上下文和环境观测如何进入 Agent？</li>
+<li>Agent 的决策循环在哪里？如何判断继续、等待、结束或重规划？</li>
+<li>Skill / Tool 如何注册？参数和返回值有哪些约束？</li>
+<li>VLA 或其他 Policy 如何作为一个可持续运行的执行单元？</li>
+<li>环境变化如何验证？工具成功与任务成功如何区分？</li>
+<li>轨迹、错误和经验保存在哪里？如何检索？</li>
+<li>Code Policy 如何生成、修改、测试、版本化和晋升？</li>
+</ol>
+<p>推荐顺序：先读 OpenETA 理解物理闭环与执行边界；再读 RAX 理解在线探索和代码技能进化；再读 Voyager 理解技能库与长期积累；随后读 Q0-Preview 和 HoloAgent-0，比较空间推理与空间记忆路线。</p>
+</section>
+
+<section class="article-section" id="capstone">
+<h2><span class="section-number">09</span>综合实战：持续进化的开门 Agent</h2>
+<p>以你熟悉的柜门/抽屉操作为主线，不必从便利店通用任务开始。这个任务能同时考察几何、接触、长时序执行、模型预测和技能改进。</p>
+<div class="agent-code">User goal: 打开陌生柜门并取出目标物体
+
+Agent:
+  1. 读取 World State 与历史技能
+  2. 检索相似柜门的 open_door Skill
+  3. 若信息不足，调用 Perception / World Model
+  4. 选择 VLA Skill 或 Code Policy 执行
+  5. 在子目标处检查门角、接触力和任务状态
+  6. 失败时定位原因并选择恢复方案
+  7. 验证任务结果
+  8. 将新经验写入候选 Skill 版本
+  9. 离线评估通过后更新 Skill Library</div>
+<p><strong>建议消融：</strong>无记忆；加入经验检索；加入 World Model 预测；加入长时序 VLA Skill；加入 Code Policy Evolution；完整系统。分别测任务成功率、重规划次数、人工介入次数、完成时间、安全违规和跨柜门泛化。</p>
+</section>
+
+<section class="article-section" id="scope">
+<h2><span class="section-number">10</span>本章学习边界</h2>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>本章深入学习</th><th>已有课程复用，不重复展开</th></tr></thead><tbody>
+<tr><td>Agent 决策、Skill Runtime、任务状态与经验管理</td><td>Transformer、VLM 基础与多模态融合</td></tr>
+<tr><td>长时序 VLA 的 Skill 化与任务级监督</td><td>π0.5 内部网络、Flow Matching 训练推导</td></tr>
+<tr><td>World Model 的调用方式与预测式决策</td><td>扩散模型、JEPA、世界模型算法细节</td></tr>
+<tr><td>Code Policy 生成、评估、版本晋升和持续进化</td><td>IK、MPC、QP、实时控制器的数学推导</td></tr>
+</tbody></table></div></div>
+<p class="agent-note">课程原则：以系统主线组织知识；每节只补足实现该系统所必需的理论。开源项目作为代码案例，不把某个框架的 API 当成通用原理。</p>
+</section>
+
+<footer class="article-footer"><h2>下一步学习</h2><div class="related-links"><a href="/embodied-ml-lab/learn/vla-architecture/?tab=theory">VLA：从视觉语言骨干到动作专家 →</a><a href="/embodied-ml-lab/learn/partial-observability/?tab=theory">部分可观测与状态估计 →</a><a href="https://github.com/OpenMOSS/OpenETA" target="_blank" rel="noopener">OpenETA 源码 →</a><a href="https://github.com/robot-agent-exploration/rax" target="_blank" rel="noopener">RAX 源码 →</a></div></footer>
+</main>
+<footer class="site-footer"><span>Embodied ML Lab</span><a href="/embodied-ml-lab/">课程目录</a><a href="/embodied-ml-lab/guide/">下载与说明</a></footer>
+</body></html>
