@@ -2,7 +2,7 @@ name: Validate Embodied ML Lab
 
 on:
   push:
-    branches: [main]
+    branches: [main, refactor/four-core-modules-20-lessons]
   workflow_dispatch:
 
 permissions:
