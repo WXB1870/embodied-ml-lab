@@ -98,7 +98,7 @@ for(const lesson of lessons){
   let result;
   vm.runInNewContext(script,{URLSearchParams,location:{search:'?tab='+oldTab,hash:'',replace:value=>result=value}});
   const url=new URL(result,origin),tab=['labs','questions'].includes(oldTab)?'exercise':oldTab==='code'?'code':'theory';
-  assert.equal(url.pathname,basePath+'/learn/'+canonicalId+'/');
+  assert.equal(url.pathname,basePath+'/learn/'+topicCanonicalId+'/');
   assert.equal(url.searchParams.get('tab'),tab);
   if(oldTab==='labs')assert.equal(url.searchParams.get('lab'),topic.labs[0].id);
   if(oldTab==='questions')assert.equal(url.searchParams.get('anchor'),'discussion');
