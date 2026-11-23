@@ -91,7 +91,7 @@ for(const lesson of lessons){
   let result;
   vm.runInNewContext(script,{URLSearchParams,location:{search:'?tab='+oldTab,hash:'',replace:value=>result=value}});
   const url=new URL(result,origin),tab=['labs','questions'].includes(oldTab)?'exercise':oldTab==='code'?'code':'theory';
-  assert.equal(url.pathname,basePath+'/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/'));
+  assert.equal(url.pathname,basePath+'/learn/'+lesson.id+'/');
   assert.equal(url.searchParams.get('tab'),tab);
   if(oldTab==='labs')assert.equal(url.searchParams.get('lab'),topic.labs[0].id);
   if(oldTab==='questions')assert.equal(url.searchParams.get('anchor'),'discussion');
@@ -102,7 +102,8 @@ for(const lesson of lessons){
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams(${JSON.stringify('lab='+lab.id)}))`);
   assert.equal(evaluate('currentLesson.id'),id);assert.ok(html.includes(marker));
   const converted=evaluate(`routeHref(${JSON.stringify('#/topics/'+topic.id+'?tab=labs&lab='+lab.id)})`);
-  const url=new URL(converted,origin);assert.equal(url.pathname,basePath+'/learn/'+lesson.id+'/exercise/');
+  const url=new URL(converted,origin);assert.equal(url.pathname,basePath+'/learn/'+lesson.id+'/');
+  assert.equal(url.searchParams.get('tab'),'exercise');
   assert.equal(url.searchParams.get('lab'),lab.id);
  });
 }
