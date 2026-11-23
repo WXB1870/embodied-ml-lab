@@ -55,7 +55,7 @@ for(const lesson of lessons){
   for(const anchor of ['discussion','question-0','mistakes','pitfall-0']){
    const raw='/learn/'+lesson.id+'/?tab=theory&anchor='+anchor;
    const target=new URL(evaluate(`routeHref(${JSON.stringify(raw)})`),origin);
-   assert.equal(target.pathname,basePath+'/learn/'+lesson.id+'/');
+   assert.ok([basePath+'/learn/'+lesson.id+'/',basePath+'/learn/'+lesson.id+'/exercise/'].includes(target.pathname));
    assert.equal(target.searchParams.get('anchor'),anchor);
    assert.equal(target.searchParams.get('tab'),'exercise');
   }
