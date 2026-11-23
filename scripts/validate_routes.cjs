@@ -108,7 +108,7 @@ for(const lesson of lessons){
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams(${JSON.stringify('lab='+lab.id)}))`);
   assert.equal(evaluate('currentLesson.id'),id);assert.ok(html.includes(marker));
   const converted=evaluate(`routeHref(${JSON.stringify('#/topics/'+topic.id+'?tab=labs&lab='+lab.id)})`);
-  const url=new URL(converted,origin);assert.equal(url.pathname,basePath+'/learn/'+lesson.id+'/');
+  const url=new URL(converted,origin);assert.equal(url.pathname,basePath+'/learn/'+canonicalId+'/');
   assert.equal(url.searchParams.get('tab'),'exercise');
   assert.equal(url.searchParams.get('lab'),lab.id);
  });
