@@ -80,6 +80,7 @@ function routeHref(raw){
   }
  }
  if(parts[0]==='learn'&&parts[1]){
+  parts[1]=LEGACY_LESSON_IDS[parts[1]]||parts[1];
   let tab=params.get('tab')||(['code','exercise'].includes(parts[2])?parts[2]:'theory');
   if(raw.startsWith('#/learn/')){
    const map=byId[parts[1]]?.legacyAnchorMap||{};
