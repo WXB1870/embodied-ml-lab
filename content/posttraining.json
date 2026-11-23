@@ -1026,9 +1026,9 @@
       "title": "手写 PPO clipped surrogate",
       "prompt": "实现 ppo_surrogate(ratio, advantage, eps)，返回最大化目标的单样本平均值；ratio 与 advantage 等长。",
       "runtime": "python",
-      "starter": "def ppo_surrogate(ratios, advantages, eps=0.2):\\n    # TODO\\n    raise NotImplementedError\\n",
-      "solution": "def ppo_surrogate(ratios,advantages,eps=0.2):\\n    if len(ratios)!=len(advantages) or not ratios or eps<0: raise ValueError('invalid inputs')\\n    values=[]\\n    for r,a in zip(ratios,advantages):\\n        clipped=max(1-eps,min(1+eps,r))\\n        values.append(min(r*a,clipped*a))\\n    return sum(values)/len(values)\\n",
-      "tests": "assert abs(ppo_surrogate([1.5],[2.0],0.2)-2.4)<1e-12\\nassert abs(ppo_surrogate([0.5],[-2.0],0.2)-(-1.6))<1e-12\\nassert abs(ppo_surrogate([1.0],[1.0]))<1e-12 or ppo_surrogate([1.0],[1.0])==1.0\\nprint('PPO clipping branches passed')\\n",
+      "starter": "def ppo_surrogate(ratios, advantages, eps=0.2):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "def ppo_surrogate(ratios,advantages,eps=0.2):\n    if len(ratios)!=len(advantages) or not ratios or eps<0: raise ValueError('invalid inputs')\n    values=[]\n    for r,a in zip(ratios,advantages):\n        clipped=max(1-eps,min(1+eps,r))\n        values.append(min(r*a,clipped*a))\n    return sum(values)/len(values)\n",
+      "tests": "assert abs(ppo_surrogate([1.5],[2.0],0.2)-2.4)<1e-12\nassert abs(ppo_surrogate([0.5],[-2.0],0.2)-(-1.6))<1e-12\nassert abs(ppo_surrogate([1.0],[1.0]))<1e-12 or ppo_surrogate([1.0],[1.0])==1.0\nprint('PPO clipping branches passed')\n",
       "hints": [
         "分别计算 ratio*A 与 clip(ratio)*A。",
         "取 min 之前先乘优势；优势为负时分支会改变。"
@@ -1037,9 +1037,9 @@
     },
     "pytorchTask": {
       "prompt": "实现 GAE：输入 rewards、values、dones 均为 [T]，从末端反向递推优势；done 为 True 时不跨终止边界 bootstrap。",
-      "starter": "import torch\\ndef compute_gae(rewards, values, dones, gamma=0.99, lam=0.95, last_value=0.0):\\n    # TODO\\n    raise NotImplementedError\\n",
-      "solution": "import torch\\ndef compute_gae(rewards,values,dones,gamma=0.99,lam=0.95,last_value=0.0):\\n    if rewards.ndim!=1 or values.shape!=rewards.shape or dones.shape!=rewards.shape: raise ValueError('shape mismatch')\\n    adv=torch.zeros_like(rewards); running=torch.as_tensor(last_value,dtype=values.dtype,device=values.device)\\n    for t in reversed(range(len(rewards))):\\n        nonterminal=(~dones[t]).to(values.dtype)\\n        next_value=running if t==len(rewards)-1 else values[t+1]\\n        delta=rewards[t]+gamma*next_value*nonterminal-values[t]\\n        running=delta+gamma*lam*nonterminal*running\\n        adv[t]=running\\n    return adv,adv+values\\n",
-      "tests": "r=torch.tensor([1.,1.]); v=torch.tensor([0.5,0.5]); d=torch.tensor([False,True])\\na,ret=compute_gae(r,v,d,gamma=1.,lam=1.)\\ntorch.testing.assert_close(a,torch.tensor([1.5,0.5]))\\ntorch.testing.assert_close(ret,torch.tensor([2.,1.]))\\nprint('GAE terminal-boundary test passed')\\n",
+      "starter": "import torch\ndef compute_gae(rewards, values, dones, gamma=0.99, lam=0.95, last_value=0.0):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "import torch\ndef compute_gae(rewards,values,dones,gamma=0.99,lam=0.95,last_value=0.0):\n    if rewards.ndim!=1 or values.shape!=rewards.shape or dones.shape!=rewards.shape: raise ValueError('shape mismatch')\n    adv=torch.zeros_like(rewards); running=torch.as_tensor(last_value,dtype=values.dtype,device=values.device)\n    for t in reversed(range(len(rewards))):\n        nonterminal=(~dones[t]).to(values.dtype)\n        next_value=running if t==len(rewards)-1 else values[t+1]\n        delta=rewards[t]+gamma*next_value*nonterminal-values[t]\n        running=delta+gamma*lam*nonterminal*running\n        adv[t]=running\n    return adv,adv+values\n",
+      "tests": "r=torch.tensor([1.,1.]); v=torch.tensor([0.5,0.5]); d=torch.tensor([False,True])\na,ret=compute_gae(r,v,d,gamma=1.,lam=1.)\ntorch.testing.assert_close(a,torch.tensor([1.5,0.5]))\ntorch.testing.assert_close(ret,torch.tensor([2.,1.]))\nprint('GAE terminal-boundary test passed')\n",
       "hints": [
         "TD residual 是 r_t + gamma * V_{t+1} * (1-done) - V_t。",
         "GAE 递推也要乘 (1-done)，避免优势穿过终止边界。"
@@ -1250,9 +1250,9 @@
       "title": "计算偏好对的 DPO margin",
       "prompt": "实现 DPO 的单样本损失，输入四个标量 log probability 与 beta，返回 -log sigmoid(beta * ((policy_chosen-ref_chosen)-(policy_rejected-ref_rejected)))。",
       "runtime": "python",
-      "starter": "import math\\ndef dpo_loss(pc, pr, rc, rr, beta):\\n    # TODO: 稳定计算 log-sigmoid\\n    raise NotImplementedError\\n",
-      "solution": "import math\\ndef dpo_loss(pc, pr, rc, rr, beta):\\n    z=beta*((pc-rc)-(pr-rr))\\n    return max(-z,0.0)+math.log1p(math.exp(-abs(z)))\\n",
-      "tests": "assert abs(dpo_loss(-1.,-2.,-1.,-2.,0.1)-math.log(2))<1e-12\\nassert dpo_loss(-0.5,-2.,-1.,-2.,0.1)<dpo_loss(-2.,-0.5,-1.,-2.,0.1)\\nprint('DPO margin tests passed')\\n",
+      "starter": "import math\ndef dpo_loss(pc, pr, rc, rr, beta):\n    # TODO: 稳定计算 log-sigmoid\n    raise NotImplementedError\n",
+      "solution": "import math\ndef dpo_loss(pc, pr, rc, rr, beta):\n    z=beta*((pc-rc)-(pr-rr))\n    return max(-z,0.0)+math.log1p(math.exp(-abs(z)))\n",
+      "tests": "assert abs(dpo_loss(-1.,-2.,-1.,-2.,0.1)-math.log(2))<1e-12\nassert dpo_loss(-0.5,-2.,-1.,-2.,0.1)<dpo_loss(-2.,-0.5,-1.,-2.,0.1)\nprint('DPO margin tests passed')\n",
       "hints": [
         "先计算策略相对 reference 的两个 log-ratio，再求差。",
         "使用稳定 softplus 形式计算 -log sigmoid(z)。"
@@ -1261,9 +1261,9 @@
     },
     "pytorchTask": {
       "prompt": "实现组内标准化优势，输入 rewards [B,G]，按每行组内均值与总体标准差归一化。",
-      "starter": "import torch\\ndef group_advantage(rewards, eps=1e-6):\\n    # TODO\\n    raise NotImplementedError\\n",
-      "solution": "import torch\\ndef group_advantage(rewards, eps=1e-6):\\n    if rewards.ndim!=2 or rewards.shape[1]<2: raise ValueError('expect [B,G], G>=2')\\n    mean=rewards.mean(-1,keepdim=True)\\n    std=rewards.std(-1,keepdim=True,unbiased=False)\\n    return (rewards-mean)/(std+eps)\\n",
-      "tests": "r=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\\na=group_advantage(r)\\nassert a[0,0]<0<a[0,2]\\nassert torch.isfinite(a).all()\\ntorch.testing.assert_close(a[1],torch.zeros(3))\\nprint('GRPO group advantage tests passed')\\n",
+      "starter": "import torch\ndef group_advantage(rewards, eps=1e-6):\n    # TODO\n    raise NotImplementedError\n",
+      "solution": "import torch\ndef group_advantage(rewards, eps=1e-6):\n    if rewards.ndim!=2 or rewards.shape[1]<2: raise ValueError('expect [B,G], G>=2')\n    mean=rewards.mean(-1,keepdim=True)\n    std=rewards.std(-1,keepdim=True,unbiased=False)\n    return (rewards-mean)/(std+eps)\n",
+      "tests": "r=torch.tensor([[1.,2.,3.],[4.,4.,4.]])\na=group_advantage(r)\nassert a[0,0]<0<a[0,2]\nassert torch.isfinite(a).all()\ntorch.testing.assert_close(a[1],torch.zeros(3))\nprint('GRPO group advantage tests passed')\n",
       "hints": [
         "保持 prompt 维度，沿最后一维计算组内统计。",
         "std 使用 unbiased=False，常量组加 epsilon 后应输出有限零值。"
