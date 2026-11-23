@@ -670,7 +670,7 @@
           "检查位置 0 的恒等性、旋转范数保持，以及缓存位置偏移。"
         ],
         "formula": "\\|R(m)x\\|_2=\\|x\\|_2",
-        "code": "import torch\\n\\ndef rope(x, positions, inv_freq):\\n    # x: [..., T, D], D must be even\\n    angle = positions[..., None] * inv_freq\\n    c, s = angle.cos(), angle.sin()\\n    even, odd = x[..., 0::2], x[..., 1::2]\\n    out = torch.stack((even*c-odd*s, even*s+odd*c), dim=-1)\\n    return out.flatten(-2)\\n\\nx=torch.randn(2,5,8); pos=torch.arange(5.); freq=1.0/(10000**(torch.arange(4.)/4))\\ny=rope(x,pos,freq)\\ntorch.testing.assert_close(x.norm(dim=-1),y.norm(dim=-1))\\nprint(y.shape)",
+        "code": "import torch\n\ndef rope(x, positions, inv_freq):\n    # x: [..., T, D], D must be even\n    angle = positions[..., None] * inv_freq\n    c, s = angle.cos(), angle.sin()\n    even, odd = x[..., 0::2], x[..., 1::2]\n    out = torch.stack((even*c-odd*s, even*s+odd*c), dim=-1)\n    return out.flatten(-2)\n\nx=torch.randn(2,5,8); pos=torch.arange(5.); freq=1.0/(10000**(torch.arange(4.)/4))\ny=rope(x,pos,freq)\ntorch.testing.assert_close(x.norm(dim=-1),y.norm(dim=-1))\nprint(y.shape)",
         "codeKind": "complete",
         "codeExplanation": "此代码片段用于将本节推导落实为可执行张量运算。"
       },
