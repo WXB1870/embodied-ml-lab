@@ -42,15 +42,22 @@ for number,l in enumerate(lessons,1):
         l['subtitle']=t['subtitle']
         l['lead']=t['lead']
         l['sections']=copy.deepcopy(t['sections'])
+        l['advancedSections']=copy.deepcopy(t.get('advancedSections', []))
         l['shapes']=[{'name':n['symbol'],'shape':n['shape'],'meaning':n['meaning']} for n in t['notation']]
         l['knowledgeChecks']=copy.deepcopy(t['questions'])
+        l['advancedKnowledgeChecks']=copy.deepcopy(t.get('advancedQuestions', []))
         l['pitfalls']=copy.deepcopy(t['pitfalls'])
+        l['advancedPitfalls']=copy.deepcopy(t.get('advancedPitfalls', []))
         l['sources']=list({s['url']:s for s in l['sources']+t['sources']}.values())
-        l['extraImplementations']=copy.deepcopy(t['implementations'])
+        advanced_impl=set(t.get('advancedImplementationIds', []))
+        l['extraImplementations']=copy.deepcopy([d for d in t['implementations'] if d['id'] not in advanced_impl])
+        l['advancedImplementations']=copy.deepcopy([d for d in t['implementations'] if d['id'] in advanced_impl])
         if t.get('mainImplementation'):
             l['mainImplementation']=t['mainImplementation']
             assert any(d['id']==l['mainImplementation'] for d in l['extraImplementations'])
-        l['extraLabs']=copy.deepcopy(t['labs'])
+        advanced_labs=set(t.get('advancedLabIds', []))
+        l['extraLabs']=copy.deepcopy([d for d in t['labs'] if d['id'] not in advanced_labs])
+        l['advancedLabs']=copy.deepcopy([d for d in t['labs'] if d['id'] in advanced_labs])
 required=['id','number','module','title','subtitle','minutes','tags','prerequisites','objectives','why','lead','sections','shapes','code','exercise','pytorchTask','pitfalls','sources','knowledgeChecks']
 for l in lessons:
     for k in required: assert k in l,(l['id'],k)
