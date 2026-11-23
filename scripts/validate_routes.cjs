@@ -115,7 +115,8 @@ test('Core code pages start with the running example and retain unique code fram
  }
 });
 test('Attention course retains its own executable code page',()=>{
- const html=evaluate(`renderLesson(byId[\"attention\"],'code','python',new URLSearchParams())`);\n assert.ok(html.includes('id=\"lesson-code\"')&&html.includes('id=\"code-implementation\"'));
+ const html=evaluate(`renderLesson(byId[\"attention\"],'code','python',new URLSearchParams())`);
+ assert.ok(html.includes('id=\"lesson-code\"')&&html.includes('id=\"code-implementation\"'));
 });
 fs.writeFileSync(path.join(root,'reports/route-validation.json'),JSON.stringify({total:records.length,passed:records.length,results:records},null,2)+'\n');
 console.log(JSON.stringify({routeAndRendererChecks:records.length,passed:records.length}));
