@@ -60,15 +60,17 @@ for(const lesson of lessons){
    assert.equal(target.searchParams.get('tab'),'exercise');
   }
  });
- test(lesson.id+' native code and exercise routes',()=>{
+ test(lesson.id+' canonical theory/code/exercise query routes',()=>{
   for(const tab of ['theory','code','exercise']){
-   const expected='/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/')+'?tab='+tab;
+   const expected='/learn/'+lesson.id+'/?tab='+tab;
    assert.equal(evaluate(`routeHref(${JSON.stringify(expected)})`),basePath+expected);
    assert.equal(evaluate(`routeHref(${JSON.stringify(basePath+expected)})`),basePath+expected);
-   context.location.pathname=basePath+'/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/');
-   context.location.search='';context.location.hash='';
+   const legacy='/learn/'+lesson.id+'/'+(tab==='theory'?'':tab+'/')+'?tab='+tab;
+   assert.equal(evaluate(`routeHref(${JSON.stringify(legacy)})`),basePath+expected);
+   context.location.pathname=basePath+'/learn/'+lesson.id+'/';
+   context.location.search='?tab='+tab;context.location.hash='';
    assert.equal(evaluate('parseRoute().path'),'/learn/'+lesson.id);
-   assert.equal(evaluate('parseRoute().params.get("tab")')||'theory',tab);
+   assert.equal(evaluate('parseRoute().params.get("tab")'),tab);
   }
  });
  if(!lesson.theoryTopic)continue;
