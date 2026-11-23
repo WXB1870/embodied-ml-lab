@@ -2,7 +2,7 @@
 
 本次课程重构采用“新主干 + 旧内容保留”的策略。原始课程 JSON 不删除、不覆盖，继续保存在原有源文件中，作为历史版本、参考材料和后续补充来源。
 
-## 原始课程源文件
+## 原始课程源文件与归档分卷
 
 - `content/foundations.json`
 - `content/architecture.json`
@@ -14,6 +14,7 @@
 - `content/policy-models.json`
 - `content/vla-architecture.json`
 - `content/topics/`
+- `content/archive/legacy-curriculum-part-1a.json`、`legacy-curriculum-part-1b.json`、`legacy-curriculum-part-2.json`：旧课程的可检索归档分卷。
 
 ## 迁移原则
 
@@ -22,6 +23,7 @@
 3. 旧课程源文件保留原样，避免丢失推导、代码、练习和参考答案。
 4. 旧课程 URL 通过前端兼容映射跳转到新课程或对应附录主题。
 5. 旧专题练习数据继续保留，待逐步整合到对应新课程。
+6. 未迁移的旧课程仍以 `module: legacy` 进入运行数据和历史归档入口，不参与首页核心目录或核心练习筛选。
 
 ## 课程边界
 
