@@ -53,7 +53,7 @@ for(const [lessonId,topicId] of Object.entries(curriculum.canonicalTopics||{})){
  const dir=path.join(dist,'topics',topicId);fs.mkdirSync(dir,{recursive:true});
  const target=sitePath('/learn/'+lessonId+'/');
  const firstLab=topics.find(t=>t.id===topicId).labs[0].id;
- const redirectScript=`const p=new URLSearchParams(location.search),old=p.get('tab')||'guide';const tab=({guide:'theory',labs:'exercise',questions:'exercise',reference:'theory'}[old]||old);p.set('tab',tab);if(old==='questions')p.set('anchor','discussion');if(old==='labs'&&!p.has('lab'))p.set('lab',${JSON.stringify(firstLab)});location.replace(${JSON.stringify(target)}+(tab==='theory'?'':tab+'/')+'?'+p.toString()+location.hash);`;
+ const redirectScript=`const p=new URLSearchParams(location.search),old=p.get('tab')||'guide';const tab=({guide:'theory',labs:'exercise',questions:'exercise',reference:'theory'}[old]||old);p.set('tab',tab);if(old==='questions')p.set('anchor','discussion');if(old==='labs'&&!p.has('lab'))p.set('lab',${JSON.stringify(firstLab)});location.replace(${JSON.stringify(target)}+'?'+p.toString()+location.hash);`;
  fs.writeFileSync(path.join(dir,'index.html'),`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>课程地址已合并</title><meta name="robots" content="noindex"><link rel="canonical" href="${origin+target}"></head><body><a href="${target}">打开课程</a><script>${redirectScript}</script></body></html>`);
 }
 fs.writeFileSync(path.join(dist,'robots.txt'),`User-agent: *\nAllow: /\nSitemap: ${origin+sitePath('/sitemap.xml')}\n`);
