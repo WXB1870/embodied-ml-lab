@@ -81,7 +81,7 @@ for(const lesson of lessons){
   }
  });
  if(!lesson.theoryTopic)continue;
- const topic=topics.find(t=>t.id===lesson.theoryTopic),ids=new Set(topic.sections.map(s=>s.id));
+ const topic=topics.find(t=>t.id===lesson.theoryTopic),ids=new Set([...topic.sections,...(topic.advancedSections||[])].map(s=>s.id));
  const topicCanonicalId=({mlp:'mlp',cnn:'cnn-receptive-field',transformer:'attention','flow-matching':'flow-matching'})[topic.id]||canonicalId;
  for(const [old,target] of Object.entries(lesson.legacySectionMap))test(lesson.id+' old section '+old,()=>assert.ok(ids.has(target)));
  for(const [old,target] of Object.entries(lesson.legacyAnchorMap)){
