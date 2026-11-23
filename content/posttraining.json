@@ -1023,28 +1023,28 @@
       "expected": "损失有限且梯度可计算。"
     },
     "exercise": {
-      "title": "检查正负优势会怎样改变动作概率",
-      "prompt": "实现 `categorical_logit_gradient(probabilities,chosen,advantage)`，返回损失 \\(-A\\log p(\\mathrm{chosen})\\) 对 logits 的梯度。输入概率应非负且和为 1，chosen 合法。",
+      "title": "手写 PPO clipped surrogate",
+      "prompt": "实现 ppo_surrogate(ratio, advantage, eps)，返回最大化目标的单样本平均值；ratio 与 advantage 等长。",
       "runtime": "python",
-      "starter": "import math\n\ndef categorical_logit_gradient(probabilities,chosen,advantage):\n    # TODO: 使用 softmax 对数概率的导数\n    raise NotImplementedError\n",
-      "solution": "import math\n\ndef categorical_logit_gradient(probabilities,chosen,advantage):\n    if not probabilities or not 0<=chosen<len(probabilities):\n        raise ValueError('invalid action')\n    if any(p<0 or not math.isfinite(p) for p in probabilities) or not math.isclose(sum(probabilities),1.0):\n        raise ValueError('invalid distribution')\n    return [advantage*(p-(1.0 if j==chosen else 0.0)) for j,p in enumerate(probabilities)]\n",
-      "tests": "assert categorical_logit_gradient([0.5,0.5],1,2.0)==[1.0,-1.0]\nassert categorical_logit_gradient([0.5,0.5],1,-2.0)==[-1.0,1.0]\ng=categorical_logit_gradient([0.2,0.3,0.5],2,1.)\nassert abs(sum(g))<1e-12 and g[2]<0\nprint('正优势增大动作概率，负优势减小动作概率；梯度方向检查通过。')\n",
+      "starter": "def ppo_surrogate(ratios, advantages, eps=0.2):\\n    # TODO\\n    raise NotImplementedError\\n",
+      "solution": "def ppo_surrogate(ratios,advantages,eps=0.2):\\n    if len(ratios)!=len(advantages) or not ratios or eps<0: raise ValueError('invalid inputs')\\n    values=[]\\n    for r,a in zip(ratios,advantages):\\n        clipped=max(1-eps,min(1+eps,r))\\n        values.append(min(r*a,clipped*a))\\n    return sum(values)/len(values)\\n",
+      "tests": "assert abs(ppo_surrogate([1.5],[2.0],0.2)-2.4)<1e-12\\nassert abs(ppo_surrogate([0.5],[-2.0],0.2)-(-1.6))<1e-12\\nassert abs(ppo_surrogate([1.0],[1.0]))<1e-12 or ppo_surrogate([1.0],[1.0])==1.0\\nprint('PPO clipping branches passed')\\n",
       "hints": [
-        "\\(-\\log\\operatorname{softmax}\\) 的导数是 \\(p-\\operatorname{one\\_hot}(a)\\)。",
-        "梯度下降减去梯度，所以选中动作的负梯度会提高它的 logit。"
+        "分别计算 ratio*A 与 clip(ratio)*A。",
+        "取 min 之前先乘优势；优势为负时分支会改变。"
       ],
-      "explanation": "优势是这个交叉熵式梯度的带符号权重。正优势和负优势方向相反，零优势不贡献此项更新。概率为零时真实 `log_prob` 有边界问题；本练习给出的是 softmax 有限 logits 情况下导数公式的计算。"
+      "explanation": "这是要最大化的 surrogate，不是梯度下降使用的负损失；完整 PPO 还需要 rollout、GAE、critic 与策略版本管理。"
     },
     "pytorchTask": {
-      "prompt": "实现 `gaussian_actor_loss(mu,log_std,actions,advantages)`。mu/actions 为 `[B,D]`，`log_std` 为 [D] 或 `[B,D]`，advantages 为 `[B]`。`log_std` clamp 到 [−5,2]，对动作轴求和；停止 action 与 advantage 的梯度，仅实现未压缩对角 Gaussian 的 score-function 损失。",
-      "starter": "import torch\nfrom torch.distributions import Normal\n\ndef gaussian_actor_loss(mu,log_std,actions,advantages):\n    # TODO: 正标准差、联合 log_prob、正确的梯度边界\n    raise NotImplementedError\n",
-      "solution": "import torch\nfrom torch.distributions import Normal\n\ndef gaussian_actor_loss(mu,log_std,actions,advantages):\n    if mu.ndim!=2 or actions.shape!=mu.shape or advantages.shape!=(len(mu),):\n        raise ValueError('shape mismatch')\n    if log_std.shape not in ((mu.shape[1],),mu.shape):\n        raise ValueError('invalid log_std shape')\n    std=log_std.clamp(-5.,2.).exp()\n    distribution=Normal(mu,std)\n    joint_log_prob=distribution.log_prob(actions.detach()).sum(dim=-1)\n    return -(joint_log_prob*advantages.detach()).mean()\n",
-      "tests": "mu=torch.zeros(1,2,requires_grad=True)\nlog_std=torch.zeros(2,requires_grad=True)\nactions=torch.tensor([[1.,-2.]],requires_grad=True)\nadvantages=torch.tensor([2.],requires_grad=True)\nloss=gaussian_actor_loss(mu,log_std,actions,advantages)\nloss.backward()\ntorch.testing.assert_close(mu.grad,torch.tensor([[-2.,4.]]))\nassert log_std.grad is not None\nassert actions.grad is None and advantages.grad is None\n# rsample 的路径必须停止，才能得到这里声明的 score-function 项。\ntorch.manual_seed(4)\nm=torch.zeros(1,requires_grad=True)\nd=Normal(m,torch.ones(1))\na=d.rsample()\nbad=torch.autograd.grad(-d.log_prob(a).sum(),m,retain_graph=True)[0]\ngood=torch.autograd.grad(-d.log_prob(a.detach()).sum(),m)[0]\ntorch.testing.assert_close(bad,torch.zeros_like(bad))\nassert good.abs().item()>1e-6\nprint('动作轴求和、可学习方差和 sample/rsample 梯度边界检查通过。')\n",
+      "prompt": "实现 GAE：输入 rewards、values、dones 均为 [T]，从末端反向递推优势；done 为 True 时不跨终止边界 bootstrap。",
+      "starter": "import torch\\ndef compute_gae(rewards, values, dones, gamma=0.99, lam=0.95, last_value=0.0):\\n    # TODO\\n    raise NotImplementedError\\n",
+      "solution": "import torch\\ndef compute_gae(rewards,values,dones,gamma=0.99,lam=0.95,last_value=0.0):\\n    if rewards.ndim!=1 or values.shape!=rewards.shape or dones.shape!=rewards.shape: raise ValueError('shape mismatch')\\n    adv=torch.zeros_like(rewards); running=torch.as_tensor(last_value,dtype=values.dtype,device=values.device)\\n    for t in reversed(range(len(rewards))):\\n        nonterminal=(~dones[t]).to(values.dtype)\\n        next_value=running if t==len(rewards)-1 else values[t+1]\\n        delta=rewards[t]+gamma*next_value*nonterminal-values[t]\\n        running=delta+gamma*lam*nonterminal*running\\n        adv[t]=running\\n    return adv,adv+values\\n",
+      "tests": "r=torch.tensor([1.,1.]); v=torch.tensor([0.5,0.5]); d=torch.tensor([False,True])\\na,ret=compute_gae(r,v,d,gamma=1.,lam=1.)\\ntorch.testing.assert_close(a,torch.tensor([1.5,0.5]))\\ntorch.testing.assert_close(ret,torch.tensor([2.,1.]))\\nprint('GAE terminal-boundary test passed')\\n",
       "hints": [
-        "`Normal.log_prob` 返回 `[B,D]`；只沿 `dim=-1` 求和后才能与 `[B]` 优势逐样本相乘。",
-        "`actions.detach()` 防止 `rsample` 的路径改变 score-function 估计；advantages.`detach`() 阻止 actor 乘积训练基线。"
+        "TD residual 是 r_t + gamma * V_{t+1} * (1-done) - V_t。",
+        "GAE 递推也要乘 (1-done)，避免优势穿过终止边界。"
       ],
-      "explanation": "对角独立分布的联合 `log_prob` 是各动作维的和。`log_std` 保证标准差正值，clamp 是本题明确的数值约定，范围外梯度会为零。actions 的路径应停止以实现此处估计；依赖可微 Q 的重参数化 actor 目标则可能有意保留。tanh 压缩或动作裁剪需要另行处理密度，不能直接使用本函数宣称正确。"
+      "explanation": "本实现使用 dones 表示真正终止；时间截断需要单独保留 bootstrap value，不能与 terminal 混为一谈。"
     },
     "pitfalls": [
       {
