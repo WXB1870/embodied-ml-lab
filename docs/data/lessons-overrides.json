@@ -2,7 +2,7 @@
   {
     "id": "mlp",
     "number": 22,
-    "module": "appendix",
+    "module": "network-foundations",
     "title": "MLP：结构、前向与反向传播",
     "subtitle": "面向模型阅读与面试手撕的精简参考：从 Linear 和非线性开始，完整推导两层网络前向、损失与参数梯度，并用 PyTorch 验证。",
     "minutes": 90,
@@ -787,7 +787,7 @@
   {
     "id": "cnn-receptive-field",
     "number": 24,
-    "module": "appendix",
+    "module": "network-foundations",
     "level": "P0",
     "title": "CNN：卷积计算与感受野",
     "subtitle": "面向视觉编码器阅读的精简参考：掌握 Conv2d 张量语义、输出尺寸、参数量与感受野，并用 unfold 对照 PyTorch。",
