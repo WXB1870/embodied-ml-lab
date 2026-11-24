@@ -112,3 +112,22 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
 .lv-stage>label,.lv-stage>.lv-params,.lv-stage>.lv-attn-controls{display:none!important}.lv-interactive-controls{margin:12px 0 14px;padding:10px 12px;background:#f4f7fb;border-radius:5px}.lv-interactive-controls>label{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#586b84}.lv-interactive-controls input[type=range]{flex:1;min-width:130px;accent-color:#4779ba}.lv-interactive-controls output{font-variant-numeric:tabular-nums;color:#2e5f9d;font-weight:600}.lv-interactive-controls select{border:1px solid #d5dfeb;border-radius:4px;padding:5px 8px;background:#fff;color:#435872}
 
 .lv-code-line{align-items:baseline;flex-wrap:wrap}.lv-code-line small{display:block;margin-left:30px;white-space:normal;max-width:740px;color:#8794a6;font:10px/1.65 var(--sans)}
+
+/* Learning structure: compact cross-course links and method evolution. */
+.learning-connections,.evolution-details{margin:16px 0 20px}
+.learning-connections>summary,.evolution-details>summary{font-size:13px;color:#63748b}
+.learning-connections .detail-body,.evolution-details .detail-body{padding:15px 18px 17px}
+.connection-group+.connection-group{margin-top:13px;padding-top:12px;border-top:1px solid var(--line)}
+.connection-group>span{display:block;font-size:11px;letter-spacing:.04em;color:#8997a9;margin-bottom:7px}
+.connection-links{display:flex;flex-wrap:wrap;gap:7px 16px}
+.connection-links a{font-size:12px;line-height:1.8;color:#52749b}
+.connection-links a:hover{color:var(--blue);text-decoration:underline}
+.evolution-context{font-size:13px!important;color:#68788d;margin:0 0 12px!important}
+.evolution-steps{margin:0;padding-left:21px}
+.evolution-steps li{padding:5px 0 8px 3px;color:#526177}
+.evolution-steps li::marker{font-family:var(--mono);font-size:11px;color:#92a2b7}
+.evolution-steps strong{font-size:13px;font-weight:600;color:#344a67}
+.evolution-steps p{font-size:13px!important;line-height:1.8;margin:3px 0 0!important}
+.evolution-takeaway{font-size:13px!important;line-height:1.8;margin:12px 0 0!important;padding-top:11px;border-top:1px solid var(--line);color:#53657d}
+.evolution-takeaway strong{color:#344a67;font-weight:600}
+@media(max-width:760px){.learning-connections .detail-body,.evolution-details .detail-body{padding:13px 14px}.connection-links{gap:6px 12px}}
