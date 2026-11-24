@@ -85,7 +85,7 @@
       "id": "robot-agent",
       "name": "具身智能体与技能编排",
       "short": "具身智能体与技能编排",
-      "desc": "围绕物理世界中的可靠任务决策，学习多时间尺度架构、VLA/规控/感知异构技能调度、长时序任务记忆、闭环验证与异常恢复，并通过移动操作任务进行系统级设计评估。",
+      "desc": "沿 RAX Franka 四杯找方块的真实运行记录，学习机器人工具、状态记忆、失败恢复与端到端验收。",
       "lessons": [
         "agent-architecture",
         "skill-orchestration",
