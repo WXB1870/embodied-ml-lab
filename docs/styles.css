@@ -167,7 +167,7 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
     border-radius:50%;pointer-events:none;opacity:0;
     background:radial-gradient(circle,rgba(113,164,225,.12) 0,rgba(113,164,225,.055) 34%,transparent 70%);
     transform:translate3d(-50%,-50%,0);
-    transition:opacity .25s ease;
+    transition:left .14s cubic-bezier(.2,.7,.2,1),top .14s cubic-bezier(.2,.7,.2,1),opacity .25s ease;
     mix-blend-mode:multiply;
   }
   body.pointer-active .cursor-aura{opacity:1}
@@ -209,3 +209,14 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
   .topic-card,.practice-card,.agent-card,.feature-card,.agent-node,.agent-skill,.agent-project,.button,.search-trigger,.icon-button,.brand-mark{transition:none!important;transform:none!important;translate:none!important}
   .pointer-ripple{display:none!important}
 }
+
+
+/* Very low-contrast aurora keeps the reading canvas calm. */
+body{
+  background-image:
+    radial-gradient(ellipse 42rem 30rem at 8% 4%,rgba(202,222,247,.22),transparent 72%),
+    radial-gradient(ellipse 38rem 28rem at 92% 16%,rgba(218,226,248,.18),transparent 74%),
+    radial-gradient(ellipse 44rem 34rem at 52% 94%,rgba(216,237,235,.12),transparent 76%);
+  background-attachment:fixed;
+}
+@media(prefers-reduced-motion:reduce){body{background-attachment:scroll}}
