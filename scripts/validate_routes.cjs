@@ -9,7 +9,7 @@ const context={console,URL,URLSearchParams,EML_BASE_PATH:basePath,katex:require(
  localStorage:{getItem:()=>null,setItem:noop},document:{addEventListener:noop},
  setTimeout:noop,clearTimeout:noop};
 context.window=context;vm.createContext(context);
-for(const name of ['math.js','explorers.js','p0-explorers.js','deep-explorers.js','reader.js'])vm.runInContext(fs.readFileSync(path.join(dist,name),'utf8'),context);
+for(const name of ['math.js','explorers.js','p0-explorers.js','deep-explorers.js','learning-visuals.js','reader.js'])vm.runInContext(fs.readFileSync(path.join(dist,name),'utf8'),context);
 const app=fs.readFileSync(path.join(dist,'app.js'),'utf8');
 vm.runInContext(app.slice(0,app.indexOf("document.addEventListener('click'")),context);
 vm.runInContext(`curriculum=${JSON.stringify(curriculum)};MODULES=curriculum.modules;lessons=${JSON.stringify(lessons)};topics=${JSON.stringify(topics)};byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topicById=Object.fromEntries(topics.map(t=>[t.id,t]));registerTopicExercises();markReading=()=>{};`,context);
