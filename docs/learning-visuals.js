@@ -63,7 +63,12 @@ function lvStage(id,step,root){
  const c=LV[id]||AGENT[id],n=c.steps.length;
  if(id==='attention'){
   const q=Number(root.querySelector('[data-lv-query]')?.value||2);
-  const raw=[0,1,2,3,4].map(function(i){return Math.exp(-Math.abs(i-q)*(step+1)*.55);}),total=raw.reduce(function(a,b){return a+b;},0);return '<div class="lv-bars">'+raw.map(function(w,i){const pct=100*w/total;return '<div><span>T'+(i+1)+'</span><b><i style="width:'+pct+'%"></i></b><small>'+pct.toFixed(1)+'%</small></div>';}).join('')+'</div><p>这里用随距离衰减的教学匹配分数演示 Softmax 归一化；真实权重由 QKᵀ、Mask 与 Softmax 共同决定。</p>';
+  const queries=[[1,.5],[.4,1],[-.5,.8],[1,-.4],[-1,.2]],keys=[[1,0],[.8,.2],[.1,1],[-.5,.3],[-1,-.5]],values=[[1,0],[.5,1],[.3,-.5],[-.5,.4],[-1,-1]];
+  const query=queries[q],scores=keys.map(function(k){return (query[0]*k[0]+query[1]*k[1])/Math.sqrt(2);});
+  const exps=scores.map(function(s){return Math.exp(s-Math.max.apply(null,scores));}),sum=exps.reduce(function(x,y){return x+y;},0),weights=exps.map(function(x){return x/sum;});
+  const output=[0,1].map(function(d){return weights.reduce(function(total,w,i){return total+w*values[i][d];},0);});
+  const shown=step>=3?weights:scores.map(function(s){return (s-Math.min.apply(null,scores))/(Math.max.apply(null,scores)-Math.min.apply(null,scores)+1e-8);});
+  return '<div class="lv-bars">'+shown.map(function(w,i){return '<div><span>K'+(i+1)+'</span><b><i style="width:'+(w*100)+'%"></i></b><small>'+(step>=3?(w*100).toFixed(1)+'%':'s='+scores[i].toFixed(2))+'</small></div>';}).join('')+'</div><div class="lv-results"><div><span>Query</span><b>['+query.map(function(x){return x.toFixed(1);}).join(', ')+']</b></div><div><span>加权 Value 输出</span><b>['+output.map(function(x){return x.toFixed(2);}).join(', ')+']</b></div></div><p>'+(step<3?'当前显示 Q·K/√d 匹配分数；后续对这些分数做 Softmax。':'当前显示真实 Softmax 权重，并将 Value 向量按权重加权求和。')+'</p>';
  }
  if(id==='masking-autoregressive'){
   const mode=root.querySelector('[data-lv-mode]')?.value||'causal';
@@ -74,9 +79,12 @@ function lvStage(id,step,root){
   return '<div class="lv-params"><label>旧动作前缀 <input type="range" min="1" max="15" value="'+old+'" data-lv-old><output>'+old+'</output></label><label>融合区 <input type="range" min="1" max="20" value="'+blend+'" data-lv-blend><output>'+blend+'</output></label></div><div class="lv-timeline"><span class="old" style="flex:'+old+'">旧动作 '+old+'</span><span class="blend" style="flex:'+blend+'">融合 '+blend+'</span><span class="fresh" style="flex:'+fresh+'">新预测 '+fresh+'</span></div><p>总长 '+(old+blend+fresh)+' 步。必须按绝对物理时间对齐；长度只是可调示例，不是 RTC 固定常数。</p>';
  }
  if(id==='flow-matching'){
-  const steps=Number(root.querySelector('[data-lv-steps]')?.value||8),method=root.querySelector('[data-lv-method]')?.value||'euler';
-  const pts=Array.from({length:steps+1},function(_,i){const t=i/steps;return {x:55+540*t,y:175-100*Math.sin(Math.PI*t*.75)};}),marker=Math.round(step/(LV[id].steps.length-1)*steps);
-  return '<div class="lv-params"><label>积分步数 <input type="range" min="1" max="32" value="'+steps+'" data-lv-steps><output>'+steps+'</output></label><label>积分器 <select data-lv-method><option value="euler" '+(method==='euler'?'selected':'')+'>Euler</option><option value="heun" '+(method==='heun'?'selected':'')+'>Heun</option></select></label></div><svg viewBox="0 0 650 220" role="img" aria-label="粒子沿生成路径移动"><path d="M45 20 V185 H615" fill="none" stroke="#cbd5e1"/><polyline points="'+pts.map(function(p){return p.x+','+p.y;}).join(' ')+'" fill="none" stroke="#3b82f6" stroke-width="3"/>'+pts.map(function(p,i){return '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(i===marker?'8':'3')+'" fill="'+(i===marker?'#d97706':'#3b82f6')+'"/>';}).join('')+'<text x="50" y="210" font-size="12" fill="#64748b">噪声</text><text x="610" y="210" text-anchor="end" font-size="12" fill="#64748b">数据</text></svg><p>示意路径按步数采样；Euler 每步一次速度求值，Heun 通常每步两次。并未假装运行训练好的模型。</p>';
+  const steps=Number(root.querySelector('[data-lv-steps]')?.value||8),method=root.querySelector('[data-lv-method]')?.value||'euler',dt=1/steps;
+  const velocity=function(t){return {x:540,y:-100*.75*Math.PI*Math.cos(.75*Math.PI*t)};};
+  let x=55,y=175;const pts=[{x:x,y:y}];
+  for(let i=0;i<steps;i++){const t=i*dt,v1=velocity(t);let dx=v1.x,dy=v1.y;if(method==='heun'){const v2=velocity(t+dt);dx=(v1.x+v2.x)/2;dy=(v1.y+v2.y)/2;}x+=dt*dx;y+=dt*dy;pts.push({x:x,y:y});}
+  const exact=Array.from({length:101},function(_,i){const t=i/100;return {x:55+540*t,y:175-100*Math.sin(.75*Math.PI*t)};}),marker=Math.round(step/(LV[id].steps.length-1)*steps);
+  return '<svg viewBox="0 0 650 220" role="img" aria-label="Euler 或 Heun 对时间变化速度场进行数值积分"><path d="M45 20 V185 H615" fill="none" stroke="#cbd5e1"/><polyline points="'+exact.map(function(p){return p.x+','+p.y;}).join(' ')+'" fill="none" stroke="#a8b4c6" stroke-width="2" stroke-dasharray="5 5"/><polyline points="'+pts.map(function(p){return p.x+','+p.y;}).join(' ')+'" fill="none" stroke="#3b82f6" stroke-width="3"/>'+pts.map(function(p,i){return '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(i===marker?'8':'3')+'" fill="'+(i===marker?'#d97706':'#3b82f6')+'"/>';}).join('')+'<text x="50" y="210" font-size="12" fill="#64748b">噪声</text><text x="610" y="210" text-anchor="end" font-size="12" fill="#64748b">数据</text></svg><div class="lv-results"><div><span>积分器</span><b>'+method.toUpperCase()+'</b></div><div><span>速度求值次数</span><b>'+(method==='heun'?2*steps:steps)+'</b></div><div><span>数值终点偏差</span><b>'+Math.hypot(x-exact[100].x,y-exact[100].y).toFixed(3)+'</b></div></div><p>实线是数值积分，虚线是已知解析轨迹。速度场显式依赖时间；Euler 每步一次求值，Heun 用预测点再求一次并平均斜率。</p>';
  }
  if(id==='vla-architecture'){
   const names=['Vision Encoder','Language Backbone','State Projection','Action Expert','Flow / ODE'];
