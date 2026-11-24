@@ -16,7 +16,8 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "masking-autoregressive"
+      "tensor",
+      "mlp"
     ],
     "objectives": [
       "明确一次行为克隆训练的输入、标签与优化目标",
