@@ -41,18 +41,38 @@ test('Deployment paths cover assets, downloads and repeated normalization',()=>{
 
 for(const lesson of lessons){
  const canonicalId=evaluate(`LEGACY_LESSON_IDS[${JSON.stringify(lesson.id)}]`)||lesson.id;
- test(lesson.id+' theory introduction and exercise separation',()=>{
+ test(lesson.id+' theory rendering follows its course type',()=>{
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
   assert.ok(html.includes('class="article-intro"'));
-  assert.ok(html.includes('class="chapter-goals"')&&html.includes('id="chapter-review"'));
   assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length+(lesson.advancedSections||[]).length);
-  if(lesson.advancedSections?.length)assert.ok(html.includes('advanced-material'));
   assert.ok(!html.includes('id="discussion"'));
   assert.ok(!html.includes('class="key-points"'));
-  const practice=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);
-  assert.ok(practice.includes('id="discussion"')&&practice.includes('id="question-0"'));
-  assert.ok(practice.includes('id="exercise-editor"'));
+  if(lesson.theoryOnly){
+   assert.ok(!html.includes('class="chapter-goals"')&&!html.includes('id="chapter-review"'));
+   assert.ok(!html.includes('阅读代码实现')&&!html.includes('进入课程练习'));
+   const code=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'code','python',new URLSearchParams())`);
+   const exercise=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);
+   assert.ok(!code.includes('id="code-implementation"')&&!exercise.includes('id="exercise-editor"'));
+   assert.equal((html.match(/class="reader-tabs"/g)||[]).length,1);
+   assert.ok(!html.includes('>代码</a>')&&!html.includes('>练习</a>'));
+   assert.ok(!evaluate('renderPractice()').includes(lesson.title));
+  }else{
+   assert.ok(html.includes('class="chapter-goals"')&&html.includes('id="chapter-review"'));
+   if(lesson.advancedSections?.length)assert.ok(html.includes('advanced-material'));
+   const practice=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);
+   assert.ok(practice.includes('id="discussion"')&&practice.includes('id="question-0"'));
+   assert.ok(practice.includes('id="exercise-editor"'));
+  }
  });
+ if(lesson.theoryOnly){
+  test(lesson.id+' legacy Robot Agent routes map to the consolidated theory lesson',()=>{
+   const mapped=evaluate(`routeHref('/learn/robot-agent-loop/?tab=theory')`);
+   assert.ok(mapped.includes('/learn/agent-architecture/?tab=theory'));
+   const forced=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'code','python',new URLSearchParams())`);
+   assert.ok(!forced.includes('id="code-implementation"'));
+  });
+  continue;
+ }
  test(lesson.id+' legacy discussion and pitfall routes lead to course exercises',()=>{
   for(const anchor of ['discussion','question-0','mistakes','pitfall-0']){
    const raw='/learn/'+lesson.id+'/?tab=theory&anchor='+anchor;
