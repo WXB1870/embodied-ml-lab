@@ -6,7 +6,7 @@
     "generative-modeling",
     "embodied-policy",
     "posttraining",
-    "robot-agent",
+    "robot-agent-core",
     "appendix"
   ],
   "scope": "学院派理论推导 + PyTorch 工程实现 + 面试手撕训练营，并以 Robot Agent 自主决策与技能系统作为第六个主干模块。",
@@ -15,7 +15,7 @@
     "核心算法提供可运行 PyTorch 实现与边界测试。",
     "课程以现代 Transformer、生成模型、具身策略与后训练为主线。",
     "MLP 与 CNN 作为网络和视觉表征基础课程进入主干，不折叠为附录速查。",
-    "Robot Agent 课程与其他主干模块采用相同的课程组织：模块目录、逐节原理、代码实现和练习。"
+    "Robot Agent 作为第六个核心模块，与其他主干课程共用标准理论阅读路由；该模块只提供系统架构理论，不设置编程实现或手撕练习。"
   ],
   "modules": [
     {
@@ -82,18 +82,15 @@
     },
     {
       "id": "robot-agent",
-      "name": "Robot Agent 与自主技能系统",
-      "short": "Robot Agent 与自主技能",
-      "desc": "从 Agent 决策闭环、Skill Runtime、长时序 VLA、World Model、机器人感知工具链，到 Memory、Code Policy Evolution 与系统评估，构建可持续进化的机器人智能体。",
+      "name": "具身智能体与技能编排",
+      "short": "具身智能体与技能编排",
+      "desc": "围绕物理世界中的可靠任务决策，学习多时间尺度架构、VLA/规控/感知异构技能调度、长时序任务记忆、闭环验证与异常恢复，并通过移动操作任务进行系统级设计评估。",
       "lessons": [
-        "robot-agent-loop",
-        "robot-skill-runtime",
-        "robot-vla-skill",
-        "robot-world-model",
-        "robot-perception-tools",
-        "robot-agent-memory",
-        "robot-code-policy-evolution",
-        "robot-agent-evaluation"
+        "agent-architecture",
+        "skill-orchestration",
+        "planning-memory",
+        "closed-loop-recovery",
+        "agent-evaluation"
       ]
     },
     {
@@ -149,7 +146,107 @@
     }
   ],
   "researchFindings": [],
-  "resources": [],
+  "resources": [
+    {
+      "title": "RAX · Robot Agent Exploration",
+      "url": "https://github.com/robot-agent-exploration/rax",
+      "repo": "https://github.com/robot-agent-exploration/rax",
+      "license": "公开源码；不同 benchmark / hardware 分支需分别核对",
+      "observe": "机器人在线探索与技能积累代表。重点关注探索预算、交互轨迹、技能生成/修订和独立评测。",
+      "boundary": "适合研究经验驱动的机器人技能进化；本课程关注其机器人探索与技能机制，不展开通用 Coding Agent Harness。",
+      "lessons": [
+        "agent-evaluation",
+        "closed-loop-recovery"
+      ]
+    },
+    {
+      "title": "RoboScript · World Interaction-driven Continual Learning",
+      "url": "https://github.com/ArcheOne-AI/RoboScript",
+      "repo": "https://github.com/ArcheOne-AI/RoboScript",
+      "license": "公开项目与论文",
+      "observe": "通过示教初始化任务记忆，在仿真交互中由 Actor / Reviser 反复修订任务知识。",
+      "boundary": "主要体现 Task Memory 演化，不等同于可执行 Policy 权重持续训练；评估需区分仿真特权信息。",
+      "lessons": [
+        "planning-memory",
+        "agent-evaluation"
+      ]
+    },
+    {
+      "title": "VoLoAgent · Physical Orchestration",
+      "url": "https://github.com/NVlabs/VoLoAgent",
+      "repo": "https://github.com/NVlabs/VoLoAgent",
+      "license": "公开代码与项目资料",
+      "observe": "把 VLA rollout、视觉定位、抓取和放置等能力作为可监控、可中断的工具，由 Agent 根据子目标和异常重新路由。",
+      "boundary": "适合研究 VLA 中途接管与工具编排；真机实验规模和监控器所用状态信息需要结合论文设置解读。",
+      "lessons": [
+        "skill-orchestration",
+        "closed-loop-recovery",
+        "agent-evaluation"
+      ]
+    },
+    {
+      "title": "OpenETA · Embodied Task Agent",
+      "url": "https://github.com/OpenMOSS/OpenETA",
+      "repo": "https://github.com/OpenMOSS/OpenETA",
+      "license": "公开代码与架构文档",
+      "observe": "提供物理任务中的观察、推理、动作调用、结果验证和恢复链路，适合研究 Tool Registry 与执行边界。",
+      "boundary": "具体可运行实现以仓库当前发布内容为准；工具回执不能直接等同于环境任务成功。",
+      "lessons": [
+        "agent-architecture",
+        "skill-orchestration",
+        "closed-loop-recovery"
+      ]
+    },
+    {
+      "title": "Q0-Preview · Spatial Reasoning",
+      "url": "https://github.com/XPolicyLab/XPolicyLab/tree/main/policy/Q0_Preview",
+      "repo": "https://github.com/XPolicyLab/XPolicyLab",
+      "license": "公开研究代码",
+      "observe": "代表多模态模型直接进行空间点与几何推理，再由运动控制执行的路线。",
+      "boundary": "适合比较 VLM 空间推理与 VLA Action Head 的职责；空间输出仍需坐标变换、可达性和安全约束。",
+      "lessons": [
+        "skill-orchestration",
+        "agent-evaluation"
+      ]
+    },
+    {
+      "title": "HoloAgent-0 · Spatial Memory and Skill Graph",
+      "url": "https://github.com/HorizonRobotics/HoloAgent",
+      "repo": "https://github.com/HorizonRobotics/HoloAgent",
+      "license": "代码发布范围以仓库说明为准",
+      "observe": "代表空间记忆、技能图和长时序移动操作的系统组织路线。",
+      "boundary": "公开资料、论文架构和已发布代码组件需区分，不能假定完整系统全部开源。",
+      "lessons": [
+        "planning-memory",
+        "agent-architecture"
+      ]
+    },
+    {
+      "title": "OpenRAL · Robot Agent Runtime",
+      "url": "https://github.com/OpenRAL/OpenRAL",
+      "repo": "https://github.com/OpenRAL/OpenRAL",
+      "license": "公开项目，具体模块状态以仓库为准",
+      "observe": "关注 VLA、传统控制与感知能力的统一 Runtime、Skill 接口和监控边界。",
+      "boundary": "作为 Runtime 设计参考，不将项目介绍直接视为独立 benchmark 证据。",
+      "lessons": [
+        "agent-architecture",
+        "skill-orchestration"
+      ]
+    },
+    {
+      "title": "EmbodiedSkills · Skill Runtime and Verification",
+      "url": "https://arxiv.org/abs/2609.01281",
+      "repo": "https://arxiv.org/abs/2609.01281",
+      "license": "论文；源码可用性以作者发布为准",
+      "observe": "关注 Skill Contract、执行前检查、子目标验证、恢复和结构化轨迹。",
+      "boundary": "区分低层策略的任务成功率与 Runtime 本身的贡献；记忆依赖任务仍需独立检验。",
+      "lessons": [
+        "skill-orchestration",
+        "closed-loop-recovery",
+        "agent-evaluation"
+      ]
+    }
+  ],
   "canonicalTopics": {
     "mlp": "mlp",
     "cnn-receptive-field": "cnn",
