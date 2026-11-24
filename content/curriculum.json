@@ -85,7 +85,7 @@
       "id": "robot-agent",
       "name": "具身智能体与技能编排",
       "short": "具身智能体与技能编排",
-      "desc": "沿 RAX Franka 四杯找方块的真实运行记录，学习机器人工具、状态记忆、失败恢复与端到端验收。",
+      "desc": "主循环与运行时 → 工具与技能调度 → 规划与记忆 → 监控与恢复 → RAX 集成验收。",
       "lessons": [
         "agent-architecture",
         "skill-orchestration",
