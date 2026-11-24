@@ -48,9 +48,8 @@ function renderLVControls(id){
 }
 function renderLearningVisual(id,c){return '<section class="lv-visual" data-learning-visual="'+lvEsc(id)+'"><header><div><span>算法可视化</span><h3>'+lvEsc(c.title)+'</h3></div><p>'+lvEsc(c.intro)+'</p></header>'+renderLVControls(id)+'<div class="lv-stage" data-lv-stage></div><nav class="lv-controls"><button type="button" data-lv-prev disabled>上一步</button><input type="range" min="0" max="'+(c.steps.length-1)+'" value="0" step="1" data-lv-range aria-label="演示步骤"><button type="button" data-lv-next>下一步</button><button type="button" data-lv-play>自动播放</button><button type="button" data-lv-reset>重置</button></nav><div class="lv-step-list">'+c.steps.map(function(s,i){return '<button type="button" class="lv-step '+(i===0?'active':'')+'" data-lv-step="'+i+'">'+(i+1)+'. '+lvEsc(s)+'</button>';}).join('')+'</div><p class="lv-explain" data-lv-explain></p></section>';}
 function renderLessonLearning(id){const c=LV[id];return c?renderAlgorithmPanel(c)+renderLearningVisual(id,c):'';}
-function renderAgentLearning(id){const c=AGENT[id];return c?renderAlgorithmPanel(c)+renderLearningVisual(id,c):'';}
 function lvStage(id,step,root){
- const c=LV[id]||AGENT[id],n=c.steps.length;
+ const c=LV[id],n=c.steps.length;
  if(id==='attention'){
   const q=Number(root.querySelector('[data-lv-query]')?.value||2);
   const queries=[[1,.5],[.4,1],[-.5,.8],[1,-.4],[-1,.2]],keys=[[1,0],[.8,.2],[.1,1],[-.5,.3],[-1,-.5]],values=[[1,0],[.5,1],[.3,-.5],[-.5,.4],[-1,-1]];
@@ -79,57 +78,7 @@ function lvStage(id,step,root){
  if(id==='vla-architecture'){
   const names=['Vision Encoder','Language Backbone','State Projection','Action Expert','Flow / ODE'];
   const desc=['Images → visual tokens','Text → language tokens','Robot state → embedding','Noisy actions + condition → velocity','Velocity → action chunk'];
-  return '<div class="lv-pipeline">'+names.map(function(s,i){return '<div class="'+(i<=step?'active':'')+'"><b>'+s+'</b><small>'+desc[i]+'</small></div>';}).join('')+'</div>';
- }
- if(id==='ppo'){
-  const ratio=Number(root.querySelector('[data-lv-ratio]')?.value||1.35),adv=Number(root.querySelector('[data-lv-adv]')?.value||1),eps=.2,raw=ratio*adv,clip=Math.max(1-eps,Math.min(1+eps,ratio))*adv,obj=Math.min(raw,clip);
-  return '<div class="lv-params"><label>Ratio <input type="range" min=".5" max="1.8" step=".01" value="'+ratio+'" data-lv-ratio><output>'+ratio.toFixed(2)+'</output></label><label>Advantage <select data-lv-adv><option value="1">正优势 +1</option><option value="-1">负优势 −1</option></select></label></div><div class="lv-results"><div><span>未裁剪 r·A</span><b>'+raw.toFixed(3)+'</b></div><div><span>裁剪后目标</span><b>'+obj.toFixed(3)+'</b></div><div><span>裁剪区间</span><b>[0.80, 1.20]</b></div></div><p>这是单样本 surrogate 的 min 分支，不代表 PPO 对全局 KL 提供严格上界。</p>';
- }
- if(id==='lora'){
-  const rank=Number(root.querySelector('[data-lv-rank]')?.value||8),base=1024*1024,added=rank*2048;
-  return '<label>LoRA Rank <input type="range" min="1" max="64" value="'+rank+'" data-lv-rank><output>'+rank+'</output></label><div class="lv-results"><div><span>原矩阵参数</span><b>'+base.toLocaleString()+'</b></div><div><span>新增参数</span><b>'+added.toLocaleString()+'</b></div><div><span>新增占总参数</span><b>'+(100*added/(base+added)).toFixed(2)+'%</b></div></div><p>假设 Linear(1024,1024)，不含 bias。真实显存还取决于激活、梯度与优化器状态。</p>';
- }
- if(id==='dit-adaln'){
-  const gate=Number(root.querySelector('[data-lv-gate]')?.value||0);
-  return '<label>残差门控强度 <input type="range" min="0" max="1" step=".01" value="'+gate+'" data-lv-gate><output>'+gate.toFixed(2)+'</output></label><div class="lv-gate"><span>原始表示</span><b>+</b><span class="branch" style="opacity:'+gate+'">条件分支 × '+gate.toFixed(2)+'</span><b>=</b><strong>输出</strong></div><p>门控为 0 时新增残差分支不改变初始前向；真实 AdaLN-Zero 还会调制 Attention 与 MLP 子层。</p>';
- }
- if(id==='diffusion'){
-  const t=Number(root.querySelector('[data-lv-time]')?.value||.5),sig=Math.sqrt(1-t),noise=Math.sqrt(t);
-  return '<label>归一化噪声时间 t <input type="range" min="0" max="1" step=".01" value="'+t+'" data-lv-time><output>'+t.toFixed(2)+'</output></label><div class="lv-noise"><span style="width:'+(sig*100)+'%">信号 '+Math.round(sig*100)+'%</span><span style="width:'+(noise*100)+'%">噪声 '+Math.round(noise*100)+'%</span></div><p>简化线性方差示意，不代表任意 DDPM β schedule 的精确系数。</p>';
- }
- if(id==='rope'){
-  const p=Number(root.querySelector('[data-lv-position]')?.value||4),a=p*.45,x=90+65*Math.cos(a),y=90-65*Math.sin(a);
-  return '<label>位置 p <input type="range" min="0" max="20" value="'+p+'" data-lv-position><output>'+p+'</output></label><svg viewBox="0 0 220 180" role="img" aria-label="RoPE 二维向量旋转"><circle cx="90" cy="90" r="65" fill="none" stroke="#cbd5e1" stroke-dasharray="4 4"/><line x1="90" y1="90" x2="'+x+'" y2="'+y+'" stroke="#2563eb" stroke-width="4"/><circle cx="'+x+'" cy="'+y+'" r="6" fill="#2563eb"/><text x="125" y="160" font-size="11" fill="#64748b">θ='+a.toFixed(2)+' rad</text></svg>';
- }
- if(id==='norm-ffn'){
-  const mean=Number(root.querySelector('[data-lv-mean]')?.value||2),scale=Number(root.querySelector('[data-lv-scale]')?.value||1.5);
-  return '<div class="lv-params"><label>输入均值 <input type="range" min="-3" max="3" step=".1" value="'+mean+'" data-lv-mean><output>'+mean.toFixed(1)+'</output></label><label>输入尺度 <input type="range" min=".5" max="3" step=".1" value="'+scale+'" data-lv-scale><output>'+scale.toFixed(1)+'</output></label></div><div class="lv-results"><div><span>LayerNorm 均值</span><b>≈ 0</b></div><div><span>输入 RMS</span><b>'+Math.sqrt(mean*mean+scale*scale).toFixed(2)+'</b></div><div><span>RMSNorm 保留均值偏移</span><b>'+(mean/Math.sqrt(mean*mean+scale*scale)).toFixed(2)+'</b></div></div>';
- }
- if(id==='multimodal'){
-  const selected=Number(root.querySelector('[data-lv-patch]')?.value||4);
-  return '<label>选择 Patch <input type="range" min="0" max="15" value="'+selected+'" data-lv-patch><output>'+selected+'</output></label><div class="lv-patches">'+Array.from({length:16},function(_,i){return '<span class="'+(i===selected?'selected':'')+'">'+i+'</span>';}).join('')+'</div><p>Patch Token 对应图像局部区域；还需位置与视角身份信息。</p>';
- }
- if(id==='kv-cache'){
-  const n=Number(root.querySelector('[data-lv-tokens]')?.value||6);
-  return '<label>已生成 Token 数 <input type="range" min="1" max="16" value="'+n+'" data-lv-tokens><output>'+n+'</output></label><div class="lv-cache">'+Array.from({length:n},function(_,i){return '<span><b>T'+(i+1)+'</b><small>Kᵢ · Vᵢ</small></span>';}).join('')+'</div><p>每层缓存随已处理位置增长；新一步追加新 K/V。</p>';
- }
- if(id==='behavior-cloning'){
-  const mix=Number(root.querySelector('[data-lv-mix]')?.value||.5),avg=-1*(1-mix)+mix;
-  return '<label>右侧示教样本比例 <input type="range" min="0" max="1" step=".05" value="'+mix+'" data-lv-mix><output>'+mix.toFixed(2)+'</output></label><div class="lv-results"><div><span>左模式</span><b>−1</b></div><div><span>右模式</span><b>+1</b></div><div><span>均值回归示例</span><b>'+avg.toFixed(2)+'</b></div></div><p>同一条件下的多峰示教可能被 MSE 压成均值。</p>';
- }
- if(id==='policy-gradient'){
-  const a=Number(root.querySelector('[data-lv-adv]')?.value||1);
-  return '<label>Advantage <input type="range" min="-2" max="2" step=".1" value="'+a+'" data-lv-adv><output>'+a.toFixed(1)+'</output></label><div class="lv-results"><div><span>目标动作概率方向</span><b>'+(a>0?'提高概率':a<0?'降低概率':'无一阶推动')+'</b></div><div><span>Loss 系数 −A</span><b>'+(-a).toFixed(2)+'</b></div></div>';
- }
- if(id==='dpo-grpo'){
-  const beta=Number(root.querySelector('[data-lv-beta]')?.value||.1);
-  return '<label>β <input type="range" min=".01" max="1" step=".01" value="'+beta+'" data-lv-beta><output>'+beta.toFixed(2)+'</output></label><div class="lv-results"><div><span>候选 A 奖励</span><b>2.0</b></div><div><span>候选 B 奖励</span><b>0.0</b></div><div><span>组内相对优势</span><b>+1 / −1</b></div></div><p>这里只展示组内中心化；真实 GRPO 还需处理标准差、KL 和有效策略概率。</p>';
- }
- if(id==='vae'){
-  const beta=Number(root.querySelector('[data-lv-beta]')?.value||1),z=.4+.55*.8;
-  return '<label>KL 权重 β <input type="range" min="0" max="4" step=".1" value="'+beta+'" data-lv-beta><output>'+beta.toFixed(1)+'</output></label><div class="lv-results"><div><span>μ</span><b>0.40</b></div><div><span>σ</span><b>0.55</b></div><div><span>固定 ε 下的 z</span><b>'+z.toFixed(2)+'</b></div><div><span>KL 系数</span><b>'+beta.toFixed(1)+'</b></div></div><p>固定 ε 隔离重参数化计算；β 改变训练目标中的 KL 权重。</p>';
- }
- return '<div class="lv-pipeline">'+c.steps.map(function(s,i){return '<div class="'+(i<=step?'active':'')+'"><b>'+(i+1)+'</b><span>'+lvEsc(s)+'</span></div>';}).join('')+'</div><p>'+lvEsc(c.steps[step])+'</p>';
+  return '<div class="lv-pipeline">'+c.steps.map(function(s,i){return '<div class="'+(i<=step?'active':'')+'"><b>'+(i+1)+'</b><span>'+lvEsc(s)+'</span></div>';}).join('')+'</div><p>'+lvEsc(c.steps[step])+'</p>';
  }
  return '<div class="lv-pipeline">'+c.steps.map(function(s,i){return '<div class="'+(i<=step?'active':'')+'"><b>'+(i+1)+'</b><span>'+lvEsc(s)+'</span></div>';}).join('')+'</div>';
 }
