@@ -63,7 +63,7 @@ function lvStage(id,step,root){
  const c=LV[id]||AGENT[id],n=c.steps.length;
  if(id==='attention'){
   const q=Number(root.querySelector('[data-lv-query]')?.value||2);
-  return '<div class="lv-attn-controls">Query Token <select data-lv-query>'+[0,1,2,3,4].map(function(i){return '<option value="'+i+'" '+(i===q?'selected':'')+'>Token '+(i+1)+'</option>';}).join('')+'</select></div><div class="lv-bars">'+[0,1,2,3,4].map(function(i){const w=Math.exp(-Math.abs(i-q)*(step+1)*.55);return '<div><span>T'+(i+1)+'</span><b><i style="width:'+(w*100)+'%"></i></b><small>'+Math.round(w*100)+'*</small></div>';}).join('')+'</div><p>匹配权重为教学示意；真实权重由 QKᵀ、Mask 与 Softmax 共同决定。</p>';
+  const raw=[0,1,2,3,4].map(function(i){return Math.exp(-Math.abs(i-q)*(step+1)*.55);}),total=raw.reduce(function(a,b){return a+b;},0);return '<div class="lv-bars">'+raw.map(function(w,i){const pct=100*w/total;return '<div><span>T'+(i+1)+'</span><b><i style="width:'+pct+'%"></i></b><small>'+pct.toFixed(1)+'%</small></div>';}).join('')+'</div><p>这里用随距离衰减的教学匹配分数演示 Softmax 归一化；真实权重由 QKᵀ、Mask 与 Softmax 共同决定。</p>';
  }
  if(id==='masking-autoregressive'){
   const mode=root.querySelector('[data-lv-mode]')?.value||'causal';
@@ -75,8 +75,8 @@ function lvStage(id,step,root){
  }
  if(id==='flow-matching'){
   const steps=Number(root.querySelector('[data-lv-steps]')?.value||8),method=root.querySelector('[data-lv-method]')?.value||'euler';
-  const pts=Array.from({length:steps+1},function(_,i){const t=i/steps;return {x:55+540*t,y:175-100*Math.sin(Math.PI*t*.75)};});
-  return '<div class="lv-params"><label>积分步数 <input type="range" min="1" max="32" value="'+steps+'" data-lv-steps><output>'+steps+'</output></label><label>积分器 <select data-lv-method><option value="euler" '+(method==='euler'?'selected':'')+'>Euler</option><option value="heun" '+(method==='heun'?'selected':'')+'>Heun</option></select></label></div><svg viewBox="0 0 650 220" role="img" aria-label="粒子沿生成路径移动"><path d="M45 20 V185 H615" fill="none" stroke="#cbd5e1"/><polyline points="'+pts.map(function(p){return p.x+','+p.y;}).join(' ')+'" fill="none" stroke="#3b82f6" stroke-width="3"/>'+pts.map(function(p,i){return '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(i===step?'8':'3')+'" fill="'+(i===step?'#d97706':'#3b82f6')+'"/>';}).join('')+'<text x="50" y="210" font-size="12" fill="#64748b">噪声</text><text x="610" y="210" text-anchor="end" font-size="12" fill="#64748b">数据</text></svg><p>示意路径按步数采样；Euler 每步一次速度求值，Heun 通常每步两次。并未假装运行训练好的模型。</p>';
+  const pts=Array.from({length:steps+1},function(_,i){const t=i/steps;return {x:55+540*t,y:175-100*Math.sin(Math.PI*t*.75)};}),marker=Math.round(step/(LV[id].steps.length-1)*steps);
+  return '<div class="lv-params"><label>积分步数 <input type="range" min="1" max="32" value="'+steps+'" data-lv-steps><output>'+steps+'</output></label><label>积分器 <select data-lv-method><option value="euler" '+(method==='euler'?'selected':'')+'>Euler</option><option value="heun" '+(method==='heun'?'selected':'')+'>Heun</option></select></label></div><svg viewBox="0 0 650 220" role="img" aria-label="粒子沿生成路径移动"><path d="M45 20 V185 H615" fill="none" stroke="#cbd5e1"/><polyline points="'+pts.map(function(p){return p.x+','+p.y;}).join(' ')+'" fill="none" stroke="#3b82f6" stroke-width="3"/>'+pts.map(function(p,i){return '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(i===marker?'8':'3')+'" fill="'+(i===marker?'#d97706':'#3b82f6')+'"/>';}).join('')+'<text x="50" y="210" font-size="12" fill="#64748b">噪声</text><text x="610" y="210" text-anchor="end" font-size="12" fill="#64748b">数据</text></svg><p>示意路径按步数采样；Euler 每步一次速度求值，Heun 通常每步两次。并未假装运行训练好的模型。</p>';
  }
  if(id==='vla-architecture'){
   const names=['Vision Encoder','Language Backbone','State Projection','Action Expert','Flow / ODE'];
