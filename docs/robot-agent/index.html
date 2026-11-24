@@ -57,15 +57,16 @@
 <a href="#world-model-deep"><span>05</span>World Model as a Skill</a>
 <a href="#code-policy-deep"><span>06</span>Code-as-Policy</a>
 <a href="#coding-agent-tools"><span>07</span>Coding Agent 工具与 Runtime</a>
-<a href="#memory-evolution-deep"><span>08</span>经验记忆与持续进化</a>
-<a href="#openeta-code-walkthrough"><span>09</span>OpenETA 真实代码拆解</a>
-<a href="#evaluation-deep"><span>10</span>评估方法与指标</a>
-<a href="#curriculum"><span>11</span>学习路线与优先级</a>
-<a href="#projects"><span>12</span>代表项目与源码入口</a>
-<a href="#reading-order"><span>13</span>代码阅读方法</a>
-<a href="#capstone"><span>14</span>综合实战：持续进化的开门 Agent</a>
-<a href="#interactive-labs"><span>15</span>交互式算法演示</a>
-<a href="#scope"><span>16</span>学习边界与参考资料</a>
+<a href="#agent-memory-systems"><span>08</span>数据库、Memory 与检索</a>
+<a href="#memory-evolution-deep"><span>09</span>经验记忆与持续进化</a>
+<a href="#openeta-code-walkthrough"><span>10</span>OpenETA 真实代码拆解</a>
+<a href="#evaluation-deep"><span>11</span>评估方法与指标</a>
+<a href="#curriculum"><span>12</span>学习路线与优先级</a>
+<a href="#projects"><span>13</span>代表项目与源码入口</a>
+<a href="#reading-order"><span>14</span>代码阅读方法</a>
+<a href="#capstone"><span>15</span>综合实战：持续进化的开门 Agent</a>
+<a href="#interactive-labs"><span>16</span>交互式算法演示</a>
+<a href="#scope"><span>17</span>学习边界与参考资料</a>
 </div>
 </nav>
 <div class="agent-hero">
@@ -518,8 +519,117 @@ else:
 </ul>
 <div class="agent-audit"><h3>本节学习结论</h3><p>你不需要把 Coding Agent 的所有工具都做成机器人 Agent 的工具。需要掌握的是：一套开发期工具链负责生成和改进 Skill；另一套运行期技能接口负责安全、可验证地执行 Skill。两者通过版本化的 Skill Artifact、评测结果和经验记忆连接。</p></div>
 </section>
+<section class="article-section" id="agent-memory-systems">
+<h2><span class="section-number">08</span>Memory 与数据工具：Agent 如何查询、写入和复用经验？</h2>
+<p class="section-lead">你提到的数据库查询、记忆保留和检索，确实是 Agent 系统的核心知识，不是附属工具。Agent 的长期能力不仅取决于模型，还取决于它能否把交互记录转成结构化经验，在下一次任务中准确取回，并知道哪些信息已经过期。</p>
+<h3>8.1 先区分 Context、Memory、Database 和 Skill</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>概念</th><th>解决的问题</th><th>典型内容</th><th>生命周期</th></tr></thead><tbody>
+<tr><td>Context</td><td>当前这一轮推理需要知道什么？</td><td>任务指令、当前观测、最近工具结果、相关记忆片段</td><td>短期，受上下文窗口限制</td></tr>
+<tr><td>Working Memory</td><td>当前任务进行到哪里？</td><td>子目标、当前假设、待办、活动 Skill 状态</td><td>任务/会话期间</td></tr>
+<tr><td>Episodic Memory</td><td>以前具体发生过什么？</td><td>观测摘要、工具调用、动作回执、成功/失败轨迹</td><td>长期保存，可按需检索</td></tr>
+<tr><td>Semantic / Task Memory</td><td>已经总结出哪些相对稳定的知识？</td><td>物体属性、任务流程、环境规则、失败模式</td><td>跨任务复用，需维护版本与来源</td></tr>
+<tr><td>Procedural Memory / Skill Library</td><td>已经学会怎样完成某件事？</td><td>可执行 Skill、Policy、参数、依赖和验证器</td><td>版本化，需评测后晋升</td></tr>
+<tr><td>Database / Storage</td><td>如何可靠保存、索引、查询上述信息？</td><td>关系表、向量索引、对象文件、事件日志</td><td>由存储策略决定</td></tr>
+</tbody></table></div></div>
+<p>关键点：数据库不是记忆本身，而是承载记忆的存储与检索基础设施；Context 也不是长期记忆，只是本轮从任务状态和存储中挑选出来的有限信息。把整个聊天记录塞进 Prompt，既昂贵也不可靠。</p>
+<h3>8.2 常见记忆类型与机器人例子</h3>
+<ul>
+<li><strong>工作记忆（Working）：</strong>当前打开柜门任务的阶段、已估计的门轴、当前接触状态、活动 Skill ID 和剩余预算。必须快速读写，任务结束后可以归档。</li>
+<li><strong>情景记忆（Episodic）：</strong>某一次柜门操作的完整事件：当时的场景、程序版本、调用过哪些工具、力觉曲线、门角变化和最终结果。它是事后分析与相似案例检索的证据来源。</li>
+<li><strong>语义/任务记忆（Semantic / Task）：</strong>“左侧铰链门通常沿圆弧运动”“某类把手需要先建立侧向接触”等归纳知识。它应附带来源、置信度、适用条件和最后验证时间，不能把一次偶然成功直接升级为通用规则。</li>
+<li><strong>程序性记忆（Procedural）：</strong>已验证的 <code>open_door_v13</code> Skill、它的输入输出 Schema、适用机器人、依赖模型和评测结果。它不是自然语言经验，而是可被 Runtime 调用的能力版本。</li>
+<li><strong>用户/项目偏好记忆：</strong>例如特定机器人平台、常用坐标约定或项目配置。它与任务成功经验不同，需要独立权限和更新策略。</li>
+</ul>
+<h3>8.3 不同存储该怎么选？不要把所有记忆都塞进向量数据库</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>存储</th><th>适合放什么</th><th>典型查询</th><th>不适合</th></tr></thead><tbody>
+<tr><td>关系数据库（PostgreSQL / SQLite）</td><td>任务、Episode 元数据、Skill 版本、指标、权限、时间戳</td><td>筛选同类任务、按时间/版本/成功状态聚合</td><td>直接存大量原始视频二进制</td></tr>
+<tr><td>向量数据库 / 向量索引</td><td>文本摘要、场景/任务 Embedding、失败描述</td><td>按语义相似度检索相似经历</td><td>精确事务、权限、版本唯一性和复杂关系约束</td></tr>
+<tr><td>对象存储 / 文件系统</td><td>图像、视频、点云、轨迹、模型权重、完整日志</td><td>按 URI / Episode ID 读取大文件</td><td>复杂条件查询和事务更新</td></tr>
+<tr><td>事件日志（Append-only）</td><td>工具调用、状态变化、Action Receipt、错误和评测事件</td><td>按时间重放一次任务，追踪状态转移</td><td>频繁覆盖的当前状态</td></tr>
+<tr><td>图数据库（可选）</td><td>物体—部件—关系、Skill 依赖、任务子目标关系</td><td>多跳关系查询、依赖影响分析</td><td>简单 CRUD 场景下的额外复杂度</td></tr>
+<tr><td>缓存 / KV（Redis 等）</td><td>当前会话状态、锁、短期结果、任务队列</td><td>按 Key 快速读写、租约和并发协调</td><td>未经持久化配置的唯一长期事实来源</td></tr>
+</tbody></table></div></div>
+<p>对你目前的开门 Agent，起步不需要同时部署 PostgreSQL、Milvus、Neo4j、Redis。可以先用 SQLite/PostgreSQL 保存结构化任务和 Episode 元数据，文件系统保存图像/轨迹，必要时增加向量索引做语义召回。只有出现复杂多跳关系查询或并发瓶颈时，再引入图数据库或独立缓存。</p>
+<h3>8.4 Agent 常见的数据与记忆工具</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>工具类别</th><th>常见接口</th><th>适用场景</th></tr></thead><tbody>
+<tr><td>SQL Query Tool</td><td><code>query_episodes(sql_params)</code>、<code>get_skill_metrics()</code></td><td>精确筛选任务、统计成功率、按版本比较表现</td></tr>
+<tr><td>Vector Search Tool</td><td><code>search_similar_experiences(query, filters)</code></td><td>找相似场景、相似失败和可迁移的技能经验</td></tr>
+<tr><td>Memory Read / Write</td><td><code>get_task_memory()</code>、<code>propose_memory_update()</code></td><td>读取当前任务知识，提交候选记忆变更</td></tr>
+<tr><td>Artifact Store</td><td><code>get_image(uri)</code>、<code>read_trajectory(episode_id)</code></td><td>取回图像、视频、点云和轨迹等大对象</td></tr>
+<tr><td>Event / Trace Query</td><td><code>get_tool_trace(episode_id)</code>、<code>replay_episode()</code></td><td>还原一次执行，定位哪一步造成失败</td></tr>
+<tr><td>Skill Registry</td><td><code>list_skills()</code>、<code>get_skill_version()</code>、<code>compare_versions()</code></td><td>查找技能、查看依赖、选择稳定版本</td></tr>
+</tbody></table></div></div>
+<p>不要直接给 Agent 一个无限制的生产数据库账号和任意 SQL 执行权。更好的方式是提供只读查询视图或语义化 Query Tool：参数化查询、字段白名单、行数上限、超时、权限过滤，并把结果来源和查询条件返回给 Agent。需要写入时，先写候选区或事件表，再经过验证/晋升流程更新稳定记忆。</p>
+<h3>8.5 一次“查询相似失败经验”的完整流程</h3>
+<p>假设当前开门 Skill 在接触后打滑。Agent 不应该只搜索“开门”两个字，而应先抽取结构化条件：任务类型、把手形状、接触阶段、底盘距离、失败码和机器人本体。先用 SQL 做精确过滤，再用向量检索对失败描述和场景摘要排序，最后读取少量原始轨迹核实原因。</p>
+<div class="agent-code"># 第一步：结构化筛选，数据库只返回允许字段
+candidates = db.query(
+    """SELECT episode_id, skill_version, failure_code,
+              handle_type, base_distance, summary_uri
+       FROM episode_index
+       WHERE task_type = :task
+         AND robot_family = :robot
+         AND failure_code = :failure
+       ORDER BY created_at DESC
+       LIMIT 100""",
+    params={
+        "task": "open_door",
+        "robot": "mobile_manipulator",
+        "failure": "contact_slipped"
+    }
+)
+
+# 第二步：对候选摘要做语义召回与重排
+similar = vector_index.search(
+    query=current_failure_summary,
+    filters={"episode_id": [x.episode_id for x in candidates]},
+    top_k=5
+)
+
+# 第三步：只读取最相关的证据，再决定是否迁移经验
+evidence = artifact_store.read_episodes(similar.ids)
+proposal = agent.propose_skill_update(evidence)</div>
+<p>这个流程是 Hybrid Retrieval：结构化过滤负责精确约束，向量召回负责语义相似，重排/证据读取负责判断可迁移性。向量相似度高不等于物理条件相同，最终仍要核对坐标系、机器人本体、物体几何和任务前提。</p>
+<h3>8.6 Memory 写入比 Memory 读取更需要设计</h3>
+<p>如果每次对话、每个工具结果都直接写进长期记忆，数据库很快会充满重复、矛盾和过时信息。建议把写入分成三层：</p>
+<ol>
+<li><strong>原始记录（Raw Trace）：</strong>工具调用、观测引用、回执和时间戳尽量追加保存，作为可追溯证据，不让模型任意覆盖。</li>
+<li><strong>候选总结（Candidate Memory）：</strong>Agent 从多次 Episode 中提出规律，明确支持证据、反例、适用条件和置信程度。候选总结可以被修订，但不能直接当成稳定知识。</li>
+<li><strong>稳定记忆（Curated Memory）：</strong>通过重复验证、人工审核或自动评测门槛后，才更新共享 Task Memory 或 Skill Registry，并保留版本和回滚路径。</li>
+</ol>
+<p>一条经验升级为长期规则，至少要回答：它来自多少次独立执行？有没有反例？适用哪些场景？是否跨机器人/物体泛化？最后一次验证是什么时候？如果证据不足，应保存为“候选假设”，而不是确定事实。</p>
+<h3>8.7 Context 管理：摘要、压缩与检索不是同一件事</h3>
+<p>长时序任务会产生大量图像描述、工具输出和推理历史。Context Window 是有限工作区，不能无限保留所有内容。常见策略包括：保留最近几轮原始交互；将较早过程压缩为结构化摘要；把大图像/轨迹放在 Artifact Store，只向模型提供引用；在需要时从 Episodic Memory 重新检索证据。</p>
+<p>摘要可能丢失细节，因此关键事实（成功回执、物体位姿来源、失败码、版本号、坐标系、用户约束）应以结构化状态或可追溯记录保存，而不是只存在于自然语言摘要里。Context compaction 是上下文管理，不能代替长期记忆；RAG 是检索相关信息，也不能自动保证记忆正确。</p>
+<h3>8.8 一个适合你的最小记忆数据模型</h3>
+<div class="agent-code">Task(
+  task_id, goal, robot_family, created_at, status
+)
+
+Episode(
+  episode_id, task_id, scene_tags, skill_version,
+  outcome, failure_code, started_at, duration
+)
+
+Event(
+  event_id, episode_id, seq, event_type,
+  tool_name, input_ref, result_ref, timestamp
+)
+
+MemoryItem(
+  memory_id, scope, content, evidence_episode_ids,
+  confidence, applicability, status, version
+)
+
+SkillVersion(
+  skill_id, version, artifact_uri, interface_schema,
+  dependencies, eval_report_uri, lifecycle_status
+)</div>
+<p>这不是要求你一开始就建五张生产级数据库表，而是先明确数据实体与关系。尤其要把 Episode、Event、MemoryItem 和 SkillVersion 分开：一次经历是证据，一条记忆是对证据的总结，一个 Skill 版本是可执行产物。</p>
+<div class="agent-callout"><strong>本节核心结论：</strong>你的 Agent 至少需要“结构化数据库 + 文件/对象存储 + 可选向量检索 + 事件轨迹 + 版本化 Skill Registry”。先从 SQLite/PostgreSQL 和本地 Artifact Store 做最小实现，等检索规模、并发或关系复杂度真的成为瓶颈，再增加专用数据库。</div>
+</section>
 <section class="article-section" id="memory-evolution-deep">
-<h2><span class="section-number">08</span>持续进化不只有改代码：RAX、Voyager 与 RoboScript 的三种记忆</h2>
+<h2><span class="section-number">09</span>持续进化不只有改代码：RAX、Voyager 与 RoboScript 的三种记忆</h2>
 <p class="section-lead">这三个项目值得放在一起比较，因为它们沉淀的“经验”并不是同一种东西。理解差别，才能选择你的系统应该改程序、改任务记忆，还是改模型。</p>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>系统</th><th>主要沉淀</th><th>进化方式</th><th>适合解决</th></tr></thead><tbody>
 <tr><td>Voyager</td><td>可执行代码技能库</td><td>生成、执行、根据错误迭代并检索技能</td><td>技能逐步积累与组合</td></tr>
@@ -560,7 +670,7 @@ else:
 </section>
 
 <section class="article-section" id="openeta-code-walkthrough">
-<h2><span class="section-number">09</span>真实项目代码拆解：OpenETA 的一次 Tool Call 如何走完</h2>
+<h2><span class="section-number">10</span>真实项目代码拆解：OpenETA 的一次 Tool Call 如何走完</h2>
 <p class="section-lead">这里以 OpenETA 的公开架构文档和 Agent Command Pipeline 为例。它的价值不是证明某一种架构最好，而是展示如何把 Agent 决策、Tool Registry、模拟器边界和物理动作副作用分开。</p>
 <h3>8.1 从观察到命令：主链路</h3>
 <div class="agent-code">Observation + Task + Memory + Tool/Skill References
@@ -603,7 +713,7 @@ else:
 </section>
 
 <section class="article-section" id="evaluation-deep">
-<h2><span class="section-number">10</span>怎样判断 Agent 真的变强了？</h2>
+<h2><span class="section-number">11</span>怎样判断 Agent 真的变强了？</h2>
 <p class="section-lead">Robot Agent 不能只看最终成功率。否则你无法知道改进来自更好的任务决策、更强的 VLA、更稳定的控制，还是更多的尝试次数。</p>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>层级</th><th>核心指标</th><th>要回答的问题</th></tr></thead><tbody>
 <tr><td>Agent 决策</td><td>Skill 选择准确率、无效调用、重规划次数、决策延迟</td><td>是否选对能力？是否过度调用大模型？</td></tr>
@@ -627,7 +737,7 @@ else:
 </section>
 
 <section class="article-section" id="curriculum">
-<h2><span class="section-number">11</span>学习路线：从 Agent 决策到持续进化</h2>
+<h2><span class="section-number">12</span>学习路线：从 Agent 决策到持续进化</h2>
 <p class="section-lead">建议按下面顺序学习。每一部分都围绕一个系统问题展开，避免把课程变成零散术语清单。</p>
 <ol class="agent-roadmap">
 <li><h3>Agent Loop 与任务级决策 <span class="agent-priority">P0</span></h3><p>Observe–Reason–Act–Verify；任务状态、目标分解、工具调用、终止条件；快速路径与深度推理的触发机制。重点回答 Agent 如何决定“下一步做什么”。</p></li>
@@ -642,7 +752,7 @@ else:
 </section>
 
 <section class="article-section" id="projects">
-<h2><span class="section-number">12</span>代表项目：按你的目标选择阅读重点</h2>
+<h2><span class="section-number">13</span>代表项目：按你的目标选择阅读重点</h2>
 <p>下面不是简单的“最好项目排行榜”，而是为不同知识问题选取的代表案例。项目之间并非互斥分类：一个系统可以同时包含 Agent Runtime、VLA、几何工具和经验进化。</p>
 <div class="agent-project">
 <h3>RAX · 机器人在线探索与 Code Policy 进化</h3>
@@ -685,7 +795,7 @@ else:
 </section>
 
 <section class="article-section" id="reading-order">
-<h2><span class="section-number">13</span>代码阅读顺序</h2>
+<h2><span class="section-number">14</span>代码阅读顺序</h2>
 <p>不要从头到尾通读仓库。每个项目都按同一组问题追踪一次真实任务：</p>
 <ol>
 <li>入口在哪里？任务上下文和环境观测如何进入 Agent？</li>
@@ -700,7 +810,7 @@ else:
 </section>
 
 <section class="article-section" id="capstone">
-<h2><span class="section-number">14</span>综合实战：持续进化的开门 Agent</h2>
+<h2><span class="section-number">15</span>综合实战：持续进化的开门 Agent</h2>
 <p>以你熟悉的柜门/抽屉操作为主线，不必从便利店通用任务开始。这个任务能同时考察几何、接触、长时序执行、模型预测和技能改进。</p>
 <div class="agent-code">User goal: 打开陌生柜门并取出目标物体
 
@@ -718,13 +828,13 @@ Agent:
 </section>
 
 <section class="article-section" id="interactive-labs">
-<h2><span class="section-number">15</span>交互式算法演示</h2>
+<h2><span class="section-number">16</span>交互式算法演示</h2>
 <p class="section-lead">通过逐步执行和伪代码，理解 Agent 如何选择 Skill、调用长时序 VLA、利用 World Model，并让 Code Policy 根据经验迭代。以下均为可控的教学模拟，不连接真实机器人或执行任意生成代码。</p>
 <div id="agent-learning-extras"><p class="agent-note">交互演示正在加载…</p></div>
 </section>
 
 <section class="article-section" id="scope">
-<h2><span class="section-number">16</span>本章学习边界</h2>
+<h2><span class="section-number">17</span>本章学习边界</h2>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>本章深入学习</th><th>已有课程复用，不重复展开</th></tr></thead><tbody>
 <tr><td>Agent 决策、Skill Runtime、任务状态与经验管理</td><td>Transformer、VLM 基础与多模态融合</td></tr>
 <tr><td>长时序 VLA 的 Skill 化与任务级监督</td><td>π0.5 内部网络、Flow Matching 训练推导</td></tr>
