@@ -139,14 +139,14 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
   --pointer-spot-y:50%;
 }
 @media (hover:hover) and (pointer:fine) {
-  .topic-card,.practice-card,.agent-card,.feature-card{
+  .topic-card,.practice-card,.agent-card,.feature-card,.agent-node,.agent-skill,.agent-project{
     position:relative;
     isolation:isolate;
     transform-style:preserve-3d;
     transition:transform .22s cubic-bezier(.2,.7,.2,1),box-shadow .22s ease,border-color .22s ease;
     will-change:transform;
   }
-  .topic-card::after,.practice-card::after,.agent-card::after,.feature-card::after{
+  .topic-card::after,.practice-card::after,.agent-card::after,.feature-card::after,.agent-node::after,.agent-skill::after,.agent-project::after{
     content:"";
     position:absolute;
     inset:0;
@@ -157,7 +157,7 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
     background:radial-gradient(260px circle at var(--spot-x,50%) var(--spot-y,50%),rgba(111,166,235,.16),transparent 68%);
     transition:opacity .2s ease;
   }
-  .topic-card:hover::after,.practice-card:hover::after,.agent-card:hover::after,.feature-card:hover::after{opacity:1}
+  .topic-card:hover::after,.practice-card:hover::after,.agent-card:hover::after,.feature-card:hover::after,.agent-node:hover::after,.agent-skill:hover::after,.agent-project:hover::after{opacity:1}
   .button,.search-trigger,.icon-button{
     translate:var(--mag-x,0px) var(--mag-y,0px);
     transition:translate .18s cubic-bezier(.2,.7,.2,1),transform .18s ease,box-shadow .18s ease;
@@ -191,21 +191,21 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
 }
 .brand-mark{transition:transform .35s cubic-bezier(.2,.8,.2,1),filter .35s ease}
 .brand:hover .brand-mark{transform:rotate(-8deg) scale(1.06);filter:drop-shadow(0 3px 7px rgba(77,119,174,.22))}
-.topic-card,.practice-card,.agent-card,.feature-card{
+.topic-card,.practice-card,.agent-card,.feature-card,.agent-node,.agent-skill,.agent-project{
   border-color:color-mix(in srgb,var(--line,#e5eaf0) 78%,#9bb9dc);
   box-shadow:0 2px 8px rgba(35,58,91,.025),0 12px 28px rgba(35,58,91,.035);
 }
-.topic-card:hover,.practice-card:hover,.agent-card:hover,.feature-card:hover{
+.topic-card:hover,.practice-card:hover,.agent-card:hover,.feature-card:hover,.agent-node:hover,.agent-skill:hover,.agent-project:hover{
   box-shadow:0 12px 30px rgba(35,58,91,.09),0 2px 8px rgba(35,58,91,.04);
   border-color:rgba(112,151,199,.55);
 }
 @media(max-width:760px),(hover:none),(pointer:coarse){
   .cursor-aura{display:none!important}
-  .topic-card,.practice-card,.agent-card,.feature-card{transform:none!important;will-change:auto}
+  .topic-card,.practice-card,.agent-card,.feature-card,.agent-node,.agent-skill,.agent-project{transform:none!important;will-change:auto}
   .button,.search-trigger,.icon-button{translate:none!important}
 }
 @media(prefers-reduced-motion:reduce){
   .cursor-aura{display:none!important}
-  .topic-card,.practice-card,.agent-card,.feature-card,.button,.search-trigger,.icon-button,.brand-mark{transition:none!important;transform:none!important;translate:none!important}
+  .topic-card,.practice-card,.agent-card,.feature-card,.agent-node,.agent-skill,.agent-project,.button,.search-trigger,.icon-button,.brand-mark{transition:none!important;transform:none!important;translate:none!important}
   .pointer-ripple{display:none!important}
 }
