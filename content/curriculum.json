@@ -48,9 +48,9 @@
       "desc": "潜变量、扩散概率模型、连续时间随机过程、流匹配与扩散 Transformer。",
       "lessons": [
         "vae",
+        "flow-matching",
         "diffusion",
         "score-sde",
-        "flow-matching",
         "dit-adaln"
       ]
     },
