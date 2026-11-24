@@ -354,8 +354,7 @@
       "Regression"
     ],
     "prerequisites": [
-      "tensor",
-      "matrix-grad"
+      "tensor"
     ],
     "objectives": [
       "说明仿射变换与激活如何共同表示非线性函数",
