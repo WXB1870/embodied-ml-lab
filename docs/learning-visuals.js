@@ -145,3 +145,13 @@ document.addEventListener('click',function(e){
 });
 document.addEventListener('visibilitychange',function(){if(document.hidden)document.querySelectorAll('[data-learning-visual]').forEach(function(root){if(root._lvTimer){clearInterval(root._lvTimer);root._lvTimer=null;const b=root.querySelector('[data-lv-play]');if(b)b.textContent='自动播放';}});});
 window.addEventListener('beforeunload',function(){document.querySelectorAll('[data-learning-visual]').forEach(function(root){if(root._lvTimer)clearInterval(root._lvTimer);});});
+
+function initAgentLearning(){
+ const host=document.getElementById('agent-learning-extras');
+ if(!host)return;
+ const ids=['agent-loop','skill-runtime','long-vla','world-model','geometry','code-policy','evolution','meta-policy'];
+ host.innerHTML='<div class="agent-learning-grid">'+ids.map(function(id){return '<div class="agent-learning-item">'+renderAgentLearning(id)+'</div>';}).join('')+'</div>';
+ initLearningVisuals(host);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initAgentLearning);
+else initAgentLearning();
