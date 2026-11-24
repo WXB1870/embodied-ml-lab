@@ -35,7 +35,28 @@ evolution:{title:'Code Policy Evolution：经验到版本晋升',intro:'改变�
 };
 function lvEsc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function renderAlgorithmPanel(c){return '<details class="lv-algorithm"><summary>算法伪代码 · '+lvEsc(c.title)+'</summary><div class="lv-algorithm-body"><pre>'+c.pseudo.map(function(line,i){return '<span class="lv-code-line"><i>'+(i+1)+'</i><code>'+lvEsc(line)+'</code></span>';}).join('')+'</pre><p>'+lvEsc(c.intro)+'</p></div></details>';}
-function renderLearningVisual(id,c){return '<section class="lv-visual" data-learning-visual="'+lvEsc(id)+'"><header><div><span>算法可视化</span><h3>'+lvEsc(c.title)+'</h3></div><p>'+lvEsc(c.intro)+'</p></header><div class="lv-stage" data-lv-stage></div><nav class="lv-controls"><button type="button" data-lv-prev disabled>上一步</button><input type="range" min="0" max="'+(c.steps.length-1)+'" value="0" step="1" data-lv-range aria-label="演示步骤"><button type="button" data-lv-next>下一步</button><button type="button" data-lv-play>自动播放</button><button type="button" data-lv-reset>重置</button></nav><div class="lv-step-list">'+c.steps.map(function(s,i){return '<button type="button" class="lv-step '+(i===0?'active':'')+'" data-lv-step="'+i+'">'+(i+1)+'. '+lvEsc(s)+'</button>';}).join('')+'</div><p class="lv-explain" data-lv-explain></p></section>';}
+function renderLVControls(id){
+ const specs={
+ attention:'<label>Query Token <select data-lv-query>'+[0,1,2,3,4].map(function(i){return '<option value="'+i+'">Token '+(i+1)+'</option>';}).join('')+'</select></label>',
+ 'masking-autoregressive':'<label>可见性规则 <select data-lv-mode><option value="causal">因果 Mask</option><option value="all">双向 Mask</option><option value="prefix">Prefix + Action Block</option></select></label>',
+ 'flow-matching':'<div class="lv-params"><label>积分步数 <input type="range" min="1" max="32" value="8" data-lv-steps><output>8</output></label><label>积分器 <select data-lv-method><option value="euler">Euler</option><option value="heun">Heun</option></select></label></div>',
+ 'action-chunking':'<div class="lv-params"><label>旧动作前缀 <input type="range" min="1" max="15" value="7" data-lv-old><output>7</output></label><label>融合区 <input type="range" min="1" max="20" value="9" data-lv-blend><output>9</output></label></div>',
+ ppo:'<div class="lv-params"><label>Ratio <input type="range" min=".5" max="1.8" step=".01" value="1.35" data-lv-ratio><output>1.35</output></label><label>Advantage <select data-lv-adv><option value="1">正优势 +1</option><option value="-1">负优势 −1</option></select></label></div>',
+ lora:'<label>LoRA Rank <input type="range" min="1" max="64" value="8" data-lv-rank><output>8</output></label>',
+ 'dit-adaln':'<label>残差门控强度 <input type="range" min="0" max="1" step=".01" value="0" data-lv-gate><output>0.00</output></label>',
+ diffusion:'<label>归一化噪声时间 t <input type="range" min="0" max="1" step=".01" value=".5" data-lv-time><output>0.50</output></label>',
+ rope:'<label>位置 p <input type="range" min="0" max="20" value="4" data-lv-position><output>4</output></label>',
+ 'norm-ffn':'<div class="lv-params"><label>输入均值 <input type="range" min="-3" max="3" step=".1" value="2" data-lv-mean><output>2.0</output></label><label>输入尺度 <input type="range" min=".5" max="3" step=".1" value="1.5" data-lv-scale><output>1.5</output></label></div>',
+ multimodal:'<label>选择 Patch <input type="range" min="0" max="15" value="4" data-lv-patch><output>4</output></label>',
+ 'kv-cache':'<label>已生成 Token 数 <input type="range" min="1" max="16" value="6" data-lv-tokens><output>6</output></label>',
+ 'behavior-cloning':'<label>右侧示教样本比例 <input type="range" min="0" max="1" step=".05" value=".5" data-lv-mix><output>0.50</output></label>',
+ 'policy-gradient':'<label>Advantage <input type="range" min="-2" max="2" step=".1" value="1" data-lv-adv><output>1.0</output></label>',
+ 'dpo-grpo':'<label>β <input type="range" min=".01" max="1" step=".01" value=".1" data-lv-beta><output>0.10</output></label>',
+ vae:'<label>KL 权重 β <input type="range" min="0" max="4" step=".1" value="1" data-lv-beta><output>1.0</output></label>'
+ };
+ return '<div class="lv-interactive-controls">'+(specs[id]||'')+'</div>';
+}
+function renderLearningVisual(id,c){return '<section class="lv-visual" data-learning-visual="'+lvEsc(id)+'"><header><div><span>算法可视化</span><h3>'+lvEsc(c.title)+'</h3></div><p>'+lvEsc(c.intro)+'</p></header>'+renderLVControls(id)+'<div class="lv-stage" data-lv-stage></div><nav class="lv-controls"><button type="button" data-lv-prev disabled>上一步</button><input type="range" min="0" max="'+(c.steps.length-1)+'" value="0" step="1" data-lv-range aria-label="演示步骤"><button type="button" data-lv-next>下一步</button><button type="button" data-lv-play>自动播放</button><button type="button" data-lv-reset>重置</button></nav><div class="lv-step-list">'+c.steps.map(function(s,i){return '<button type="button" class="lv-step '+(i===0?'active':'')+'" data-lv-step="'+i+'">'+(i+1)+'. '+lvEsc(s)+'</button>';}).join('')+'</div><p class="lv-explain" data-lv-explain></p></section>';}
 function renderLessonLearning(id){const c=LV[id];return c?renderAlgorithmPanel(c)+renderLearningVisual(id,c):'';}
 function renderAgentLearning(id){const c=AGENT[id];return c?renderAlgorithmPanel(c)+renderLearningVisual(id,c):'';}
 function lvStage(id,step,root){
