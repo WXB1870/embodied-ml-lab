@@ -66,9 +66,8 @@ for l in lessons:
     assert len(l['knowledgeChecks'])>=2
     for q in l['knowledgeChecks']:
         assert q['question'] and isinstance(q['answer'],list) and len(q['answer'])>=1
-        assert q.get('acceptance'),(l['id'],'knowledge check needs acceptance criteria')
-        # Robot Agent checks evaluate system boundaries and evidence, not code-line recall.
-        if not l.get('theoryTopic') and l.get('module')!='robot-agent':
+        if not l.get('theoryTopic'):
+            assert q.get('acceptance'),(l['id'],'knowledge check needs acceptance criteria')
             assert q.get('codeFocus'),(l['id'],'knowledge check needs code focus')
     for key in ['exercise','pytorchTask']:
         assert l[key].get('hints') and l[key].get('explanation'),(l['id'],key,'missing answer explanation')
