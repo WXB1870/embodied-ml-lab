@@ -73,7 +73,7 @@ function renderReader(kind,item,tab,body){
  const context=module?`<a href="#/?chapter=${module.id}">${esc(module.name)}</a>`:'<a href="#/">核心专题</a>';
  const core=null;
  markReading(kind,item,tab);
- return `<div class="reader-shell"><aside class="reader-sidebar"><a class="back-link" href="#/">← 课程目录</a><p>${tab==='code'?'代码目录':tab==='exercise'||tab==='labs'?'练习目录':'本篇目录'}</p><nav aria-label="本页目录">${contents}</nav></aside><article class="reader-article"><header class="article-heading"><div class="article-context">${context}${core?`<a class="topic-shortcut" href="${topicHref(core)}">${esc(TOPIC_META[core].name)} 专题详解 →</a>`:''}</div><h1>${esc(item.title)}</h1></header><div class="reader-bar"><nav class="reader-tabs" aria-label="文章内容">${tabs.map(([id,label])=>`<a href="${kind==='topic'?topicHref(item.id,id):lessonHref(item.id,id)}" class="${id===tab?'active':''}" ${id===tab?'aria-current="page"':''}>${label}</a>`).join('')}</nav><details class="mobile-toc"><summary>目录</summary><nav aria-label="移动端文章目录">${contents}</nav></details></div><div class="reader-body">${body}</div>${renderRelated(kind,item)}</article></div>`;
+ return `<div class="reader-shell"><aside class="reader-sidebar"><a class="back-link" href="#/">← 课程目录</a><p>${tab==='code'?'代码目录':tab==='exercise'||tab==='labs'?'练习目录':'本篇目录'}</p><nav aria-label="本页目录">${contents}</nav></aside><article class="reader-article"><header class="article-heading"><div class="article-context">${context}${core?`<a class="topic-shortcut" href="${topicHref(core)}">${esc(TOPIC_META[core].name)} 专题详解 →</a>`:''}</div><h1>${esc(item.title)}</h1></header><div class="reader-bar"><nav class="reader-tabs" aria-label="文章内容">${tabs.map(([id,label])=>`<a href="${kind==='topic'?topicHref(item.id,id):lessonHref(item.id,id)}" class="${id===tab?'active':''}" ${id===tab?'aria-current="page"':''}>${label}</a>`).join('')}</nav><details class="mobile-toc"><summary>目录</summary><nav aria-label="移动端文章目录">${contents}</nav></details></div><div class="reader-body">${body}</div>${renderRelated(kind,item,tab)}</article></div>`;
 }
 
 function renderLesson(l,tab,mode,params){
@@ -93,13 +93,26 @@ function renderTopic(t,params){
  const id=Object.keys(CORE_LESSON_TOPIC).find(k=>CORE_LESSON_TOPIC[k]===t.id);
  return renderLesson(byId[id],({guide:'theory',labs:'exercise'}[params.get('tab')]||params.get('tab')||'theory'),params.get('mode')==='torch'?'torch':'python',params);
 }
-function renderRelated(kind,item){
- const ids=kind==='topic'?[...(item.prerequisites||[]),...(item.relatedLessons||[])]:item.prerequisites;
- const unique=[...new Set(ids||[])].filter(id=>byId[id]?.sections);
- const links=unique.map(id=>`<a href="${lessonHref(id)}">${esc(byId[id].title)} →</a>`);
+function renderRelated(kind,item,tab){
+ const prerequisites=[...new Set(item.prerequisites||[])].filter(id=>byId[id]?.sections);
+ const related=[...new Set(item.relatedLessons||[])].filter(id=>byId[id]?.sections&&id!==item.id);
+ const group=(label,ids)=>ids.length?`<div class="connection-group"><span>${label}</span><div class="connection-links">${ids.map(id=>`<a href="${lessonHref(id)}">${esc(byId[id].title)} →</a>`).join('')}</div></div>`:'';
+ const links=kind==='topic'?[...new Set([...prerequisites,...related])]:tab==='theory'?[]:[...prerequisites,...related];
  const list=kind==='lesson'?lessons:topics,index=list.indexOf(item),previous=list[index-1],next=list[index+1];
  const href=entry=>kind==='lesson'?lessonHref(entry.id):topicHref(entry.id);
- return `<footer class="article-footer">${links.length?`<details class="related-details"><summary>相关基础与延伸</summary><div class="related-links">${links.join('')}</div></details>`:''}<nav class="article-pagination" aria-label="文章翻页">${previous?`<a href="${href(previous)}"><span>← 上一篇</span><strong>${esc(previous.title)}</strong></a>`:'<span></span>'}${next?`<a class="next" href="${href(next)}"><span>下一篇 →</span><strong>${esc(next.title)}</strong></a>`:''}</nav></footer>`;
+ const relatedMarkup=kind==='lesson'?group('前置基础',prerequisites)+group('延伸应用',related):links.map(id=>`<a href="${lessonHref(id)}">${esc(byId[id].title)} →</a>`).join('');
+ return `<footer class="article-footer">${relatedMarkup?`<details class="related-details"><summary>知识关联 · 前置基础与延伸应用</summary><div class="related-links">${relatedMarkup}</div></details>`:''}<nav class="article-pagination" aria-label="文章翻页">${previous?`<a href="${href(previous)}"><span>← 上一篇</span><strong>${esc(previous.title)}</strong></a>`:'<span></span>'}${next?`<a class="next" href="${href(next)}"><span>下一篇 →</span><strong>${esc(next.title)}</strong></a>`:''}</nav></footer>`;
+}
+function renderEvolution(evolution){
+ if(!evolution?.steps?.length)return '';
+ return `<details class="detail-box evolution-details"><summary>方法演进 · ${inline(evolution.title||'技术路线')}</summary><div class="detail-body">${evolution.context?`<p class="evolution-context">${inline(evolution.context)}</p>`:''}<ol class="evolution-steps">${evolution.steps.map(step=>`<li><strong>${inline(step.name)}</strong><p>${inline(step.change)}</p></li>`).join('')}</ol>${evolution.takeaway?`<p class="evolution-takeaway"><strong>本节要抓住：</strong>${inline(evolution.takeaway)}</p>`:''}</div></details>`;
+}
+function renderLearningConnections(item){
+ const prerequisites=[...new Set(item.prerequisites||[])].filter(id=>byId[id]?.sections);
+ const related=[...new Set(item.relatedLessons||[])].filter(id=>byId[id]?.sections&&id!==item.id);
+ if(!prerequisites.length&&!related.length)return '';
+ const group=(label,ids)=>ids.length?`<div class="connection-group"><span>${label}</span><div class="connection-links">${ids.map(id=>`<a href="${lessonHref(id)}">${esc(byId[id].title)} →</a>`).join('')}</div></div>`:'';
+ return `<details class="detail-box learning-connections"><summary>知识关联 · 这节课与其他课程的关系</summary><div class="detail-body">${group('前置基础',prerequisites)}${group('进一步应用',related)}</div></details>`;
 }
 
 function proseParagraphs(value){return String(value??'').split(/\n\s*\n/).filter(Boolean).map(p=>'<p>'+inline(p)+'</p>').join('');}
@@ -140,7 +153,7 @@ function renderChapterReview(l){
 function renderLessonTheory(l){
  const visuals=l.theoryTopic?[]:P0_VISUALS.filter(v=>v.lessons[0]===l.id);
  const notation=`<details class="detail-box shape-details"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>变量</th><th>形状</th><th>含义</th></tr></thead><tbody>${l.shapes.map(s=>`<tr><td>${inline(s.name)}</td><td>${shapeMarkup(s.shape)}</td><td>${inline(s.meaning)}</td></tr>`).join('')}</tbody></table></div></details>`;
- return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${l.prerequisites?.length?`<p class="prerequisite-links">前置知识：${l.prerequisites.map(id=>`<a href="${lessonHref(id)}">${esc(byId[id]?.title||id)}</a>`).join(' · ')}</p>`:''}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${visuals.map(v=>renderInlineVisual(v.id)).join('')}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">进入课程练习 →</a></p>`;
+ return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderLearningConnections(l)}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${visuals.map(v=>renderInlineVisual(v.id)).join('')}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">进入课程练习 →</a></p>`;
 }
 function renderTopicTheory(t){
  return `<p class="article-intro">${inline(t.lead)}</p><details class="detail-box notation"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>符号</th><th>形状</th><th>含义</th></tr></thead><tbody>${t.notation.map(n=>`<tr><td>${inline(n.symbol)}</td><td>${shapeMarkup(n.shape)}</td><td>${inline(n.meaning)}</td></tr>`).join('')}</tbody></table></div></details>${t.sections.map((s,i)=>renderSection(s,i,'topic',t)).join('')}${renderSources(t.sources,null,t.relatedLessons)}<p class="article-action"><a class="button primary" href="${topicHref(t.id,'code')}">阅读代码实现 →</a><a href="${topicHref(t.id,'labs')}">进入课程练习 →</a></p>`;
