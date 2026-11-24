@@ -43,7 +43,7 @@ function page(route,title,description,expression,{noindex=false,redirect}={}){
 }
 async function buildPages(){
  context.prerenderedLabs={};
- for(const name of ['cnn','attention','kv-sharing']){
+ for(const name of ['cnn','attention','kv-sharing','tensor']){
   const lab=await import(require('node:url').pathToFileURL(path.join(dist,'labs',name+'.mjs')).href);
   context.prerenderedLabs[name]=lab.renderInitial();
  }

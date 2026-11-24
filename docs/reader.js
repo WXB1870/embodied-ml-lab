@@ -286,6 +286,7 @@ function renderChapterReview(l){
  return `<section class="article-section chapter-review" id="chapter-review" data-reading-section><h2>读后自测</h2><p>先不看正文，写下答案，并用算例、推导或代码说明理由，再核对练习页的分析。</p><ol>${l.knowledgeChecks.slice(0,2).map((q,i)=>`<li><p>${inline(q.question)}</p><a href="${lessonHref(l.id,'exercise')+'&anchor=question-'+i}">核对参考解 →</a></li>`).join('')}</ol></section>`;
 }
 const courseLabs={
+ tensor:{'3':['tensor','广播与 einsum 轴对齐']},
  'cnn-receptive-field':{'receptive-field':['cnn','理论感受野与可达像素']},
  attention:{'1':['attention','点积缩放与 Softmax 饱和'],'mqa-gqa-kv-sharing':['kv-sharing','Query 与 KV 头共享']}
 };

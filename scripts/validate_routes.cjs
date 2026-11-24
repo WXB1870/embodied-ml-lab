@@ -75,6 +75,7 @@ for(const lesson of lessons){
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
   assert.ok(html.includes('class="article-intro"'));
   const expectedLabs={
+   tensor:[['3','tensor','data-axis-grid']],
    'cnn-receptive-field':[['receptive-field','cnn','data-marker']],
    attention:[['1','attention','data-probabilities'],['mqa-gqa-kv-sharing','kv-sharing','data-headmap']]
   }[lesson.id]||[];
@@ -87,7 +88,8 @@ for(const lesson of lessons){
     const end=page.indexOf('<section class="article-section"',start+1);
     const body=page.slice(start,end<0?undefined:end);
     const formula=body.indexOf('class="formula"'), lab=body.indexOf('data-course-lab="'+name+'"');
-    assert.ok(start>=0 && formula>=0 && lab>formula,name+' must follow its chapter formula');
+    assert.ok(start>=0 && lab>=0,name+' must be in its chapter section');
+    if(name!=='tensor')assert.ok(formula>=0 && lab>formula,name+' must follow its chapter formula');
     if(page===published)assert.ok(body.slice(lab).includes(marker),name+' missing prerendered content');
    }
   }

@@ -4,6 +4,26 @@ const assert=require('node:assert/strict');
 async function main(){
   const {computeReceptiveField:rf}=await import('../dist/labs/cnn-math.mjs');
   const {gaussianBank,compareAttention,kvCache}=await import('../dist/labs/attention-math.mjs');
+  const {alignTensors,sourceIndices}=await import('../dist/labs/tensor-math.mjs');
+  const wrong=alignTensors('2,3,2','2'), fixed=alignTensors('2,3,2','2,1,1');
+  const point=new Map([['-3',1],['-2',2],['-1',0]]);
+  assert.deepEqual(wrong.outputShape,fixed.outputShape);
+  assert.deepEqual(sourceIndices(wrong,point),[[1,2,0],[0]]);
+  assert.deepEqual(sourceIndices(fixed,point),[[1,2,0],[1,0,0]]);
+  const expanded=alignTensors('(B,1,D)','(1,T,D)');
+  assert.deepEqual(expanded.outputShape,[2,3,4]);
+  assert.deepEqual(expanded.inputCounts,[8n,12n]);assert.equal(expanded.outputCount,24n);
+  const score=alignTensors('B,H,Q,D','B,H,K,D','bhqd,bhkd->bhqk');
+  assert.deepEqual(score.outputShape,[2,2,3,5]);assert.deepEqual(score.reduced,['d']);assert.equal(score.terms,4n);
+  assert.deepEqual(sourceIndices(score,new Map([['q',2],['k',4],['d',3]])),[[0,0,2,3],[0,0,4,3]]);
+  assert.deepEqual(alignTensors('2,3','3,4','ij,jk->ki').outputShape,[4,2]);
+  assert.equal(alignTensors('3','3','i,i->').outputCount,1n);
+  assert.deepEqual(alignTensors('()','()').outputShape,[]);
+  assert.equal(alignTensors('3,3','()','ii,->').terms,3n);
+  assert.equal(alignTensors('4096,4096,4096,4096,4096,4096','()').outputCount,4096n**6n);
+  for(const args of [['2,3,4','2'],['2,3','()','ii,->'],['2','2','i,i->j'],['2','2','i,i->ii'],['','2']])
+    assert.throws(()=>alignTensors(...args),RangeError);
+  console.log('Tensor axis alignment, sample vs feature indexing, contraction, storage and invalid shapes: passed.');
   const layer=d=>({k:3,s:1,p:d,d});
   const dense=rf([1,1,1].map(layer),21,10,10);
   assert.deepEqual(dense.trfBox,{x0:7,y0:7,x1:13,y1:13});

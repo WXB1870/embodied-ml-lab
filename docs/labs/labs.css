@@ -48,3 +48,14 @@
 @media(max-width:580px){.math-lab .lab-range input{width:115px}.math-lab .cnn-grids h4 small{display:block;margin-left:0}.math-lab .lab-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .math-lab .att-chart,.math-lab .att-detail>svg{max-width:520px}
 .math-lab .lab-metrics+.lab-settings,.math-lab [data-summary]+details{margin-top:12px}
+
+.math-lab .tensor-fields input{max-width:13em;padding:4px 7px;border:1px solid var(--line);border-radius:4px;background:var(--paper,white);color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
+.math-lab .tensor-fields [hidden]{display:none}
+.math-lab [data-axis-grid]{max-width:650px;color:var(--blue-dark)}
+.math-lab [data-axis-grid] text{font-size:12px;fill:var(--ink)}
+.math-lab .axis-track{fill:var(--line)}
+.math-lab .axis-index,.math-lab .axis-repeat{fill:var(--blue-dark)}
+.math-lab .tensor-probes input{width:6em;accent-color:var(--blue)}
+.math-lab [data-axis-track]{cursor:crosshair}
+.math-lab[data-course-lab=tensor]{font-variant-numeric:tabular-nums}
+.math-lab[data-course-lab=tensor] [data-figure]{margin-top:12px}
