@@ -166,7 +166,7 @@ function render(){
  else{if(!robots){robots=document.createElement('meta');robots.name='robots';document.head.appendChild(robots);}robots.content='noindex';}
  $$('[data-nav]').forEach(el=>{const chosen=el.dataset.nav===active;el.classList.toggle('active',chosen);if(chosen)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
  document.title=(title?title+' · ':'')+'Embodied ML';
- initExplorers();bindEditor();bindPracticeFilters();trackSections();
+ initExplorers();if(typeof initLearningVisuals==='function')initLearningVisuals(document);bindEditor();bindPracticeFilters();trackSections();
  if(pendingQuery)requestAnimationFrame(()=>openSearch(pendingQuery));
 }
 function notFound(){return '<div class="page narrow"><h1>没有找到这篇内容</h1><a class="button primary" href="#/">返回课程目录</a></div>';}
