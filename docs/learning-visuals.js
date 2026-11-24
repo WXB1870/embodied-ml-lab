@@ -257,6 +257,9 @@ function updateAgentLab(root){
  stage.innerHTML=agentLabStage(id,root);
 }
 function initAgentLearning(){
+ // Route-validation runs this bundle in a minimal VM without a browser DOM.
+ // Keep the page initializer inert in that environment; the real page has the DOM API.
+ if(typeof document==='undefined'||typeof document.getElementById!=='function')return;
  const host=document.getElementById('agent-learning-extras');if(!host)return;
  const ids=['agent-loop','skill-runtime','long-vla','world-model','geometry','code-policy','evolution'];
  host.innerHTML='<div class="agent-learning-grid">'+ids.map(function(id){return '<div class="agent-learning-item">'+agentLabCard(id)+'</div>';}).join('')+'</div>';
