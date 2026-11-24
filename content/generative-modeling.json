@@ -306,7 +306,34 @@
         ]
       }
     ],
-    "lead": "生成模型用概率分布描述数据，并能从中产生新的样本；潜变量模型通过先采一个未直接观测的变量、再生成数据来实现这种分布。变分自编码器（VAE）在此基础上增加近似推断网络，用可计算的下界训练生成模型。本章先区分采样与密度，再认识先验、后验和解码器，随后推导 ELBO、重参数化与条件生成。"
+    "lead": "生成模型用概率分布描述数据，并能从中产生新的样本；潜变量模型通过先采一个未直接观测的变量、再生成数据来实现这种分布。变分自编码器（VAE）在此基础上增加近似推断网络，用可计算的下界训练生成模型。本章先区分采样与密度，再认识先验、后验和解码器，随后推导 ELBO、重参数化与条件生成。",
+    "relatedLessons": [
+      "diffusion",
+      "flow-matching"
+    ],
+    "evolution": {
+      "title": "从确定性压缩到可采样的潜变量模型",
+      "context": "自编码器能压缩和重建输入，但仅靠重建目标并不会自动得到结构良好、可采样的潜空间。",
+      "steps": [
+        {
+          "name": "Autoencoder",
+          "change": "编码器压缩输入，解码器重建输入；潜变量主要服务于重建。"
+        },
+        {
+          "name": "Variational Autoencoder",
+          "change": "用近似后验描述潜变量分布，并通过 ELBO 同时约束重建与潜空间分布。"
+        },
+        {
+          "name": "Reparameterization Trick",
+          "change": "把随机采样改写为可微参数变换，使梯度能够传回分布参数。"
+        },
+        {
+          "name": "Conditional / Structured Latents",
+          "change": "引入条件或结构先验，让潜变量承载任务相关因素，为后续生成式策略提供建模思路。"
+        }
+      ],
+      "takeaway": "VAE 的关键不是“加了随机噪声”，而是概率建模、变分下界与可微采样三者的配合。"
+    }
   },
   {
     "id": "diffusion",
@@ -791,7 +818,35 @@
         "codeExplanation": "Independent(Normal(...),1) 把动作向量作为一个联合事件，对维度求和后计算 KL。协方差常数与网络均值无关，故删除后保留相同的期望梯度；若使用逐元素 mean，必须同时追踪额外的维度因子。",
         "lead": "前面用噪声 MSE 训练了回归器，下面再问它与数据似然是什么关系。轨迹 ELBO 把整条加噪过程看作潜变量，将全局生成目标分解为若干反向分布的局部比较，由此导出带时间权重的噪声回归。这个推导也说明简化目标省去了哪些权重。"
       }
-    ]
+    ],
+    "relatedLessons": [
+      "score-sde",
+      "dit-adaln",
+      "generative-policy"
+    ],
+    "evolution": {
+      "title": "从离散去噪到连续时间生成",
+      "context": "扩散模型通过构造易采样的噪声过程，再学习反向生成；不同工作分别改进训练目标、采样路径与数值求解。",
+      "steps": [
+        {
+          "name": "DDPM",
+          "change": "建立逐步加噪与反向去噪链，并推导可训练的噪声预测目标。"
+        },
+        {
+          "name": "DDIM",
+          "change": "在兼容训练目标的前提下构造非随机或少步采样路径，降低生成步数。"
+        },
+        {
+          "name": "Score-based SDE",
+          "change": "把离散过程推广到连续时间，用随机微分方程描述正向扰动与反向生成。"
+        },
+        {
+          "name": "Flow Matching（相关路线）",
+          "change": "直接学习概率路径上的速度场，以 ODE 生成样本；与扩散有联系，但不是简单替代或同一目标。"
+        }
+      ],
+      "takeaway": "区分训练参数化、概率过程和采样器；预测噪声、预测速度与采样更新不是同一个概念。"
+    }
   },
   {
     "id": "score-sde",
@@ -1190,7 +1245,33 @@
         "formula": "\\begin{aligned}J(\\theta)&=\\tfrac12\\mathbb E_p\\|s_\\theta-\\nabla\\log p\\|^2\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2]-\\int s_\\theta(x)\\cdot\\nabla p(x)\\,dx+C\\\\&=\\mathbb E_p[\\tfrac12\\|s_\\theta\\|^2+\\nabla\\cdot s_\\theta]+C.\\end{aligned}",
         "lead": "Score Matching 是通过匹配模型向量场与数据 Score 来学习分布信息的方法。真实 Score 通常未知，经典目标利用分部积分将它移出可优化表达式。下面说明这项改写依赖哪些边界条件。"
       }
-    ]
+    ],
+    "relatedLessons": [
+      "flow-matching"
+    ],
+    "evolution": {
+      "title": "从去噪分数到连续时间动力学",
+      "context": "Score 方法先学习数据密度对状态的梯度，再借助连续时间动力学把这个局部信息转化为生成过程。",
+      "steps": [
+        {
+          "name": "Score Matching",
+          "change": "以对数密度关于输入状态的梯度作为学习对象，避免直接求归一化常数。"
+        },
+        {
+          "name": "Denoising Score Matching",
+          "change": "利用条件噪声分布构造可计算监督，学习被扰动数据的 Score。"
+        },
+        {
+          "name": "Reverse-time SDE",
+          "change": "根据正向扩散过程与 Score 构造反向随机动力学，从噪声回到数据分布。"
+        },
+        {
+          "name": "Probability Flow ODE",
+          "change": "构造具有相同边际密度演化的确定性 ODE，并与 Flow Matching 的速度场视角建立联系。"
+        }
+      ],
+      "takeaway": "Score 是对状态求导的密度梯度，不是模型参数梯度；SDE 与 ODE 描述不同的样本路径。"
+    }
   },
   {
     "id": "flow-matching",
@@ -1303,6 +1384,33 @@
       "pitfall-2": "pitfall-4",
       "pitfall-3": "pitfall-0",
       "pitfall-4": "section-ode-solvers"
+    },
+    "relatedLessons": [
+      "dit-adaln",
+      "generative-policy"
+    ],
+    "evolution": {
+      "title": "从连续正规化流到 Flow Matching",
+      "context": "Flow Matching 把生成问题转成学习一个随时间变化的速度场，使样本沿概率路径从简单分布移动到数据分布。",
+      "steps": [
+        {
+          "name": "Continuous Normalizing Flows",
+          "change": "用连续时间 ODE 定义可逆变换，但直接最大似然训练通常需要计算散度项。"
+        },
+        {
+          "name": "Flow Matching",
+          "change": "通过指定概率路径及其条件速度场构造回归目标，避免训练时沿轨迹反复求解 ODE。"
+        },
+        {
+          "name": "Conditional Flow Matching",
+          "change": "对条件路径采样并回归条件速度，利用条件目标的期望恢复边际速度场监督。"
+        },
+        {
+          "name": "Rectified Flow / OT-inspired Paths",
+          "change": "通过更直接或更短的传输路径改善轨迹几何与采样效率，路径选择仍需结合任务验证。"
+        }
+      ],
+      "takeaway": "训练阶段学习速度场，推理阶段才数值积分 ODE；训练目标与求解器必须分开理解。"
     }
   },
   {
@@ -1665,6 +1773,32 @@
         "id": "2",
         "lead": "Cross-Attention 让待更新位置发出 Query，读取条件序列提供的 Key/Value。多个条件位置允许按内容选择；若只剩一个有效条件位置，Softmax 权重恒为一。这个边界决定条件压缩后还剩什么交互。"
       }
-    ]
+    ],
+    "relatedLessons": [
+      "vla-architecture"
+    ],
+    "evolution": {
+      "title": "从卷积去噪器到条件化 Transformer",
+      "context": "DiT 将扩散/流模型中的去噪或速度预测网络换成 Transformer；条件注入决定任务信息如何调制每个 Block。",
+      "steps": [
+        {
+          "name": "U-Net Diffusion",
+          "change": "用卷积多尺度结构处理空间局部性，并通过时间嵌入提供噪声等级条件。"
+        },
+        {
+          "name": "Diffusion Transformer（DiT）",
+          "change": "把输入组织为 Token 序列，使用 Transformer Block 建模全局关系。"
+        },
+        {
+          "name": "FiLM / AdaLN",
+          "change": "把条件映射为通道级缩放与偏移，让时间和任务信息调制中间特征。"
+        },
+        {
+          "name": "AdaLN-Zero",
+          "change": "将调制或残差门控零初始化，使初始网络更接近未调制残差路径，改善条件化训练起点。"
+        }
+      ],
+      "takeaway": "条件注入不是把条件向量拼上去就结束；要追踪它影响哪些层、哪些通道，以及初始化如何改变梯度。"
+    }
   }
 ]
