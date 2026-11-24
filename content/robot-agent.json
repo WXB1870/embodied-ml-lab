@@ -1,0 +1,1211 @@
+[
+  {
+    "id": "robot-agent-loop",
+    "number": 23,
+    "module": "robot-agent",
+    "title": "Robot Agent 决策闭环：状态、规划与工具调用",
+    "subtitle": "从部分可观测的机器人状态出发，理解 Agent 如何选择下一步能力、观察执行结果并持续推进任务。",
+    "minutes": 75,
+    "tags": [
+      "Agent Loop",
+      "World State",
+      "Planning",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "vla-architecture"
+    ],
+    "objectives": [
+      "区分环境状态、观测与 Agent 维护的 World State",
+      "实现结构化决策与受约束的工具分发",
+      "解释物理动作后重新观察的必要性"
+    ],
+    "why": "机器人 Agent 的核心不是生成一段计划，而是在不完整信息下反复决定下一步做什么，并根据真实执行证据修正任务状态。",
+    "lead": "本课建立 Robot Agent 的基本运行模型：Agent 维护任务与环境状态，选择工具或 Skill，Runtime 执行并返回回执，环境变化后重新观察，再进入下一轮决策。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "Agent 维护的是可追溯状态，而不是完整世界",
+        "lead": "机器人只能通过相机、关节、力觉和工具回执间接了解环境。Agent 通常无法直接读取真实环境状态，而是根据最近观测、历史动作和工具结果维护估计状态。",
+        "body": [
+          "机器人只能通过相机、关节、力觉和工具回执间接了解环境。Agent 通常无法直接读取真实环境状态，而是根据最近观测、历史动作和工具结果维护估计状态。",
+          "World State 应分为任务状态、场景状态、机器人状态和执行状态。物体位姿需要同时保存坐标系、观测时间、来源和置信度；否则底盘移动后，旧位姿可能已经失效。",
+          "任务状态回答目标和子目标；场景状态回答物体、部件和接触关系；机器人状态记录底盘、关节和夹爪；执行状态记录活动 Skill、运行句柄和最近回执。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "把模型意图变成结构化决策",
+        "lead": "模型每轮应输出明确的下一步意图，例如 tool_call、wait、ask_human 或 finish，而不是让 Runtime 猜测自然语言计划中的动作。",
+        "body": [
+          "模型每轮应输出明确的下一步意图，例如 tool_call、wait、ask_human 或 finish，而不是让 Runtime 猜测自然语言计划中的动作。",
+          "Runtime 校验工具是否注册、参数是否符合 Schema、前置条件是否满足，以及操作是否允许改变物理世界。模型选择 move_to 不代表机器人已经移动。",
+          "命令接纳、控制执行、环境状态变化和任务成功是不同事实。物理动作后应重新观察；只读查询可以组合执行，但连续物理动作需要明确的中间条件和验证。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "Agent Loop 与重规划条件",
+        "lead": "Agent Loop 将 Observe、Decide、Dispatch、Verify、Update 串成可重复运行的循环。简单情况可以走快速决策，观测冲突、技能失败或风险上升时再进行深度推理。",
+        "body": [
+          "Agent Loop 将 Observe、Decide、Dispatch、Verify、Update 串成可重复运行的循环。简单情况可以走快速决策，观测冲突、技能失败或风险上升时再进行深度推理。",
+          "工具返回 uncertain 时，不能当成成功或失败。Agent 应选择重新观察、调用独立验证器、执行恢复 Skill 或请求人工介入。",
+          "长时序 VLA 可以在 Skill 内部连续闭环执行多个动作块。任务级 Agent 不必逐动作块参与，但应接收子目标完成、异常、超时和终止事件。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "def next_action(state):\n    if state[\"status\"] == \"completed\":\n        return {\"kind\": \"finish\"}\n    if state[\"last_result\"] == \"uncertain\":\n        return {\"kind\": \"tool_call\", \"name\": \"observe\"}\n    if state[\"subgoal\"] == \"locate\":\n        return {\"kind\": \"tool_call\", \"name\": \"locate_handle\"}\n    if state[\"subgoal\"] == \"approach\":\n        return {\"kind\": \"tool_call\", \"name\": \"move_to_pregrasp\"}\n    return {\"kind\": \"ask_human\"}\n\nstate = {\"status\":\"running\", \"subgoal\":\"locate\", \"last_result\":None}\nassert next_action(state)[\"name\"] == \"locate_handle\"\nstate[\"subgoal\"] = \"approach\"\nassert next_action(state)[\"name\"] == \"move_to_pregrasp\"\nprint(\"Agent loop checks passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "根据回执推进子目标",
+      "prompt": "实现 update_state(state, receipt)。成功时更新 next_subgoal；失败时设置 needs_recovery；不确定时设置 needs_verification。不得修改输入字典。",
+      "runtime": "python",
+      "starter": "def update_state(state, receipt):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def update_state(state, receipt):\n    out = dict(state)\n    status = receipt.get(\"status\")\n    if status == \"succeeded\":\n        out[\"subgoal\"] = receipt.get(\"next_subgoal\", out.get(\"subgoal\"))\n    elif status == \"failed\":\n        out[\"status\"] = \"needs_recovery\"\n    elif status == \"uncertain\":\n        out[\"status\"] = \"needs_verification\"\n    return out",
+      "tests": "s = {\"subgoal\":\"locate\",\"status\":\"running\"}\nassert update_state(s, {\"status\":\"succeeded\",\"next_subgoal\":\"approach\"})[\"subgoal\"] == \"approach\"\nassert update_state(s, {\"status\":\"failed\"})[\"status\"] == \"needs_recovery\"\nassert s[\"status\"] == \"running\"\nprint(\"state update passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+        "url": "https://arxiv.org/abs/2210.03629"
+      },
+      {
+        "title": "OpenETA Agent Action Pipeline",
+        "url": "https://github.com/OpenMOSS/OpenETA/blob/main/docs/agent-action-pipeline.md"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "vla-architecture",
+      "robot-agent-loop"
+    ]
+  },
+  {
+    "id": "robot-skill-runtime",
+    "number": 24,
+    "module": "robot-agent",
+    "title": "Robot Skill Architecture：Tool、Policy 与 Runtime",
+    "subtitle": "建立可组合、可监控、可中断的机器人技能接口，让 Agent 调用完整能力而不是零散底层动作。",
+    "minutes": 80,
+    "tags": [
+      "Skill Architecture",
+      "Skill Contract",
+      "Runtime",
+      "ROS 2 Action",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "robot-agent-loop"
+    ],
+    "objectives": [
+      "区分 Tool、Policy、Skill 与 Agent 的职责",
+      "设计包含前置条件、后置条件和失败语义的 Skill Contract",
+      "理解长任务句柄、检查点、取消与恢复"
+    ],
+    "why": "Agent 的可靠性很大程度取决于技能接口是否清晰。接口不稳定、执行状态不透明或没有结果验证，都会让高层规划无法闭环。",
+    "lead": "本课研究机器人 Skill 的工程抽象：Agent 选择能力，Skill Runtime 管理生命周期，内部 Policy 和控制器负责执行，Verifier 判断环境结果。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "Tool、Policy、Skill 与 Agent 的边界",
+        "lead": "Policy 是给定观测和目标后产生动作或动作分布的映射，例如 π0.5、Diffusion Policy 或 RL Policy。Tool 是 Agent 可调用的原子接口，例如定位把手、查询门角或发送受约束的移动命令。",
+        "body": [
+          "Policy 是给定观测和目标后产生动作或动作分布的映射，例如 π0.5、Diffusion Policy 或 RL Policy。Tool 是 Agent 可调用的原子接口，例如定位把手、查询门角或发送受约束的移动命令。",
+          "Skill 是面向目标的可复用能力，可以由多个 Tool、Policy、状态机和控制器组成。例如开门 Skill 内部可能包含把手定位、门轴估计、VLA 拉门、MPC 顺应控制和开门验证。",
+          "Agent 根据任务和状态选择下一项能力；Skill Runtime 负责注册、参数校验、资源分配、异步执行、取消、回执和日志。Agent 不应绕过 Runtime 直接操作硬件。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "Skill Contract：输入、前置条件与结果证据",
+        "lead": "Skill Contract 至少声明名称、版本、输入 Schema、前置条件、后置条件、超时、取消能力、资源需求和失败码。Pose 必须说明坐标系与时间戳，ObjectReference 应能追溯到感知结果。",
+        "body": [
+          "Skill Contract 至少声明名称、版本、输入 Schema、前置条件、后置条件、超时、取消能力、资源需求和失败码。Pose 必须说明坐标系与时间戳，ObjectReference 应能追溯到感知结果。",
+          "前置条件描述执行前必须成立的事实，例如目标已定位、底盘稳定、夹爪可用。后置条件描述希望实现的环境状态，例如抽屉位移超过阈值，并由验证器检查。",
+          "失败结果应定位到阶段，例如 target_not_found、unreachable、contact_slipped、force_limit 或 timeout。相比单一 success=false，这些错误码能帮助 Agent 选择恢复策略。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "异步生命周期与层级技能",
+        "lead": "长时序 Skill 需要运行句柄、事件反馈和检查点，不能只设计成同步函数。常见状态包括 accepted、running、yielded、succeeded、failed、cancelled 和 uncertain。",
+        "body": [
+          "长时序 Skill 需要运行句柄、事件反馈和检查点，不能只设计成同步函数。常见状态包括 accepted、running、yielded、succeeded、failed、cancelled 和 uncertain。",
+          "yielded 表示 Skill 到达检查点并把控制权交还 Agent，例如 VLA 已经抓起物体，等待 Agent 确认是否继续搬运。这些状态名称是建议的合同，不是行业统一枚举。",
+          "ROS 2 Action 适合长任务反馈和取消；MCP 可把服务暴露给 Agent Host；Skill Contract 定义更高层能力语义。三者互补，不应混为一谈。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "ALLOWED = {\n    \"accepted\": {\"running\", \"failed\", \"cancelled\"},\n    \"running\": {\"yielded\", \"succeeded\", \"failed\", \"cancelled\", \"uncertain\"},\n    \"yielded\": {\"running\", \"failed\", \"cancelled\"},\n    \"succeeded\": set(), \"failed\": set(), \"cancelled\": set()\n}\n\ndef transition(current, nxt):\n    if nxt not in ALLOWED.get(current, set()):\n        raise ValueError(\"illegal transition\")\n    return nxt\n\nassert transition(\"running\", \"yielded\") == \"yielded\"\nprint(\"Skill lifecycle checks passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "实现 Skill 状态转移校验",
+      "prompt": "实现 can_transition(current, next_state, transitions)，返回是否允许该状态转移。",
+      "runtime": "python",
+      "starter": "def can_transition(current, next_state, transitions):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def can_transition(current, next_state, transitions):\n    return next_state in transitions.get(current, set())",
+      "tests": "t = {\"accepted\":{\"running\",\"failed\"}, \"running\":{\"yielded\",\"succeeded\"}, \"succeeded\":set()}\nassert can_transition(\"accepted\",\"running\",t)\nassert not can_transition(\"succeeded\",\"running\",t)\nprint(\"lifecycle test passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "ROS 2 Actions",
+        "url": "https://docs.ros.org/en/rolling/Concepts/Basic/About-Actions.html"
+      },
+      {
+        "title": "Model Context Protocol Specification",
+        "url": "https://modelcontextprotocol.io/specification/2025-06-18"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "robot-agent-loop"
+    ]
+  },
+  {
+    "id": "robot-vla-skill",
+    "number": 25,
+    "module": "robot-agent",
+    "title": "长时序 VLA：从动作模型到执行型 Skill",
+    "subtitle": "把 VLA 封装成能持续观察、滚动预测、执行和恢复的长时序能力，并明确 Agent 的介入时机。",
+    "minutes": 80,
+    "tags": [
+      "VLA",
+      "Long Horizon",
+      "RTC",
+      "Receding Horizon",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "robot-skill-runtime",
+      "vla-architecture",
+      "action-chunking"
+    ],
+    "objectives": [
+      "区分动作 Chunk、Skill 与任务级 Agent 的时间尺度",
+      "设计 VLA Skill 的检查点和终止条件",
+      "分析 RTC 连续性与任务级重规划的不同作用"
+    ],
+    "why": "VLA 可以承担较长时间的闭环操作。Agent 应委托完整子任务，而不是逐个动作块指挥；同时必须知道何时暂停、验证或切换策略。",
+    "lead": "本课不重复 VLA 网络结构，而是研究如何把 VLA 作为执行方：内部闭环处理观测与动作 Chunk，Agent 在子目标、异常和任务边界介入。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "任务级 Agent、VLA 与实时控制的时间尺度",
+        "lead": "实时控制器负责关节伺服、阻抗、力矩和安全限制；VLA/Policy 负责根据观测和目标生成动作块并滚动更新；任务级 Agent 负责子目标选择、技能切换、异常处理和最终任务完成判断。",
+        "body": [
+          "实时控制器负责关节伺服、阻抗、力矩和安全限制；VLA/Policy 负责根据观测和目标生成动作块并滚动更新；任务级 Agent 负责子目标选择、技能切换、异常处理和最终任务完成判断。",
+          "具体频率取决于硬件与模型延迟，不能把某个 Hz 数字当成普遍标准。重要的是职责分离：高频控制不等待 LLM，VLA 不必负责所有任务分解，Agent 也不需要每个控制周期重新推理。",
+          "Agent 调用 pick_and_place_vla 时提交目标物体、放置区域、约束和完成条件。Skill 内部连续运行多次 observe–predict–execute，直到完成、失败、请求重规划或达到预算。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "Action Chunk、Receding Horizon 与 RTC",
+        "lead": "Action Chunk 是一个时间窗口内的动作序列。模型可以一次预测 H 个动作，但通常只执行其中一部分，然后重新观察和预测。",
+        "body": [
+          "Action Chunk 是一个时间窗口内的动作序列。模型可以一次预测 H 个动作，但通常只执行其中一部分，然后重新观察和预测。",
+          "Receding Horizon 的核心是执行有限前缀，再根据新观测重新规划。RTC 关注重叠动作块之间的时间对齐和过渡，减少动作更新时的不连续；它不负责判断任务目标是否仍然正确。",
+          "动作连续不等于任务正确。即使 RTC 把错误方向的动作平滑衔接，也仍然可能失败。应分别评估轨迹连续性、动作误差、子目标完成率和任务成功率。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "检查点、异常与控制权交接",
+        "lead": "检查点可以是 grasp_established、door_opened_to_threshold、object_placed 或需要重新定位。事件应携带状态证据、观测引用、置信度和当前执行句柄。",
+        "body": [
+          "检查点可以是 grasp_established、door_opened_to_threshold、object_placed 或需要重新定位。事件应携带状态证据、观测引用、置信度和当前执行句柄。",
+          "异常包括物体掉落、目标离开视野、接触力超限、底盘偏移、执行超时和模型不确定。Skill 应先进入可控暂停或安全状态，再返回异常。",
+          "Skill 的终止条件要与任务目标对应。模型生成最后一个动作块不代表任务完成；需要独立验证器检查物体是否在目标区域、门角是否达到要求或接触是否稳定。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "def route_event(event_type):\n    routes = {\n        \"subgoal_reached\": \"observe_then_continue\",\n        \"needs_replanning\": \"pause_and_replan\",\n        \"safety_violation\": \"stop_and_recover\",\n        \"skill_succeeded\": \"verify_task\",\n    }\n    return routes.get(event_type, \"keep_running\")\n\nassert route_event(\"subgoal_reached\") == \"observe_then_continue\"\nassert route_event(\"safety_violation\") == \"stop_and_recover\"\nassert route_event(\"skill_succeeded\") == \"verify_task\"\nprint(\"VLA event routing passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "根据事件决定 Agent 是否介入",
+      "prompt": "实现 route_event(event_type)，把子目标、重规划、安全违规和成功事件映射到对应动作，未知事件返回 keep_running。",
+      "runtime": "python",
+      "starter": "def route_event(event_type):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def route_event(event_type):\n    routes = {\"subgoal_reached\":\"observe_then_continue\",\"needs_replanning\":\"pause_and_replan\",\"safety_violation\":\"stop_and_recover\",\"skill_succeeded\":\"verify_task\"}\n    return routes.get(event_type, \"keep_running\")",
+      "tests": "assert route_event(\"subgoal_reached\") == \"observe_then_continue\"\nassert route_event(\"needs_replanning\") == \"pause_and_replan\"\nassert route_event(\"unknown\") == \"keep_running\"\nprint(\"event routing test passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Action Chunking with Transformers",
+        "url": "https://arxiv.org/abs/2304.13705"
+      },
+      {
+        "title": "π0: A Vision-Language-Action Flow Model for General Robot Control",
+        "url": "https://arxiv.org/abs/2410.24164"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "vla-architecture",
+      "action-chunking",
+      "robot-agent-loop"
+    ]
+  },
+  {
+    "id": "robot-world-model",
+    "number": 26,
+    "module": "robot-agent",
+    "title": "World Model as a Skill：预测式决策与主动观察",
+    "subtitle": "让 Agent 按需调用世界模型预测未来状态、比较候选动作，并根据不确定性决定执行还是继续感知。",
+    "minutes": 80,
+    "tags": [
+      "World Model",
+      "Predictive Planning",
+      "Counterfactual",
+      "Uncertainty",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "robot-skill-runtime",
+      "robot-agent-loop"
+    ],
+    "objectives": [
+      "区分视频生成、潜空间动力学和结构化交互模型",
+      "设计动作条件预测接口",
+      "将预测误差、不确定性和候选动作效用纳入决策"
+    ],
+    "why": "World Model 的价值不在于生成看起来合理的未来视频，而在于为机器人当前决策提供可验证、与动作相关的预测证据。",
+    "lead": "本课把 World Model 定义为 Agent 可调用的预测能力：输入当前状态和候选动作，输出未来状态、风险和不确定性，Agent 再决定执行、换方案或主动观察。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "不同 World Model 能预测什么",
+        "lead": "视频生成模型输出未来图像或视频，适合直观表达可能的场景变化，但像素合理不代表几何、接触和动力学准确。潜空间动力学模型输入潜状态与动作，预测未来潜状态、奖励或终止信号。",
+        "body": [
+          "视频生成模型输出未来图像或视频，适合直观表达可能的场景变化，但像素合理不代表几何、接触和动力学准确。潜空间动力学模型输入潜状态与动作，预测未来潜状态、奖励或终止信号。",
+          "结构化物理或交互模型可以预测物体位姿、接触状态、力或约束变化，更容易与几何规划和控制接口对接，但需要状态估计、参数辨识或明确的物理假设。",
+          "World Model Skill 必须声明预测变量、时间范围、动作条件、坐标系、训练/适用范围和不确定性。不能仅因为一个模型被称为 World Model，就默认它能用于闭环规划。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "候选动作预测与反事实比较",
+        "lead": "开门任务可以比较直接拉门、先调整底盘、先重新观察把手三个候选。World Model 对每个候选预测门角变化、接触稳定性、碰撞风险和状态不确定性。",
+        "body": [
+          "开门任务可以比较直接拉门、先调整底盘、先重新观察把手三个候选。World Model 对每个候选预测门角变化、接触稳定性、碰撞风险和状态不确定性。",
+          "Agent 将预测映射到任务效用：进度越大越好，碰撞和接触丢失风险越低越好，同时满足硬约束。评分系数必须由任务定义和实验确定。",
+          "预测比较应使用相同初始状态和一致动作预算。若候选动作分数差异小于预测不确定性，就不能过度相信排序结果。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "模型不确定性与主动感知",
+        "lead": "模型不确定性来自观测噪声、状态估计错误、训练分布外场景、未知接触参数和执行偏差。具体估计方式取决于模型结构和数据。",
+        "body": [
+          "模型不确定性来自观测噪声、状态估计错误、训练分布外场景、未知接触参数和执行偏差。具体估计方式取决于模型结构和数据。",
+          "预测可靠且风险低时执行；候选分歧大时调用主动感知；所有候选风险高时改变站位、选择恢复技能或请求人工帮助。",
+          "需要验证 World Model 是否真的帮助 Agent，而不只是增加计算量。对比有无模型的成功率、无效尝试、碰撞、重规划次数和总时延。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "def choose_action(candidates, threshold):\n    if not candidates:\n        return \"observe\"\n    if any(x[\"uncertainty\"] > threshold for x in candidates):\n        return \"observe\"\n    best = max(candidates, key=lambda x: x[\"progress\"] - 2*x[\"risk\"])\n    return best[\"action\"]\n\nxs = [{\"action\":\"pull\",\"progress\":0.8,\"risk\":0.1,\"uncertainty\":0.1}]\nassert choose_action(xs, 0.3) == \"pull\"\nassert choose_action([dict(xs[0], uncertainty=0.9)], 0.3) == \"observe\"\nprint(\"predictive decision checks passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "实现不确定性门控",
+      "prompt": "实现 select_action(candidates, threshold)。若候选为空或任意候选不确定性超过阈值，返回 observe；否则返回 progress 最大的 action。",
+      "runtime": "python",
+      "starter": "def select_action(candidates, threshold):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def select_action(candidates, threshold):\n    if not candidates or any(x[\"uncertainty\"] > threshold for x in candidates):\n        return \"observe\"\n    return max(candidates, key=lambda x:x[\"progress\"])[\"action\"]",
+      "tests": "xs=[{\"action\":\"pull\",\"progress\":0.8,\"uncertainty\":0.1},{\"action\":\"push\",\"progress\":0.5,\"uncertainty\":0.2}]\nassert select_action(xs,0.3) == \"pull\"\nassert select_action(xs,0.15) == \"observe\"\nassert select_action([],0.3) == \"observe\"\nprint(\"uncertainty gate passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "DreamerV3",
+        "url": "https://arxiv.org/abs/2301.04104"
+      },
+      {
+        "title": "TD-MPC2",
+        "url": "https://arxiv.org/abs/2310.16828"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "robot-agent-loop"
+    ]
+  },
+  {
+    "id": "robot-perception-tools",
+    "number": 27,
+    "module": "robot-agent",
+    "title": "机器人感知工具链：SAM、3D Grounding 与可操作状态",
+    "subtitle": "理解开放词汇检测、分割、深度、坐标变换和抓取候选如何串成 Agent 可调用的空间感知能力。",
+    "minutes": 75,
+    "tags": [
+      "SAM",
+      "Grounding",
+      "3D Perception",
+      "Scene Graph",
+      "Grasping",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "robot-agent-loop"
+    ],
+    "objectives": [
+      "建立 2D 目标定位到 3D 世界坐标的完整链路",
+      "设计带来源和时效信息的感知结果",
+      "区分感知候选、规划轨迹和物理执行结果"
+    ],
+    "why": "机器人 Agent 的决策依赖可靠的空间状态。单独调用 SAM 得到 Mask 并不足以执行抓取，必须把语义目标、实例选择、深度、标定和几何规划串联起来。",
+    "lead": "本课学习 Robot Agent 如何调用视觉与几何工具：从语言目标 grounding 到 3D 位姿，再到抓取候选和运动规划，并保留每一步来源以便验证与恢复。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "从语言目标到具体实例",
+        "lead": "Grounding DINO 或 VLM grounding 可以根据文本目标产生候选框；SAM 2/3 根据点、框或文本提示得到实例 Mask。检测候选与分割结果都不等于物体的 3D 位姿。",
+        "body": [
+          "Grounding DINO 或 VLM grounding 可以根据文本目标产生候选框；SAM 2/3 根据点、框或文本提示得到实例 Mask。检测候选与分割结果都不等于物体的 3D 位姿。",
+          "场景中可能有多个同类对象。Agent 或目标选择器需要根据空间关系、任务上下文和用户指令选择一个稳定 Object ID，并把这个 ID 传递给后续工具。",
+          "感知输出应包含图像时间戳、相机标识、候选 ID、Mask/Box 引用、置信度和坐标系。执行后若环境发生变化，旧引用应失效或要求重新确认。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "从像素坐标恢复世界坐标",
+        "lead": "给定像素坐标 (u,v)、深度 z 和相机内参 K，可先反投影得到相机坐标点 p_c。随后使用相机到世界的外参 T_wc 转换为 p_w=T_wc p_c。",
+        "body": [
+          "给定像素坐标 (u,v)、深度 z 和相机内参 K，可先反投影得到相机坐标点 p_c。随后使用相机到世界的外参 T_wc 转换为 p_w=T_wc p_c。",
+          "Mask 可以用来提取目标点云，但点云中可能包含背景、遮挡和深度噪声。通常还需要离群点处理、位姿估计、部件关系或抓取候选生成。",
+          "每次坐标变换都应保留 source_frame、target_frame、calibration_version 和观测时间。把相机坐标直接交给要求 world frame 的规划器，是典型的静默接口错误。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "感知、抓取生成与运动规划的工具编排",
+        "lead": "典型链路是 Grounding → Instance Selection → Segmentation → Depth/Calibration → 3D Pose → Grasp Candidates → Reachability/Collision Check → Execute → Verify。",
+        "body": [
+          "典型链路是 Grounding → Instance Selection → Segmentation → Depth/Calibration → 3D Pose → Grasp Candidates → Reachability/Collision Check → Execute → Verify。",
+          "AnyGrasp 或 GraspGen 可以产生抓取候选；cuRobo 或 MoveIt 2 可以规划运动轨迹。抓取生成器输出候选不代表可达，运动规划成功也不代表真实机器人已经完成抓取。",
+          "工具链失败要定位阶段：目标没找到、实例选错、深度异常、坐标变换错误、抓取候选不合理、路径不可达或执行滑脱。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "def pixel_to_camera(u, v, depth, fx, fy, cx, cy):\n    if depth <= 0 or fx <= 0 or fy <= 0:\n        raise ValueError(\"invalid depth or intrinsics\")\n    return [(u-cx)*depth/fx, (v-cy)*depth/fy, depth]\n\np = pixel_to_camera(320, 240, 1.0, 500, 500, 320, 240)\nassert p == [0.0, 0.0, 1.0]\nprint(\"3D grounding checks passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "构造带来源的 Object Reference",
+      "prompt": "实现 make_object_ref(object_id, camera, timestamp, frame)，字段缺失或时间戳为负数时抛出 ValueError。",
+      "runtime": "python",
+      "starter": "def make_object_ref(object_id, camera, timestamp, frame):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def make_object_ref(object_id, camera, timestamp, frame):\n    if not object_id or not camera or not frame or timestamp < 0:\n        raise ValueError(\"invalid object reference\")\n    return {\"object_id\":object_id,\"camera\":camera,\"timestamp\":timestamp,\"frame\":frame}",
+      "tests": "x=make_object_ref(\"obj_2\",\"wrist_cam\",12.5,\"world\")\nassert x[\"object_id\"]==\"obj_2\" and x[\"frame\"]==\"world\"\ntry:\n    make_object_ref(\"\",\"cam\",1,\"world\")\n    raise AssertionError(\"missing ID\")\nexcept ValueError:\n    pass\nprint(\"object reference passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Grounding DINO",
+        "url": "https://github.com/IDEA-Research/GroundingDINO"
+      },
+      {
+        "title": "Segment Anything 2",
+        "url": "https://github.com/facebookresearch/sam2"
+      },
+      {
+        "title": "cuRobo",
+        "url": "https://github.com/NVlabs/curobo"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "robot-agent-loop"
+    ]
+  },
+  {
+    "id": "robot-agent-memory",
+    "number": 28,
+    "module": "robot-agent",
+    "title": "Robot Agent Memory：数据库、经验检索与状态维护",
+    "subtitle": "区分任务状态、情景经验、语义知识和技能记忆，学习用结构化查询与相似检索支持机器人长期任务。",
+    "minutes": 85,
+    "tags": [
+      "Memory",
+      "SQL",
+      "Vector Retrieval",
+      "Episodic Memory",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "robot-agent-loop",
+      "robot-skill-runtime"
+    ],
+    "objectives": [
+      "区分 Context、Working、Episodic、Semantic 与 Procedural Memory",
+      "设计机器人任务与 Episode 的结构化数据模型",
+      "组合 SQL 过滤、向量召回和证据读取"
+    ],
+    "why": "机器人持续执行任务会产生大量轨迹和失败经验。只有能可靠保存、查询、更新和验证的记忆，才能把过去经历转化为未来决策收益。",
+    "lead": "本课围绕机器人任务设计记忆体系：数据库负责可靠存储和筛选，向量检索负责语义召回，Context 只装入当前决策所需信息，经验经过验证后才能升级为稳定知识或技能。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "Context、任务状态与长期记忆的区别",
+        "lead": "Context 是当前模型推理可见的信息集合，不等于长期存储。Working Memory 保存当前任务进度、活动 Skill、子目标和最近观测；任务结束后可以归档。",
+        "body": [
+          "Context 是当前模型推理可见的信息集合，不等于长期存储。Working Memory 保存当前任务进度、活动 Skill、子目标和最近观测；任务结束后可以归档。",
+          "Episodic Memory 保存某次具体执行：场景摘要、工具调用、动作回执、失败码、轨迹和最终结果。Semantic/Task Memory 保存跨多次经历总结出的规律和任务流程。Procedural Memory 保存可执行 Skill、Policy、参数和验证器。",
+          "数据库是承载这些记忆的存储基础设施，不是记忆本身。一个 Episode 是原始经历，一条 Memory Item 是对经历的归纳，一个 Skill Version 是可执行能力产物。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "结构化数据库、向量检索与混合查询",
+        "lead": "关系数据库适合任务、Episode 元数据、Skill 版本、评估指标和权限；对象存储保存图像、视频、点云和轨迹；向量索引保存任务摘要、场景描述和失败语义的 Embedding。",
+        "body": [
+          "关系数据库适合任务、Episode 元数据、Skill 版本、评估指标和权限；对象存储保存图像、视频、点云和轨迹；向量索引保存任务摘要、场景描述和失败语义的 Embedding。",
+          "相似失败检索可以先用 SQL 按任务类型、机器人本体、失败码和物体属性过滤，再对候选摘要做向量相似检索，最后读取少量原始轨迹核对是否可迁移。",
+          "Agent 不应持有无限制生产数据库账号。应提供参数化查询或语义化 Query Tool，限制字段、行数、超时和权限，并返回查询条件、来源与数据时间。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "Memory 写入、压缩与冲突处理",
+        "lead": "原始执行记录建议采用追加式保存，保留工具调用、时间戳、观测引用和回执。Agent 可以提出候选总结，但不能直接覆盖稳定记忆。",
+        "body": [
+          "原始执行记录建议采用追加式保存，保留工具调用、时间戳、观测引用和回执。Agent 可以提出候选总结，但不能直接覆盖稳定记忆。",
+          "Context Compaction 是把长历史压缩为当前任务摘要；RAG 是从外部存储检索相关信息；Memory Consolidation 是从多个 Episode 中归纳并更新长期知识。三者不是同一个操作。",
+          "冲突记忆需要保留来源和时间。新证据可能说明旧规律只在某种把手或机器人本体上成立；应缩小适用范围、降低置信度或建立版本化规则，而不是无条件覆盖。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "def filter_episodes(episodes, task, robot, failure):\n    return [\n        e for e in episodes\n        if e[\"task\"] == task\n        and e[\"robot\"] == robot\n        and e[\"failure\"] == failure\n    ]\n\nrecords = [\n    {\"task\":\"open_door\",\"robot\":\"mobile\",\"failure\":\"slip\",\"id\":\"ep1\"},\n    {\"task\":\"pick\",\"robot\":\"mobile\",\"failure\":\"slip\",\"id\":\"ep2\"}\n]\nmatches = filter_episodes(records, \"open_door\", \"mobile\", \"slip\")\nassert [x[\"id\"] for x in matches] == [\"ep1\"]\nprint(\"memory query passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "按适用条件筛选 Episode",
+      "prompt": "实现 retrieve_by_failure(episodes, task, robot, failure)，返回同时满足三个字段的记录并保持原顺序。",
+      "runtime": "python",
+      "starter": "def retrieve_by_failure(episodes, task, robot, failure):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def retrieve_by_failure(episodes, task, robot, failure):\n    return [e for e in episodes if e.get(\"task\")==task and e.get(\"robot\")==robot and e.get(\"failure\")==failure]",
+      "tests": "xs=[{\"task\":\"open\",\"robot\":\"g1\",\"failure\":\"slip\",\"id\":1},{\"task\":\"open\",\"robot\":\"g1\",\"failure\":\"drop\",\"id\":2}]\nassert [x[\"id\"] for x in retrieve_by_failure(xs,\"open\",\"g1\",\"slip\")] == [1]\nassert retrieve_by_failure(xs,\"open\",\"g2\",\"slip\") == []\nprint(\"episode query passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "Letta",
+        "url": "https://github.com/letta-ai/letta"
+      },
+      {
+        "title": "pgvector",
+        "url": "https://github.com/pgvector/pgvector"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "robot-agent-loop"
+    ]
+  },
+  {
+    "id": "robot-code-policy-evolution",
+    "number": 29,
+    "module": "robot-agent",
+    "title": "Code Policy 与技能持续进化",
+    "subtitle": "把可执行程序、任务记忆和执行经验组织成可复用、可评估、可版本化的机器人能力。",
+    "minutes": 85,
+    "tags": [
+      "Code-as-Policy",
+      "Skill Evolution",
+      "Experience",
+      "Versioning",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "robot-agent-memory",
+      "robot-skill-runtime"
+    ],
+    "objectives": [
+      "理解程序为何可以作为策略",
+      "区分参数、程序逻辑、技能结构和模型权重的进化",
+      "设计经验驱动的候选技能生成与晋升流程"
+    ],
+    "why": "机器人能力不必只能通过重新训练模型获得。程序逻辑、参数、任务记忆和子技能组合都可以根据经验改进，但每种改进都需要不同的验证方法。",
+    "lead": "本课研究机器人 Skill 如何通过执行经验持续进化：从 Episode 中定位失败原因，选择修改对象，生成候选版本，在固定和未见场景评测，再决定是否晋升。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "Code Policy 是可执行的条件策略",
+        "lead": "传统 Policy 给定观测和目标输出动作。Code Policy 则是读取状态、调用受控工具、根据条件分支和循环执行的程序。程序可以直接包含几何算法和控制逻辑，也可以调用 VLA、MPC 或感知网络。",
+        "body": [
+          "传统 Policy 给定观测和目标输出动作。Code Policy 则是读取状态、调用受控工具、根据条件分支和循环执行的程序。程序可以直接包含几何算法和控制逻辑，也可以调用 VLA、MPC 或感知网络。",
+          "代码的优势是可检查、可组合、可参数化和可版本化；弱点是程序可能依赖场景假设、遗漏异常分支或过拟合少数案例。生成代码并不意味着它已经成为可靠 Skill。",
+          "生成的程序应通过 Skill Runtime 调用受约束的机器人工具，不能绕过坐标系、碰撞约束和安全控制。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "从失败经验定位应该改什么",
+        "lead": "如果接近偏移太大，可能只需调整参数；如果接触后没有重新估计门角，需要修改程序逻辑；如果多个子技能组合顺序不合理，需要改变 Skill 结构；如果感知模型在新型把手上系统性失败，才可能需要更换模型或训练适配器。",
+        "body": [
+          "如果接近偏移太大，可能只需调整参数；如果接触后没有重新估计门角，需要修改程序逻辑；如果多个子技能组合顺序不合理，需要改变 Skill 结构；如果感知模型在新型把手上系统性失败，才可能需要更换模型或训练适配器。",
+          "Episode 应保存任务条件、场景摘要、Skill 版本、工具调用、阶段状态、环境回执、失败码和证据引用。Agent 检索相似失败后，先形成原因假设，再提出范围明确的修改。",
+          "经验提取要保留反例和适用范围。单次失败可能是随机误差或传感器噪声；只有多个独立 Episode 支持同一模式，才适合升级为稳定规则。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "候选版本评测、晋升与回滚",
+        "lead": "维护稳定版本 P_v 和候选版本 P_v+1。候选应在固定种子和场景上配对比较，再在未见场景检查泛化。指标包括成功率、完成时间、失败类型、安全违规、人工介入和恢复成功率。",
+        "body": [
+          "维护稳定版本 P_v 和候选版本 P_v+1。候选应在固定种子和场景上配对比较，再在未见场景检查泛化。指标包括成功率、完成时间、失败类型、安全违规、人工介入和恢复成功率。",
+          "只有候选达到预设收益门槛，且安全护栏与旧任务表现没有不可接受的退化，才晋升到 Skill Registry。失败候选应保留 Diff、测试记录和失败原因，但不覆盖稳定版本。",
+          "持续进化不等于每次失败后都生成新版本。真正的能力增长应表现为在固定资源预算下，未见场景成功率随经验提高，同时旧任务能力保持稳定。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "def should_promote(base, candidate, min_gain=0.05):\n    gain = candidate[\"success\"] - base[\"success\"]\n    no_regression = candidate[\"core\"] >= base[\"core\"]\n    safe = candidate[\"violations\"] == 0\n    return gain >= min_gain and no_regression and safe\n\nbase = {\"success\":0.70,\"core\":0.92}\ngood = {\"success\":0.78,\"core\":0.93,\"violations\":0}\nunsafe = {\"success\":0.85,\"core\":0.90,\"violations\":1}\nassert should_promote(base, good)\nassert not should_promote(base, unsafe)\nprint(\"skill promotion passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "实现候选版本晋升判断",
+      "prompt": "实现 promote_candidate(base, new, min_gain)。只有成功率提升达到门槛、安全违规为 0 且核心任务成功率不低于基线时才返回 True。",
+      "runtime": "python",
+      "starter": "def promote_candidate(base, new, min_gain):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def promote_candidate(base, new, min_gain):\n    gain = new[\"success\"] - base[\"success\"]\n    return gain >= min_gain and new[\"violations\"] == 0 and new[\"core\"] >= base[\"core\"]",
+      "tests": "base={\"success\":0.7,\"core\":0.9}\ngood={\"success\":0.8,\"core\":0.91,\"violations\":0}\nbad={\"success\":0.9,\"core\":0.92,\"violations\":1}\nassert promote_candidate(base,good,0.05)\nassert not promote_candidate(base,bad,0.05)\nprint(\"promotion test passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "RAX Robot Agent Exploration",
+        "url": "https://github.com/robot-agent-exploration/rax"
+      },
+      {
+        "title": "RoboScript",
+        "url": "https://github.com/ArcheOne-AI/RoboScript"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "robot-agent-loop"
+    ]
+  },
+  {
+    "id": "robot-agent-evaluation",
+    "number": 30,
+    "module": "robot-agent",
+    "title": "Robot Agent 评估：决策、技能与持续学习",
+    "subtitle": "建立分层评估协议，区分 Agent 决策质量、Skill 执行能力、模型预测质量和系统整体收益。",
+    "minutes": 70,
+    "tags": [
+      "Benchmark",
+      "Evaluation",
+      "Ablation",
+      "Generalization",
+      "核心课程",
+      "Robot Agent"
+    ],
+    "prerequisites": [
+      "robot-agent-loop",
+      "robot-skill-runtime",
+      "robot-vla-skill",
+      "robot-world-model",
+      "robot-agent-memory",
+      "robot-code-policy-evolution"
+    ],
+    "objectives": [
+      "建立 Agent、Skill、Policy 和系统四层指标",
+      "设计记忆、World Model 与技能进化消融实验",
+      "避免 Pass@k、人工介入和特权信息造成评估偏差"
+    ],
+    "why": "完整 Agent 系统的最终成功率无法说明性能来自哪里。分层评估和清晰实验协议才能判断新架构是否真正提升自主能力。",
+    "lead": "本课将 Agent 系统拆成决策、技能、模型和系统四层评估，并通过消融、配对场景、预算控制和未见环境测试判断真实收益。",
+    "sections": [
+      {
+        "id": "0",
+        "title": "四层指标：从决策到任务完成",
+        "lead": "Agent 决策层关注 Skill 选择准确率、无效调用、重规划次数、决策延迟和任务状态判断错误。Skill 层关注子目标成功率、超时率、取消响应、恢复成功率和调用成本。",
+        "body": [
+          "Agent 决策层关注 Skill 选择准确率、无效调用、重规划次数、决策延迟和任务状态判断错误。Skill 层关注子目标成功率、超时率、取消响应、恢复成功率和调用成本。",
+          "Policy 层关注动作误差、Chunk 连续性、闭环执行成功率和控制约束；World Model 层关注状态预测误差、候选动作排序准确率和不确定性校准。",
+          "系统层关注最终任务成功率、完成时间、人工介入、安全违规、跨场景泛化和资源成本。指标需要同时说明统计单位、试验次数、任务难度和失败判定规则。"
+        ]
+      },
+      {
+        "id": "1",
+        "title": "公平比较：预算、种子与人工介入",
+        "lead": "Pass@1 衡量一次尝试成功率；Pass@k 允许多次尝试，必须报告 k、总时间和重置成本。若每次尝试都由人类修改 Prompt、程序或参数，不能把结果当成完全自主的 Pass@k。",
+        "body": [
+          "Pass@1 衡量一次尝试成功率；Pass@k 允许多次尝试，必须报告 k、总时间和重置成本。若每次尝试都由人类修改 Prompt、程序或参数，不能把结果当成完全自主的 Pass@k。",
+          "基线和候选应在相同场景、随机种子和资源预算下配对运行。训练、调参和最终测试场景要分离，避免在刚刚失败的环境上反复调试后直接报告测试成绩。",
+          "要标注是否使用仿真特权信息、环境真值、人工示教、重置脚本和 oracle verifier。特权信息可用于诊断，但不能把它的收益描述为纯视觉部署能力。"
+        ]
+      },
+      {
+        "id": "2",
+        "title": "消融实验与持续进化曲线",
+        "lead": "建议比较无记忆、仅 Task Memory、加入 Episodic Retrieval、加入 World Model、长时序 VLA Skill、Code Policy Evolution 和完整系统。每组尽量保持模型、数据、场景和预算一致。",
+        "body": [
+          "建议比较无记忆、仅 Task Memory、加入 Episodic Retrieval、加入 World Model、长时序 VLA Skill、Code Policy Evolution 和完整系统。每组尽量保持模型、数据、场景和预算一致。",
+          "持续进化应画出累计交互预算与未见场景成功率的关系，并同时报告旧任务回归率。若新任务提高但旧任务明显退化，不能简单称为持续能力增长。",
+          "除了平均值，还应报告置信区间、任务分布、失败类型和每任务样本量。少量真机实验可以作为可行性证据，但不能过度外推为普遍成功率。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "state",
+        "shape": "structured",
+        "meaning": "本课涉及的结构化状态或数据"
+      },
+      {
+        "name": "event",
+        "shape": "typed",
+        "meaning": "本课涉及的事件或执行结果"
+      }
+    ],
+    "code": {
+      "title": "最小可运行机制示例",
+      "source": "def summarize_runs(runs):\n    if not runs:\n        raise ValueError(\"runs cannot be empty\")\n    n = len(runs)\n    return {\n        \"success_rate\": sum(x[\"success\"] for x in runs) / n,\n        \"intervention_rate\": sum(x[\"intervention\"] for x in runs) / n,\n        \"mean_duration\": sum(x[\"duration\"] for x in runs) / n,\n        \"safety_violations\": sum(x[\"violations\"] for x in runs)\n    }\n\nruns = [\n    {\"success\":1,\"intervention\":0,\"duration\":20,\"violations\":0},\n    {\"success\":0,\"intervention\":1,\"duration\":35,\"violations\":0},\n    {\"success\":1,\"intervention\":0,\"duration\":18,\"violations\":0}\n]\nassert summarize_runs(runs)[\"success_rate\"] == 2/3\nprint(\"evaluation aggregation passed.\")",
+      "explanations": [
+        {
+          "lines": "1-8",
+          "text": "沿着输入、状态转换和输出检查实现；示例用于验证本课的核心接口语义。"
+        }
+      ],
+      "expected": "运行代码，检查断言通过，并尝试改变输入观察边界条件。"
+    },
+    "exercise": {
+      "title": "计算成功率与人工介入率",
+      "prompt": "实现 rates(runs)，返回 success_rate 和 intervention_rate。",
+      "runtime": "python",
+      "starter": "def rates(runs):\n    # TODO\n    raise NotImplementedError",
+      "solution": "def rates(runs):\n    if not runs:\n        raise ValueError(\"runs cannot be empty\")\n    n = len(runs)\n    return {\"success_rate\":sum(x[\"success\"] for x in runs)/n,\"intervention_rate\":sum(x[\"intervention\"] for x in runs)/n}",
+      "tests": "xs=[{\"success\":1,\"intervention\":0},{\"success\":0,\"intervention\":1},{\"success\":1,\"intervention\":0}]\nr=rates(xs)\nassert abs(r[\"success_rate\"]-2/3)<1e-9\nassert abs(r[\"intervention_rate\"]-1/3)<1e-9\nprint(\"evaluation metrics passed\")",
+      "hints": [
+        "先明确输入和输出合同。",
+        "再处理空值、未知状态或非法参数。"
+      ],
+      "explanation": "该练习将本课的接口或决策规则缩小为可独立测试的函数。"
+    },
+    "pytorchTask": {
+      "title": "检查批量张量的形状与有限值",
+      "prompt": "实现 validate_batch(x)，要求 x 为二维 Tensor 且全部元素有限，返回 x 的形状；否则抛出 ValueError。",
+      "starter": "import torch\n\ndef validate_batch(x):\n    # TODO\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef validate_batch(x):\n    if x.ndim != 2 or not torch.isfinite(x).all():\n        raise ValueError(\"invalid batch\")\n    return tuple(x.shape)",
+      "tests": "import torch\nassert validate_batch(torch.ones(3,4)) == (3,4)\ntry:\n    validate_batch(torch.tensor([[float(\"nan\")]]))\n    raise AssertionError(\"NaN must fail\")\nexcept ValueError:\n    pass\nprint(\"batch validation passed\")",
+      "hints": [
+        "先检查 ndim，再检查 torch.isfinite。",
+        "形状可以用 tuple(x.shape) 返回。"
+      ],
+      "explanation": "该练习用于建立结构化数据进入 Agent 模块前的基础检查。"
+    },
+    "pitfalls": [
+      {
+        "title": "把接口返回当成环境事实",
+        "detail": "机器人 Agent 的工具和技能返回值通常只描述某一层执行状态，不能自动证明物理任务完成。",
+        "fix": "保留独立观测与验证步骤，并记录数据来源、时间戳和坐标系。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "RoboTwin 2.0",
+        "url": "https://robotwin-platform.github.io/"
+      },
+      {
+        "title": "LIBERO Benchmark",
+        "url": "https://libero-project.github.io/"
+      }
+    ],
+    "knowledgeChecks": [
+      {
+        "question": "本课最重要的系统边界是什么？",
+        "answer": [
+          "需要区分 Agent 决策、Skill Runtime、Policy 执行和环境验证，不能把它们合并为一个不透明的工具调用。",
+          "每一层都应有明确输入、输出、状态和失败语义。"
+        ],
+        "acceptance": [
+          "说清至少两个层级的职责。",
+          "指出结果需要证据验证。"
+        ]
+      },
+      {
+        "question": "如何判断本课机制是否真正改善机器人任务？",
+        "answer": [
+          "使用对照实验和分层指标，保持任务、场景和资源预算一致，并检查安全、人工介入和泛化表现。"
+        ],
+        "acceptance": [
+          "提出可比较的基线。",
+          "提出至少一个系统指标。"
+        ]
+      }
+    ],
+    "relatedLessons": [
+      "robot-agent-loop"
+    ]
+  }
+]
