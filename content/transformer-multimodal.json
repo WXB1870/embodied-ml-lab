@@ -280,7 +280,8 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "tensor"
+      "tensor",
+      "mlp"
     ],
     "objectives": [
       "跟踪 [B,T,D] 到 [B,H,T,d] 的多头拆分。",
@@ -865,7 +866,8 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "tensor"
+      "tensor",
+      "mlp"
     ],
     "objectives": [
       "给出 [B,T,D] 张量使用 LayerNorm(D) 时的统计维度。",
@@ -1204,6 +1206,7 @@
       "面试手撕"
     ],
     "prerequisites": [
+      "cnn-receptive-field",
       "attention",
       "rope"
     ],
@@ -1711,8 +1714,7 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "attention",
-      "rope"
+      "attention"
     ],
     "objectives": [
       "区分分词、Embedding、Attention Mask 和 Loss Mask。",
