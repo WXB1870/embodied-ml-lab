@@ -218,7 +218,7 @@ result = runtime.dispatch(decision)</div>
     recovery_options: List[SkillReference]</div>
 <h3>3.2 Skill 生命周期不是函数返回值</h3>
 <p>长时序技能需要异步生命周期。<code>accepted</code> 表示 Runtime 接受了请求；<code>running</code> 表示执行中；<code>yielded</code> 表示到达检查点并交还控制权；<code>succeeded</code> 表示技能自己的完成条件成立；<code>failed</code> 表示失败；<code>cancelled</code> 表示被取消。还要区分 <code>uncertain</code>：系统没有足够证据证明成功，也没有证据证明失败。</p>
-<p>为什么要有 <code>yielded</code>？例如 VLA 正在执行“把物体放入篮子”，它可能连续运行十几秒；如果每个动作块都让 Agent 重新推理，延迟和成本很高。但如果完全不汇报，Agent 又无法在物体滑落、障碍出现或子目标完成时介入。检查点就是技能与 Agent 之间的控制交接点。</p>
+<p>为什么要有 <code>yielded</code>？例如 VLA 正在执行“把物体放入篮子”，它可能连续运行十几秒；如果每个动作块都让 Agent 重新推理，延迟和成本很高。但如果完全不汇报，Agent 又无法在物体滑落、障碍出现或子目标完成时介入。检查点就是技能与 Agent 之间的控制交接点。</p><p class="agent-note">注意：<code>accepted / running / yielded / succeeded / failed / cancelled / uncertain</code> 是本课程建议采用的通用 Skill Runtime 状态合同，不是所有机器人框架共同遵循的标准枚举。实际项目可以采用不同名称，但必须明确状态含义、合法转换、超时和取消语义。</p>
 <h3>3.3 为什么不把 Skill 自动展开成隐藏动作序列？</h3>
 <p>一种做法是 Agent 调用 <code>open_door</code>，Runtime 自动执行一串隐藏的 <code>move_to</code>、<code>gripper_close</code> 和 <code>pull</code>。这种做法简单，但如果隐藏执行过程没有观测、日志和中断机制，Agent 就无法知道动作是否按预期发生。OpenETA 的设计选择是：Skill 文档可以提供可读的操作指导，但不会自动变成隐藏工具调用；真正执行仍通过明确的 Tool Call 和回执进行。这牺牲部分便利性，换取可追踪和可验证性。</p>
 <h3>3.4 一个 Skill 可以递归包含子 Skill</h3>
@@ -433,7 +433,7 @@ else:
 <tr><td>记忆与技能加载</td><td>Memory、Skills、项目规则、任务上下文</td><td>复用历史经验、加载开发规范和专用机器人能力说明</td></tr>
 <tr><td>委派与并行工作</td><td>Sub-agent、任务分派、结果汇总</td><td>并行分析日志、检查代码、设计测试；主 Agent 负责集成判断</td></tr>
 </tbody></table></div></div>
-<p>这些是能力类别，不是所有 Coding Agent 都有同名的独立工具。例如 Codex 可以主要通过 Shell 和 Apply Patch 完成文件检索与修改；Claude Code 通常提供 Read、Edit、Write、Glob、Grep、Bash 等工具。工具名称和粒度不同，但底层能力高度重合。不要把某个产品的工具清单当作通用标准。</p>
+<p>这些是能力类别，不是所有 Coding Agent 都有同名的独立工具。例如 Codex 可以主要通过 Shell 和 Apply Patch 完成文件检索与修改；Claude Code 通常提供 Read、Edit、Write、Glob、Grep、Bash 等工具。工具名称和粒度不同，但底层能力高度重合。不要把某个产品的工具清单当作通用标准。<strong>数据库、向量检索和长期记忆尤其需要注意：</strong>它们通常不是每个 Coding Agent 开箱即有的内置工具。开发者会通过 MCP Server、数据库连接器或自定义 Tool，把只读 SQL、向量检索、Memory Read/Write、对象存储查询等能力暴露给 Agent。Agent 会调用这些接口，但数据库本身并不会自动成为“记忆”；记忆的结构、写入规则、检索策略和冲突解决仍需系统设计。</p>
 <h3>7.2 最小工具集与进阶工具集</h3>
 <p>对你的机器人技能开发，最小可用集合其实不大：读取/搜索文件、精确编辑、执行命令、查看长进程输出、运行测试、查看 Git Diff。缺少其中任何一类，Agent 都容易退化成“生成代码后让人手动检查”。</p>
 <p>进阶能力包括 Browser/MCP、Sub-agent、长期 Memory、工作区快照、并行仿真和资源调度。它们不是第一天就必须全部部署的功能；只有在任务确实需要跨仓库研究、并行诊断、调用外部服务或管理长时运行时才增加。</p>
