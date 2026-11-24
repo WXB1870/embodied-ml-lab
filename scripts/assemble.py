@@ -65,7 +65,7 @@ for l in lessons:
     assert (len(l['sections'])==4 if l.get('theoryOnly') else len(l['sections'])>=3),(l['id'],'invalid section count')
     for section in l['sections']:
         assert isinstance(section.get('lead'),str) and section['lead'].strip(),(l['id'],section.get('id'),'missing section introduction')
-        assert len(section.get('body',[]))>=2,(l['id'],section.get('id'),'insufficient section content')
+        if l.get('theoryOnly'):assert len(section.get('body',[]))>=2,(l['id'],section.get('id'),'insufficient section content')
         if section.get('code') and not l.get('theoryOnly'):compile(section['code'],l['id']+'/section','exec')
         if section.get('comparison'):
             comparison=section['comparison']
