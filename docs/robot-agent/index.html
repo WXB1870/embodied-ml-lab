@@ -76,9 +76,9 @@
 <nav aria-label="主导航"><a href="/embodied-ml-lab/">课程目录</a><a href="/embodied-ml-lab/practice/">课程练习</a><a class="active" href="/embodied-ml-lab/robot-agent/">Robot Agent</a></nav>
 </div></header>
 <main id="main" class="page narrow agent-page">
-<div class="article-context"><a href="/embodied-ml-lab/">Embodied ML Lab</a><span class="agent-priority">专题学习路线 · 08</span></div>
+<div class="article-context"><a href="/embodied-ml-lab/">Embodied ML Lab</a></div>
 <header class="article-heading"><h1>Robot Agent：自主决策、技能组合与持续进化</h1></header>
-<p class="article-intro">这部分不是通用 LLM Agent 教程。目标是理解并设计一个以 Agent 为决策核心、以异构 Skill 为执行能力、能够通过经验持续改进自身技能的机器人系统。</p>
+
 
 <style>
 .agent-toc{border:1px solid #dfe6ef;border-radius:7px;background:#fff;margin:22px 0 36px;padding:17px 19px}
@@ -94,7 +94,7 @@
 @media(max-width:600px){.agent-toc{padding:14px}.agent-toc-grid{grid-template-columns:1fr;gap:0}.agent-toc-head{display:block}.agent-toc-head span{display:block;margin-top:3px}}
 </style>
 <details class="agent-toc" open>
-<summary><strong>本专题目录</strong><span>按学习顺序阅读，也可直接跳转</span></summary>
+<summary><strong>目录</strong></summary>
 <nav class="agent-toc-grid" aria-label="本专题目录">
 <a href="#architecture"><span>01</span>系统边界与总体架构</a>
 <a href="#agent-loop-deep"><span>02</span>Agent Loop 与决策闭环</a>
@@ -118,7 +118,7 @@
 </details>
 <div class="agent-hero">
 <h2>最终目标：Agent 决定做什么，Skill 负责把事情做好</h2>
-<p>Agent 接收任务和环境状态，判断下一步需要什么能力；它可以调用长时序 VLA、World Model、视觉感知、运动控制或 Code Policy。复杂技能还可以继续组合子技能。执行结果和经验返回 Agent，用于继续决策或改进技能。</p>
+
 </div>
 
 <section class="article-section" id="architecture">
