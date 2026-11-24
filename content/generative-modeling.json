@@ -17,7 +17,8 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "tensor"
+      "tensor",
+      "mlp"
     ],
     "objectives": [
       "从联合概率模型推导 ELBO 与后验 KL 间隙",
@@ -324,7 +325,8 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "vae"
+      "tensor",
+      "mlp"
     ],
     "objectives": [
       "逐项推导前向边际、高斯后验与 epsilon 参数化的反向均值",
@@ -1207,7 +1209,8 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "tensor"
+      "tensor",
+      "mlp"
     ],
     "objectives": [
       "构造直线路径及其条件速度监督",
@@ -1323,7 +1326,8 @@
     "prerequisites": [
       "diffusion",
       "flow-matching",
-      "attention"
+      "attention",
+      "mlp"
     ],
     "objectives": [
       "说明 DiT 是去噪网络骨干，而不是一种独立的生成目标或采样器。",
