@@ -131,3 +131,81 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
 .evolution-takeaway{font-size:13px!important;line-height:1.8;margin:12px 0 0!important;padding-top:11px;border-top:1px solid var(--line);color:#53657d}
 .evolution-takeaway strong{color:#344a67;font-weight:600}
 @media(max-width:760px){.learning-connections .detail-body,.evolution-details .detail-body{padding:13px 14px}.connection-links{gap:6px 12px}}
+
+
+/* Pointer-aware material layer — restrained, content-first interactions. */
+:root{
+  --pointer-spot-x:50%;
+  --pointer-spot-y:50%;
+}
+@media (hover:hover) and (pointer:fine) {
+  .topic-card,.practice-card,.agent-card,.feature-card{
+    position:relative;
+    isolation:isolate;
+    transform-style:preserve-3d;
+    transition:transform .22s cubic-bezier(.2,.7,.2,1),box-shadow .22s ease,border-color .22s ease;
+    will-change:transform;
+  }
+  .topic-card::after,.practice-card::after,.agent-card::after,.feature-card::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    z-index:0;
+    border-radius:inherit;
+    pointer-events:none;
+    opacity:0;
+    background:radial-gradient(260px circle at var(--spot-x,50%) var(--spot-y,50%),rgba(111,166,235,.16),transparent 68%);
+    transition:opacity .2s ease;
+  }
+  .topic-card:hover::after,.practice-card:hover::after,.agent-card:hover::after,.feature-card:hover::after{opacity:1}
+  .topic-card>* ,.practice-card>* ,.agent-card>* ,.feature-card>*{position:relative;z-index:1}
+  .button,.search-trigger,.icon-button{
+    translate:var(--mag-x,0px) var(--mag-y,0px);
+    transition:translate .18s cubic-bezier(.2,.7,.2,1),transform .18s ease,box-shadow .18s ease;
+  }
+  .cursor-aura{
+    position:fixed;left:0;top:0;width:170px;height:170px;z-index:9999;
+    border-radius:50%;pointer-events:none;opacity:0;
+    background:radial-gradient(circle,rgba(113,164,225,.12) 0,rgba(113,164,225,.055) 34%,transparent 70%);
+    transform:translate3d(-50%,-50%,0);
+    transition:opacity .25s ease;
+    mix-blend-mode:multiply;
+  }
+  body.pointer-active .cursor-aura{opacity:1}
+}
+.pointer-ripple{
+  position:absolute;z-index:4;pointer-events:none;border-radius:50%;
+  background:currentColor;opacity:.16;transform:scale(0);
+  animation:pointer-ripple .55s ease-out forwards;
+}
+@keyframes pointer-ripple{to{transform:scale(1);opacity:0}}
+.site-header{
+  background:rgba(255,255,255,.82);
+  -webkit-backdrop-filter:saturate(160%) blur(16px);
+  backdrop-filter:saturate(160%) blur(16px);
+}
+.site-header::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(91,137,195,.24),rgba(133,164,204,.16),transparent);
+  pointer-events:none;
+}
+.brand-mark{transition:transform .35s cubic-bezier(.2,.8,.2,1),filter .35s ease}
+.brand:hover .brand-mark{transform:rotate(-8deg) scale(1.06);filter:drop-shadow(0 3px 7px rgba(77,119,174,.22))}
+.topic-card,.practice-card,.agent-card,.feature-card{
+  border-color:color-mix(in srgb,var(--line,#e5eaf0) 78%,#9bb9dc);
+  box-shadow:0 2px 8px rgba(35,58,91,.025),0 12px 28px rgba(35,58,91,.035);
+}
+.topic-card:hover,.practice-card:hover,.agent-card:hover,.feature-card:hover{
+  box-shadow:0 12px 30px rgba(35,58,91,.09),0 2px 8px rgba(35,58,91,.04);
+  border-color:rgba(112,151,199,.55);
+}
+@media(max-width:760px),(hover:none),(pointer:coarse){
+  .cursor-aura{display:none!important}
+  .topic-card,.practice-card,.agent-card,.feature-card{transform:none!important;will-change:auto}
+  .button,.search-trigger,.icon-button{translate:none!important}
+}
+@media(prefers-reduced-motion:reduce){
+  .cursor-aura{display:none!important}
+  .topic-card,.practice-card,.agent-card,.feature-card,.button,.search-trigger,.icon-button,.brand-mark{transition:none!important;transform:none!important;translate:none!important}
+  .pointer-ripple{display:none!important}
+}
