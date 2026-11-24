@@ -1,6 +1,6 @@
 {
   "release": "Embodied ML Lab · 具身智能与大模型算法研发",
-  "reviewedAt": "2026-11-23",
+  "reviewedAt": "2026-11-24",
   "sourceFiles": [
     "transformer-multimodal",
     "generative-modeling",
@@ -8,20 +8,31 @@
     "posttraining",
     "appendix"
   ],
-  "scope": "学院派理论推导 + PyTorch 工程实现 + 面试手撕训练营。主干 20 节核心课程，基础与训练运维内容折叠至附录。",
+  "scope": "学院派理论推导 + PyTorch 工程实现 + 面试手撕训练营。主干 22 节核心课程；训练工程与低频数学工具保留在附录。",
   "criteria": [
     "公式推导能够对应到张量操作和代码。",
     "核心算法提供可运行 PyTorch 实现与边界测试。",
-    "课程以现代 Transformer、生成模型、具身策略与后训练为主线。"
+    "课程以现代 Transformer、生成模型、具身策略与后训练为主线。",
+    "MLP 与 CNN 作为网络和视觉表征基础课程进入主干，不折叠为附录速查。"
   ],
   "modules": [
+    {
+      "id": "network-foundations",
+      "name": "网络基础与视觉表征",
+      "short": "网络基础与视觉表征",
+      "desc": "从张量与 MLP 建立神经网络的计算基础，再理解卷积、空间采样与感受野，为视觉编码器和具身策略提供基础。",
+      "lessons": [
+        "tensor",
+        "mlp",
+        "cnn-receptive-field"
+      ]
+    },
     {
       "id": "transformers",
       "name": "现代 Transformer 与多模态骨干",
       "short": "Transformer 与多模态骨干",
       "desc": "张量语义、注意力、位置编码、现代 Transformer 组件、视觉语言对齐与高效推理。",
       "lessons": [
-        "tensor",
         "attention",
         "rope",
         "norm-ffn",
@@ -74,9 +85,7 @@
       "desc": "按需查阅经典基础、PyTorch 机制与训练工程实践，不计入 20 节核心课程。",
       "lessons": [
         "matrix-grad",
-        "mlp",
         "activation-init",
-        "cnn-receptive-field",
         "autograd",
         "optimization",
         "modules",
@@ -96,9 +105,7 @@
     "description": "不占据主干学习流的基础与工程参考。",
     "lessons": [
       "matrix-grad",
-      "mlp",
       "activation-init",
-      "cnn-receptive-field",
       "autograd",
       "optimization",
       "modules",
@@ -139,8 +146,8 @@
     "rl": "posttraining",
     "posttraining": "posttraining",
     "closedloop": "policies",
-    "foundations": "appendix",
-    "neural": "appendix"
+    "foundations": "network-foundations",
+    "neural": "network-foundations"
   },
   "legacySourceFiles": [
     "foundations",
