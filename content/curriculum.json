@@ -6,14 +6,16 @@
     "generative-modeling",
     "embodied-policy",
     "posttraining",
+    "robot-agent",
     "appendix"
   ],
-  "scope": "学院派理论推导 + PyTorch 工程实现 + 面试手撕训练营。主干 22 节核心课程；训练工程与低频数学工具保留在附录。",
+  "scope": "学院派理论推导 + PyTorch 工程实现 + 面试手撕训练营，并以 Robot Agent 自主决策与技能系统作为第六个主干模块。",
   "criteria": [
     "公式推导能够对应到张量操作和代码。",
     "核心算法提供可运行 PyTorch 实现与边界测试。",
     "课程以现代 Transformer、生成模型、具身策略与后训练为主线。",
-    "MLP 与 CNN 作为网络和视觉表征基础课程进入主干，不折叠为附录速查。"
+    "MLP 与 CNN 作为网络和视觉表征基础课程进入主干，不折叠为附录速查。",
+    "Robot Agent 课程与其他主干模块采用相同的课程组织：模块目录、逐节原理、代码实现和练习。"
   ],
   "modules": [
     {
@@ -76,6 +78,22 @@
         "policy-gradient",
         "ppo",
         "dpo-grpo"
+      ]
+    },
+    {
+      "id": "robot-agent",
+      "name": "Robot Agent 与自主技能系统",
+      "short": "Robot Agent 与自主技能",
+      "desc": "从 Agent 决策闭环、Skill Runtime、长时序 VLA、World Model、机器人感知工具链，到 Memory、Code Policy Evolution 与系统评估，构建可持续进化的机器人智能体。",
+      "lessons": [
+        "robot-agent-loop",
+        "robot-skill-runtime",
+        "robot-vla-skill",
+        "robot-world-model",
+        "robot-perception-tools",
+        "robot-agent-memory",
+        "robot-code-policy-evolution",
+        "robot-agent-evaluation"
       ]
     },
     {
