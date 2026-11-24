@@ -103,7 +103,8 @@
 <a href="#world-model-deep"><span>05</span>World Model as a Skill</a>
 <a href="#code-policy-deep"><span>06</span>Code-as-Policy</a>
 <a href="#coding-agent-tools"><span>07</span>Coding Agent 工具与 Runtime</a>
-<a href="#agent-memory-systems"><span>08</span>Agent Memory 系统</a>
+<a href="#agent-tools-catalog"><span>08</span>优秀 Agent 工具与框架目录</a>
+<a href="#agent-memory-systems"><span>09</span>数据库、Memory 与检索</a>
 <a href="#memory-evolution-deep"><span>09</span>经验记忆与持续进化</a>
 <a href="#openeta-code-walkthrough"><span>10</span>OpenETA 真实代码拆解</a>
 <a href="#evaluation-deep"><span>11</span>评估方法与指标</a>
@@ -565,8 +566,61 @@ else:
 </ul>
 <div class="agent-audit"><h3>本节学习结论</h3><p>你不需要把 Coding Agent 的所有工具都做成机器人 Agent 的工具。需要掌握的是：一套开发期工具链负责生成和改进 Skill；另一套运行期技能接口负责安全、可验证地执行 Skill。两者通过版本化的 Skill Artifact、评测结果和经验记忆连接。</p></div>
 </section>
+<section class="article-section" id="agent-tools-catalog">
+<h2><span class="section-number">08</span>优秀 Agent 工具与框架：代表项目、用途和选型</h2>
+<p class="section-lead">这里不是 GitHub 项目大杂烩，而是按能力类别挑选值得学习的代表。框架、协议、数据库和产品不是同一类东西；同一类别也不意味着需要全部部署。</p>
+<div class="agent-callout"><strong>选型原则：</strong>先理解机制，再选一个主力实现。对机器人 Agent，优先考虑可自托管、Python 生态、状态持久化、工具权限边界、可观测性，以及与 ROS 2 / MCP / 自有 Skill Runtime 的集成能力。</div>
+<h3>8.1 Agent Orchestration：任务流程、状态与多步执行</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>项目</th><th>核心机制</th><th>适合学习什么</th><th>入口</th></tr></thead><tbody>
+<tr><td><strong>LangGraph</strong></td><td>State、Node、Edge、Checkpoint、Interrupt、持久化与恢复。</td><td>多阶段任务、暂停恢复、复杂分支和 Human-in-the-loop。</td><td><a href="https://github.com/langchain-ai/langgraph" target="_blank" rel="noopener">GitHub</a> · <a href="https://docs.langchain.com/oss/python/langgraph/overview" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>OpenAI Agents SDK</strong></td><td>Agents、Tools、Handoffs、Guardrails、Tracing。</td><td>轻量 Agent Loop、工具调用与 Agent 间交接。</td><td><a href="https://github.com/openai/openai-agents-python" target="_blank" rel="noopener">GitHub</a> · <a href="https://openai.github.io/openai-agents-python/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Google ADK</strong></td><td>Agent、Tool、Workflow Agent、多 Agent 协作。</td><td>层级 Agent、顺序/并行工作流和模型适配。</td><td><a href="https://github.com/google/adk-python" target="_blank" rel="noopener">GitHub</a> · <a href="https://google.github.io/adk-docs/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>PydanticAI</strong></td><td>类型安全 Agent、结构化输出、依赖注入和测试。</td><td>严格定义机器人 Skill 的输入输出 Schema。</td><td><a href="https://github.com/pydantic/pydantic-ai" target="_blank" rel="noopener">GitHub</a> · <a href="https://ai.pydantic.dev/" target="_blank" rel="noopener">Docs</a></td></tr>
+</tbody></table></div></div>
+<p><strong>选型建议：</strong>先读 LangGraph 的状态与恢复机制，再读 OpenAI Agents SDK 的 Tool/Handoff。PydanticAI 适合接口严谨的 Python 工程。它们是可选实现，不是 Robot Agent 的必选依赖。</p>
+<h3>8.2 Tool Integration：MCP 与 Agent Skills</h3>
+<div class="agent-project"><h3>Model Context Protocol（MCP）</h3><p>MCP 是 Agent Host 与外部工具/资源之间的连接协议，不是 Agent 框架，也不负责任务规划。需要理解 Host、Client、Server、Tools、Resources、Prompts、Transport 和授权。机器人可将感知、数据库、仿真器等服务封装为 MCP Server，但物理动作仍须由机器人 Runtime 做状态和安全校验。</p><a href="https://github.com/modelcontextprotocol" target="_blank" rel="noopener">官方组织</a><a href="https://modelcontextprotocol.io/docs/getting-started/intro" target="_blank" rel="noopener">协议文档</a><a href="https://github.com/modelcontextprotocol/servers" target="_blank" rel="noopener">参考 Server</a></div>
+<div class="agent-project"><h3>Agent Skills / SKILL.md</h3><p>将操作说明、脚本和资源打包，按需向 Agent 渐进披露。它与运行时 Tool API 不同：Markdown 指令不等于经过验证的可执行机器人技能。适合沉淀 ROS 2 调试、仿真评测和项目操作规范。</p><a href="https://agentskills.io/" target="_blank" rel="noopener">规范与文档</a><a href="https://github.com/agentskills/agentskills" target="_blank" rel="noopener">规范仓库</a></div>
+<h3>8.3 Memory Frameworks：长期记忆与知识管理</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>项目</th><th>核心机制</th><th>适合研究什么</th><th>入口</th></tr></thead><tbody>
+<tr><td><strong>Letta</strong></td><td>Stateful Agent、可编辑 Memory Blocks、Archival Memory。</td><td>Agent 主动读写记忆、跨会话状态。</td><td><a href="https://github.com/letta-ai/letta" target="_blank" rel="noopener">GitHub</a> · <a href="https://docs.letta.com/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Mem0</strong></td><td>记忆抽取、更新、作用域管理和检索。</td><td>把经历转成可检索的 Agent/Session 记忆。</td><td><a href="https://github.com/mem0ai/mem0" target="_blank" rel="noopener">GitHub</a> · <a href="https://docs.mem0.ai/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Graphiti</strong></td><td>带时间与来源的知识图谱、实体关系变化和混合检索。</td><td>环境事实随时间变化、需要追溯来源。</td><td><a href="https://github.com/getzep/graphiti" target="_blank" rel="noopener">GitHub</a> · <a href="https://help.getzep.com/graphiti" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Cognee</strong></td><td>异构数据摄取、图结构与向量检索。</td><td>把文档、执行记录组织成可查询知识。</td><td><a href="https://github.com/topoteretes/cognee" target="_blank" rel="noopener">GitHub</a> · <a href="https://docs.cognee.ai/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>LangMem</strong></td><td>记忆提取、更新与检索，可配合 LangGraph Store。</td><td>热路径记忆操作与后台整理。</td><td><a href="https://github.com/langchain-ai/langmem" target="_blank" rel="noopener">GitHub</a> · <a href="https://langchain-ai.github.io/langmem/" target="_blank" rel="noopener">Docs</a></td></tr>
+</tbody></table></div></div>
+<p><strong>选型建议：</strong>Letta 适合研究 Agent 自主管理记忆；Mem0 适合快速试验抽取与检索；Graphiti 适合时间关系与来源追踪；Cognee 适合异构知识构建。机器人 Memory 必须把事实来源、坐标系、时间戳、置信度和适用本体作为字段。</p>
+<h3>8.4 Database、Vector Search 与 RAG</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>项目</th><th>类型</th><th>适合用途</th><th>入口</th></tr></thead><tbody>
+<tr><td><strong>PostgreSQL + pgvector</strong></td><td>关系数据库 + 向量扩展</td><td>任务/轨迹元数据、事务、权限和起步阶段的向量检索。</td><td><a href="https://www.postgresql.org/docs/" target="_blank" rel="noopener">PostgreSQL</a> · <a href="https://github.com/pgvector/pgvector" target="_blank" rel="noopener">pgvector</a></td></tr>
+<tr><td><strong>Qdrant</strong></td><td>向量数据库</td><td>带 metadata filter 的语义检索。</td><td><a href="https://github.com/qdrant/qdrant" target="_blank" rel="noopener">GitHub</a> · <a href="https://qdrant.tech/documentation/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Milvus</strong></td><td>向量数据库</td><td>大规模向量检索基础设施。</td><td><a href="https://github.com/milvus-io/milvus" target="_blank" rel="noopener">GitHub</a> · <a href="https://milvus.io/docs" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Neo4j</strong></td><td>图数据库</td><td>场景图、对象关系、Skill 依赖和多跳查询。</td><td><a href="https://github.com/neo4j/neo4j" target="_blank" rel="noopener">GitHub</a> · <a href="https://neo4j.com/docs/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>LlamaIndex</strong></td><td>数据连接与 RAG 框架</td><td>数据摄取、索引、检索和 Agent 数据工具。</td><td><a href="https://github.com/run-llama/llama_index" target="_blank" rel="noopener">GitHub</a> · <a href="https://docs.llamaindex.ai/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Haystack</strong></td><td>检索与 RAG Pipeline</td><td>可测试的检索、重排和生成流水线。</td><td><a href="https://github.com/deepset-ai/haystack" target="_blank" rel="noopener">GitHub</a> · <a href="https://docs.haystack.deepset.ai/" target="_blank" rel="noopener">Docs</a></td></tr>
+</tbody></table></div></div>
+<p>建议先用 PostgreSQL/SQLite 保存结构化任务、Episode、Event 和 SkillVersion，再用 pgvector 做基础相似检索。只有规模、延迟或多模态向量需求成为瓶颈时，再考虑 Qdrant/Milvus。Neo4j 只有在多跳关系查询有明确价值时才引入。</p>
+<h3>8.5 Coding Agent Harness：开发期代码工具与工作区</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>项目</th><th>值得学习的机制</th><th>适用场景</th><th>入口</th></tr></thead><tbody>
+<tr><td><strong>Codex</strong></td><td>Shell、Patch、Sandbox、Skills、任务委派和长任务上下文。</td><td>工程型 Coding Agent Harness 与受控执行。</td><td><a href="https://github.com/openai/codex" target="_blank" rel="noopener">GitHub</a> · <a href="https://developers.openai.com/codex/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Claude Code</strong></td><td>Read/Edit/Write、Glob/Grep、Bash、MCP、Hooks、Sub-agents。</td><td>代码库探索、编辑和自动化工作流。</td><td><a href="https://docs.anthropic.com/en/docs/claude-code/overview" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>OpenCode</strong></td><td>开源 Coding Agent、Provider/Model 适配、工具和插件生态。</td><td>自定义 Harness 和多模型接入。</td><td><a href="https://github.com/anomalyco/opencode" target="_blank" rel="noopener">GitHub</a> · <a href="https://opencode.ai/docs/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Goose</strong></td><td>开源 Agent、Extensions、MCP 工具接入和本地执行。</td><td>可扩展的本地 Coding Agent Runtime。</td><td><a href="https://github.com/block/goose" target="_blank" rel="noopener">GitHub</a> · <a href="https://block.github.io/goose/" target="_blank" rel="noopener">Docs</a></td></tr>
+</tbody></table></div></div>
+<p>这些主要是开发期工具，不应直接成为真机运行时。它们可以帮助生成和调试 Code Policy，但候选代码仍应进入隔离工作区、仿真测试和版本评估。</p>
+<h3>8.6 Observability 与 Evaluation</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>项目</th><th>主要能力</th><th>适合用途</th><th>入口</th></tr></thead><tbody>
+<tr><td><strong>Langfuse</strong></td><td>Trace、Prompt/Model 观测、成本和评估。</td><td>自托管 Agent 调用链分析。</td><td><a href="https://github.com/langfuse/langfuse" target="_blank" rel="noopener">GitHub</a> · <a href="https://langfuse.com/docs" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Arize Phoenix</strong></td><td>Trace、检索与 Agent 调用分析。</td><td>调试 RAG、工具调用和多步推理链。</td><td><a href="https://github.com/Arize-ai/phoenix" target="_blank" rel="noopener">GitHub</a> · <a href="https://arize.com/docs/phoenix" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>LangSmith</strong></td><td>Trace、Dataset、Experiment 和评估工作流。</td><td>LangChain 生态与托管评估。</td><td><a href="https://docs.smith.langchain.com/" target="_blank" rel="noopener">Docs</a></td></tr>
+<tr><td><strong>Inspect AI</strong></td><td>任务、Solver、Scorer 和可复现评估。</td><td>构建可重复的 Agent 能力评测。</td><td><a href="https://github.com/UKGovernmentBEIS/inspect_ai" target="_blank" rel="noopener">GitHub</a> · <a href="https://inspect.aisi.org.uk/" target="_blank" rel="noopener">Docs</a></td></tr>
+</tbody></table></div></div>
+<p>机器人还要把 Agent Trace 与 ROS 2 日志、相机/力觉记录、Policy 版本、仿真种子和最终环境判定关联起来。单独看 LLM Trace 不能解释真实机器人为什么失败。</p>
+<div class="agent-audit"><h3>给你的建议组合：先少量选型，不要一次全装</h3><p><strong>编排：</strong>先读 LangGraph 的 State/Checkpoint，再读 OpenAI Agents SDK 的 Tool/Handoff。<br><strong>工具协议：</strong>MCP 作为跨服务连接方式，机器人侧保留自己的 Skill Contract。<br><strong>存储：</strong>PostgreSQL + pgvector 起步，文件系统保存图像/轨迹；需要时间关系图谱时再研究 Graphiti。<br><strong>Memory：</strong>先读 Letta，再对照 Mem0；不要同时让多个 Memory Framework 争夺唯一事实源。<br><strong>Coding Harness：</strong>读 Codex 与 RAX Harness。<br><strong>可观测性：</strong>先选 Langfuse 或 Phoenix 之一，并把机器人执行证据纳入同一 Trace。</p></div>
+<p class="agent-note">项目名单是代表性学习入口，不是排行榜或质量背书。开源状态、许可证、活跃度和 API 会变化；实际采用前应检查最新 Release、维护状态、依赖许可与部署要求。托管服务与开源组件要区分。</p>
+</section>
 <section class="article-section" id="agent-memory-systems">
-<h2><span class="section-number">08</span>Memory 与数据工具：Agent 如何查询、写入和复用经验？</h2>
+<h2><span class="section-number">09</span>Memory 与数据工具：Agent 如何查询、写入和复用经验？</h2>
 <p class="section-lead">你提到的数据库查询、记忆保留和检索，确实是 Agent 系统的核心知识，不是附属工具。Agent 的长期能力不仅取决于模型，还取决于它能否把交互记录转成结构化经验，在下一次任务中准确取回，并知道哪些信息已经过期。</p>
 <h3>8.1 先区分 Context、Memory、Database 和 Skill</h3>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>概念</th><th>解决的问题</th><th>典型内容</th><th>生命周期</th></tr></thead><tbody>
@@ -675,7 +729,7 @@ SkillVersion(
 <div class="agent-callout"><strong>本节核心结论：</strong>你的 Agent 至少需要“结构化数据库 + 文件/对象存储 + 可选向量检索 + 事件轨迹 + 版本化 Skill Registry”。先从 SQLite/PostgreSQL 和本地 Artifact Store 做最小实现，等检索规模、并发或关系复杂度真的成为瓶颈，再增加专用数据库。</div>
 </section>
 <section class="article-section" id="memory-evolution-deep">
-<h2><span class="section-number">09</span>持续进化不只有改代码：RAX、Voyager 与 RoboScript 的三种记忆</h2>
+<h2><span class="section-number">10</span>持续进化不只有改代码：RAX、Voyager 与 RoboScript 的三种记忆</h2>
 <p class="section-lead">这三个项目值得放在一起比较，因为它们沉淀的“经验”并不是同一种东西。理解差别，才能选择你的系统应该改程序、改任务记忆，还是改模型。</p>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>系统</th><th>主要沉淀</th><th>进化方式</th><th>适合解决</th></tr></thead><tbody>
 <tr><td>Voyager</td><td>可执行代码技能库</td><td>生成、执行、根据错误迭代并检索技能</td><td>技能逐步积累与组合</td></tr>
@@ -716,7 +770,7 @@ SkillVersion(
 </section>
 
 <section class="article-section" id="openeta-code-walkthrough">
-<h2><span class="section-number">10</span>真实项目代码拆解：OpenETA 的一次 Tool Call 如何走完</h2>
+<h2><span class="section-number">11</span>真实项目代码拆解：OpenETA 的一次 Tool Call 如何走完</h2>
 <p class="section-lead">这里以 OpenETA 的公开架构文档和 Agent Command Pipeline 为例。它的价值不是证明某一种架构最好，而是展示如何把 Agent 决策、Tool Registry、模拟器边界和物理动作副作用分开。</p>
 <h3>8.1 从观察到命令：主链路</h3>
 <div class="agent-code">Observation + Task + Memory + Tool/Skill References
@@ -759,7 +813,7 @@ SkillVersion(
 </section>
 
 <section class="article-section" id="evaluation-deep">
-<h2><span class="section-number">11</span>怎样判断 Agent 真的变强了？</h2>
+<h2><span class="section-number">12</span>怎样判断 Agent 真的变强了？</h2>
 <p class="section-lead">Robot Agent 不能只看最终成功率。否则你无法知道改进来自更好的任务决策、更强的 VLA、更稳定的控制，还是更多的尝试次数。</p>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>层级</th><th>核心指标</th><th>要回答的问题</th></tr></thead><tbody>
 <tr><td>Agent 决策</td><td>Skill 选择准确率、无效调用、重规划次数、决策延迟</td><td>是否选对能力？是否过度调用大模型？</td></tr>
@@ -783,7 +837,7 @@ SkillVersion(
 </section>
 
 <section class="article-section" id="curriculum">
-<h2><span class="section-number">12</span>学习路线：从 Agent 决策到持续进化</h2>
+<h2><span class="section-number">13</span>学习路线：从 Agent 决策到持续进化</h2>
 <p class="section-lead">建议按下面顺序学习。每一部分都围绕一个系统问题展开，避免把课程变成零散术语清单。</p>
 <ol class="agent-roadmap">
 <li><h3>Agent Loop 与任务级决策 <span class="agent-priority">P0</span></h3><p>Observe–Reason–Act–Verify；任务状态、目标分解、工具调用、终止条件；快速路径与深度推理的触发机制。重点回答 Agent 如何决定“下一步做什么”。</p></li>
@@ -798,7 +852,7 @@ SkillVersion(
 </section>
 
 <section class="article-section" id="projects">
-<h2><span class="section-number">13</span>代表项目：按你的目标选择阅读重点</h2>
+<h2><span class="section-number">14</span>代表项目：按你的目标选择阅读重点</h2>
 <p>下面不是简单的“最好项目排行榜”，而是为不同知识问题选取的代表案例。项目之间并非互斥分类：一个系统可以同时包含 Agent Runtime、VLA、几何工具和经验进化。</p>
 <div class="agent-project">
 <h3>RAX · 机器人在线探索与 Code Policy 进化</h3>
@@ -841,7 +895,7 @@ SkillVersion(
 </section>
 
 <section class="article-section" id="reading-order">
-<h2><span class="section-number">14</span>代码阅读顺序</h2>
+<h2><span class="section-number">15</span>代码阅读顺序</h2>
 <p>不要从头到尾通读仓库。每个项目都按同一组问题追踪一次真实任务：</p>
 <ol>
 <li>入口在哪里？任务上下文和环境观测如何进入 Agent？</li>
@@ -856,7 +910,7 @@ SkillVersion(
 </section>
 
 <section class="article-section" id="capstone">
-<h2><span class="section-number">15</span>综合实战：持续进化的开门 Agent</h2>
+<h2><span class="section-number">16</span>综合实战：持续进化的开门 Agent</h2>
 <p>以你熟悉的柜门/抽屉操作为主线，不必从便利店通用任务开始。这个任务能同时考察几何、接触、长时序执行、模型预测和技能改进。</p>
 <div class="agent-code">User goal: 打开陌生柜门并取出目标物体
 
@@ -874,13 +928,13 @@ Agent:
 </section>
 
 <section class="article-section" id="interactive-labs">
-<h2><span class="section-number">16</span>交互式算法演示</h2>
+<h2><span class="section-number">17</span>交互式算法演示</h2>
 <p class="section-lead">通过逐步执行和伪代码，理解 Agent 如何选择 Skill、调用长时序 VLA、利用 World Model，并让 Code Policy 根据经验迭代。以下均为可控的教学模拟，不连接真实机器人或执行任意生成代码。</p>
 <div id="agent-learning-extras"><div class="agent-audit"><h3>交互演示需要 JavaScript</h3><p>即使交互未加载，前文的系统架构、伪代码和案例仍可独立阅读。启用 JavaScript 后可操作决策分支、状态机、预测评分和策略进化实验。</p></div></div>
 </section>
 
 <section class="article-section" id="scope">
-<h2><span class="section-number">17</span>本章学习边界</h2>
+<h2><span class="section-number">18</span>本章学习边界</h2>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>本章深入学习</th><th>已有课程复用，不重复展开</th></tr></thead><tbody>
 <tr><td>Agent 决策、Skill Runtime、任务状态与经验管理</td><td>Transformer、VLM 基础与多模态融合</td></tr>
 <tr><td>长时序 VLA 的 Skill 化与任务级监督</td><td>π0.5 内部网络、Flow Matching 训练推导</td></tr>
