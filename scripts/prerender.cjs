@@ -38,14 +38,14 @@ function page(route,title,description,expression,{noindex=false,redirect}={}){
  fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,html);
  if(!noindex)pages.push({path:route,title,bytes:Buffer.byteLength(html)});
 }
-for(const name of ['learn','topics','practice','guide'])fs.rmSync(path.join(dist,name),{recursive:true,force:true});
-page('/','机器学习、生成模型与具身策略','个人自用的机器学习与具身智能学习网站，整理原理笔记、代码示例和练习。','renderCatalog()');
+for(const name of ['learn','topics','practice','guide','robot-agent'])fs.rmSync(path.join(dist,name),{recursive:true,force:true});
+page('/','具身智能与大模型算法研发','个人自用的机器学习与具身智能学习网站，整理原理笔记、代码示例和练习。','renderCatalog()');
 for(const lesson of lessons){
  const route='/learn/'+lesson.id+'/';
  page(route,lesson.title,lesson.subtitle,
   `renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
 }
-page('/practice/','课程练习','结合数学推导、手工计算、反例分析与可运行实现，检验对课程的理解。','renderPractice()');
+page('/practice/','手撕题库','结合数学推导、手工计算、反例分析与可运行实现，检验对课程的理解。','renderPractice()');
 page('/guide/','下载与运行','下载完整讲义、PyTorch 代码及练习，配置本地运行环境。','renderGuide()');
 page('/404/','页面不存在','请求的课程不存在。','notFound()',{noindex:true});
 // Old standalone topic paths are aliases; the lesson is the sole canonical article.

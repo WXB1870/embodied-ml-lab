@@ -39,6 +39,35 @@ test('Deployment paths cover assets, downloads and repeated normalization',()=>{
  assert.ok(caption.includes('href="'+basePath+'/assets/figures/d2l-classic-LICENSE.txt"'));
 });
 
+test('Homepage catalog, appendices and practice link to their registered courses',()=>{
+ const html=evaluate('renderCatalog()');
+ assert.ok(html.includes('href="#chapter-robot-agent"')&&html.includes('id="chapter-robot-agent"'));
+ assert.ok(!html.includes('核心课程')&&!html.includes('含手撕'));
+ for(const module of curriculum.modules){
+  let last=-1;
+  for(const id of module.lessons){
+   const href=evaluate('lessonHref('+JSON.stringify(id)+')');
+   const index=html.indexOf(href);
+   assert.ok(index>last,id+' missing or out of order');
+   last=index;
+  }
+ }
+ const practice=evaluate('renderPractice()');
+ assert.ok(practice.includes('手撕题库')&&practice.includes('/learn/generative-post-training/?tab=exercise'));
+});
+
+test('Search indexes chapter titles and body text for the two completed modules',()=>{
+ evaluate('buildSearchIndex()');
+ const lessonIds=[...curriculum.modules.find(m=>m.id==='robot-agent').lessons,'generative-post-training'];
+ for(const id of lessonIds){
+  const entries=evaluate('searchIndex.filter(entry=>entry.key==='+JSON.stringify(id)+')');
+  const lesson=lessons.find(l=>l.id===id);
+  assert.ok(entries.some(entry=>entry.kind==='article'&&entry.title===lesson.title));
+  assert.equal(entries.filter(entry=>entry.kind==='section').length,lesson.sections.length);
+  if(lesson.theoryOnly)assert.ok(entries.every(entry=>entry.href.includes('?tab=theory')));
+ }
+});
+
 for(const lesson of lessons){
  const canonicalId=evaluate(`LEGACY_LESSON_IDS[${JSON.stringify(lesson.id)}]`)||lesson.id;
  test(lesson.id+' theory rendering follows its course type',()=>{
@@ -49,7 +78,8 @@ for(const lesson of lessons){
   assert.ok(!html.includes('class="key-points"'));
   if(lesson.theoryOnly){
    assert.ok(!html.includes('class="chapter-goals"')&&!html.includes('id="chapter-review"'));
-   assert.ok(!html.includes('阅读代码实现')&&!html.includes('进入课程练习'));
+   assert.ok(!html.includes('class="article-action"')&&!html.includes('<pre')&&!html.includes('class="inline-visual"'));
+   assert.ok(html.includes('<table>'));
    const code=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'code','python',new URLSearchParams())`);
    const exercise=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);
    assert.ok(!code.includes('id="code-implementation"')&&!exercise.includes('id="exercise-editor"'));

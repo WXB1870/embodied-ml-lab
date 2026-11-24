@@ -156,9 +156,9 @@ function render(){
  const indexable=['/','/practice','/guide'].includes(path)||(/^\/learn\/[a-z0-9-]+$/.test(path)&&byId[path.split('/')[2]]?.sections);
  if(/^\/learn\/[a-z0-9-]+$/.test(path)){const l=byId[path.split('/')[2]];if(l?.sections){const tab=['theory','code','exercise'].includes(params.get('tab'))?params.get('tab'):'theory';html=renderLesson(l,tab,params.get('mode')==='torch'?'torch':'python',params);title=l.title;}else html=notFound();}
  else if(path.startsWith('/topics/')){const t=topicById[path.split('/')[2]];if(t){html=renderTopic(t,params);title=t.title;}else html=notFound();}
- else if(path==='/practice'){html=renderPractice();active='practice';title='课程练习';}
+ else if(path==='/practice'){html=renderPractice();active='practice';title='手撕题库';}
  else if(path==='/guide'){html=renderGuide();active='guide';title='下载与说明';}
- else if(path==='/')html=renderCatalog();else html=notFound();
+ else if(path==='/'){html=renderCatalog();title='具身智能与大模型算法研发';}else html=notFound();
  $('#main').innerHTML=normalizeInternalLinks(html);
  const canonical=$('link[rel=canonical]');if(canonical)canonical.href=location.origin+location.pathname;
  const description=$('meta[name=description]');if(description&&currentLesson)description.content=currentLesson.subtitle||currentLesson.title;
@@ -173,6 +173,7 @@ function render(){
 function notFound(){return '<div class="page narrow"><h1>没有找到这篇内容</h1><a class="button primary" href="#/">返回课程目录</a></div>';}
 function scrollToSection(){
  const {path,params}=parseRoute();let id=params.get('anchor');
+ if(path==='/'&&location.hash.startsWith('#chapter-'))id=location.hash.slice(1);
  if(params.get('section')){const item=byId[path.split('/')[2]],section=item?.legacySectionMap?.[params.get('section')]??params.get('section');id=path.startsWith('/learn/')?'section-'+section:params.get('section');}
  if(id?.startsWith('topic-section-'))id='section-'+id.slice(14);
  const lesson=byId[path.split('/')[2]];if(id?.startsWith('section-')&&lesson?.legacySectionMap?.[id.slice(8)])id='section-'+lesson.legacySectionMap[id.slice(8)];
@@ -298,12 +299,14 @@ window.addEventListener('popstate',()=>{if(activeJob)terminateRun();render();win
 $('.skip-link').addEventListener('click',e=>{e.preventDefault();$('#main').focus();$('#main').scrollIntoView();});
 async function init(){
  try{
-  const [courseResponse,catalogResponse,topicResponse,overrideResponse,agentResponse]=await Promise.all([fetch(sitePath('/data/lessons.json'),{cache:'no-cache'}),fetch(sitePath('/data/curriculum.json'),{cache:'no-cache'}),fetch(sitePath('/data/topics.json'),{cache:'no-cache'}),fetch(sitePath('/data/lessons-overrides.json'),{cache:'no-cache'}),fetch(sitePath('/data/robot-agent.json'),{cache:'no-cache'})]);
-  if(!courseResponse.ok||!catalogResponse.ok||!topicResponse.ok||!overrideResponse.ok||!agentResponse.ok)throw new Error('课程文件暂时不可用');
-  curriculum=await catalogResponse.json();MODULES=curriculum.modules;
-  const baseLessons=await courseResponse.json(),overrides=await overrideResponse.json(),agentLessons=await agentResponse.json(),overrideById=Object.fromEntries(overrides.map(l=>[l.id,l])),baseIds=new Set(baseLessons.map(l=>l.id)),allLessons=[...baseLessons,...agentLessons.filter(l=>!baseIds.has(l.id))];
-  const courseOrder=new Map();let sequence=0;for(const module of MODULES)for(const id of module.lessons)courseOrder.set(id,{module:module.id,number:++sequence});
-  lessons=allLessons.map(l=>({...l,...(overrideById[l.id]||{}),...(courseOrder.get(l.id)||{})})).sort((a,b)=>a.number-b.number);byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topics=await topicResponse.json();topicById=Object.fromEntries(topics.map(t=>[t.id,t]));
+  const [courseResponse,catalogResponse,topicResponse]=await Promise.all(
+   ['lessons','curriculum','topics'].map(name=>fetch(sitePath('/data/'+name+'.json'),{cache:'no-cache'}))
+  );
+  if(!courseResponse.ok||!catalogResponse.ok||!topicResponse.ok)throw new Error('课程文件暂时不可用');
+  [lessons,curriculum,topics]=await Promise.all([courseResponse.json(),catalogResponse.json(),topicResponse.json()]);
+  MODULES=curriculum.modules;
+  byId=Object.fromEntries(lessons.map(l=>[l.id,l]));
+  topicById=Object.fromEntries(topics.map(t=>[t.id,t]));
   registerTopicExercises();buildSearchIndex();render();scrollToSection();
  }catch(error){if(document.querySelector('[data-prerendered]')){console.error(error);return;}$('#main').innerHTML=`<div class="page narrow"><h1>课程暂时无法加载</h1><p>${esc(error.message)}</p><button class="button primary" onclick="location.reload()">重新加载</button></div>`;}
 }
@@ -315,17 +318,8 @@ init();
   const finePointer=window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
   const reduceMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   if(!finePointer||reduceMotion)return;
-  const cardSelector='.topic-card,.practice-card,.agent-card,.feature-card';
   const magnetSelector='.button,.search-trigger,.icon-button';
-  let activeCard=null,activeMagnet=null,raf=0,lastX=0,lastY=0;
-  const aura=document.createElement('div');
-  aura.className='cursor-aura';aura.setAttribute('aria-hidden','true');document.body.appendChild(aura);
-  const resetCard=el=>{
-    if(!el)return;
-    el.style.removeProperty('--spot-x');el.style.removeProperty('--spot-y');
-    el.style.removeProperty('--tilt-x');el.style.removeProperty('--tilt-y');
-    el.style.transform='';
-  };
+  let activeMagnet=null,raf=0,lastX=0,lastY=0;
   const resetMagnet=el=>{
     if(!el)return;
     el.style.removeProperty('--mag-x');el.style.removeProperty('--mag-y');
@@ -335,17 +329,7 @@ init();
     lastX=event.clientX;lastY=event.clientY;
     if(!raf)raf=requestAnimationFrame(()=>{
       raf=0;
-      aura.style.left=lastX+'px';aura.style.top=lastY+'px';
       const target=document.elementFromPoint(lastX,lastY);
-      const card=target?.closest(cardSelector);
-      if(card!==activeCard){resetCard(activeCard);activeCard=card;}
-      if(card){
-        const r=card.getBoundingClientRect(),x=(lastX-r.left)/r.width,y=(lastY-r.top)/r.height;
-        card.style.setProperty('--spot-x',(x*100)+'%');card.style.setProperty('--spot-y',(y*100)+'%');
-        card.style.setProperty('--tilt-x',((.5-y)*5).toFixed(2)+'deg');
-        card.style.setProperty('--tilt-y',((x-.5)*5).toFixed(2)+'deg');
-        card.style.transform='perspective(1000px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y))';
-      }
       const magnet=target?.closest(magnetSelector);
       if(magnet!==activeMagnet){resetMagnet(activeMagnet);activeMagnet=magnet;}
       if(magnet){
@@ -355,12 +339,9 @@ init();
       }
     });
   },{passive:true});
-  document.addEventListener('pointerover',event=>{
-    if(event.pointerType==='mouse'&&event.target.closest(cardSelector))document.body.classList.add('pointer-active');
-  },{passive:true});
   document.addEventListener('pointerout',event=>{
     if(!event.relatedTarget||event.relatedTarget===document.documentElement){
-      document.body.classList.remove('pointer-active');resetCard(activeCard);resetMagnet(activeMagnet);activeCard=activeMagnet=null;
+      resetMagnet(activeMagnet);activeMagnet=null;
     }
   },{passive:true});
   document.addEventListener('pointerdown',event=>{
@@ -376,6 +357,6 @@ init();
     button.appendChild(ripple);window.setTimeout(()=>ripple.remove(),650);
   },{passive:true});
   window.addEventListener('blur',()=>{
-    document.body.classList.remove('pointer-active');resetCard(activeCard);resetMagnet(activeMagnet);activeCard=activeMagnet=null;
+    resetMagnet(activeMagnet);activeMagnet=null;
   });
 })();

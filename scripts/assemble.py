@@ -13,6 +13,9 @@ for name in catalog['sourceFiles']:
     if not source.exists():
         raise SystemExit(f'Missing content: {source}')
     lessons.extend(json.loads(source.read_text()))
+for module in catalog['modules']:
+    if 'groups' in module:
+        module['lessons'] = [id for group in module['groups'] for id in group['lessons']]
 order=[id for module in catalog['modules'] for id in module['lessons']]
 assert len(order)==len(set(order)), 'Duplicate lesson in catalog'
 ids={x['id'] for x in lessons}
@@ -121,7 +124,7 @@ for id in ids:dfs(id)
 data=root/'dist'/'data';data.mkdir(exist_ok=True)
 # Keep the browser runtime used by prerender in sync with its authored source.
 dist=root/'dist'
-for asset in ['app.js','reader.js','styles.css','math.js','explorers.js','p0-explorers.js','deep-explorers.js','learning-visuals.js','pointer-effects.js']:
+for asset in ['app.js','reader.js','styles.css','math.js','explorers.js','p0-explorers.js','deep-explorers.js','learning-visuals.js']:
     source=root/'docs'/asset
     if not source.is_file():raise SystemExit(f'Missing browser asset: {source}')
     shutil.copyfile(source,dist/asset)

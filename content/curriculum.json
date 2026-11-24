@@ -33,26 +33,26 @@
       "id": "transformers",
       "name": "现代 Transformer 与多模态骨干",
       "short": "Transformer 与多模态骨干",
-      "desc": "注意力、位置编码、现代 Transformer 组件、视觉语言对齐与高效推理。",
+      "desc": "从注意力、位置编码与序列掩码，到增量解码和视觉语言对齐。",
       "lessons": [
         "attention",
         "rope",
         "norm-ffn",
-        "multimodal",
         "masking-autoregressive",
-        "kv-cache"
+        "kv-cache",
+        "multimodal"
       ]
     },
     {
       "id": "generative",
       "name": "生成模型与连续时间建模",
       "short": "生成模型与连续时间建模",
-      "desc": "潜变量基础、Flow Matching、扩散概率模型、连续时间动力学与扩散 Transformer。",
+      "desc": "从潜变量与离散扩散，到连续时间动力学、流匹配和生成骨干。",
       "lessons": [
         "vae",
-        "flow-matching",
         "diffusion",
         "score-sde",
+        "flow-matching",
         "dit-adaln"
       ]
     },
@@ -72,12 +72,13 @@
       "id": "posttraining",
       "name": "高效微调与后训练对齐",
       "short": "高效微调与后训练对齐",
-      "desc": "参数高效微调、策略梯度、PPO 与偏好/组内相对优势优化。",
+      "desc": "参数高效微调、策略梯度、偏好与相对优势优化，以及生成式策略的后训练。",
       "lessons": [
         "lora",
         "policy-gradient",
         "ppo",
-        "dpo-grpo"
+        "dpo-grpo",
+        "generative-post-training"
       ]
     },
     {
@@ -95,45 +96,38 @@
     },
     {
       "id": "appendix",
-      "name": "附录：训练工程速查",
-      "short": "训练工程速查",
-      "desc": "按需查阅矩阵求导、初始化、PyTorch 机制与训练工程，不计入核心课程。",
-      "lessons": [
-        "matrix-grad",
-        "activation-init",
-        "autograd",
-        "optimization",
-        "modules",
-        "dataloader",
-        "training-loop",
-        "checkpoint",
-        "gradient-accumulation",
-        "mixed-precision",
-        "memory-checkpointing",
-        "distributed-training",
-        "training-diagnostics"
+      "name": "附录",
+      "short": "附录",
+      "desc": "数学与优化基础、PyTorch 训练工程速查。",
+      "groups": [
+        {
+          "id": "appendix-a",
+          "name": "附录 A：数学与优化基础",
+          "lessons": [
+            "matrix-grad",
+            "activation-init",
+            "autograd",
+            "optimization"
+          ]
+        },
+        {
+          "id": "appendix-b",
+          "name": "附录 B：PyTorch 训练工程速查",
+          "lessons": [
+            "modules",
+            "dataloader",
+            "training-loop",
+            "checkpoint",
+            "gradient-accumulation",
+            "mixed-precision",
+            "memory-checkpointing",
+            "distributed-training",
+            "training-diagnostics"
+          ]
+        }
       ]
     }
   ],
-  "appendix": {
-    "title": "附录：训练工程速查",
-    "description": "按需查阅矩阵求导、初始化、PyTorch 机制与训练工程，不打断核心课程学习流。",
-    "lessons": [
-      "matrix-grad",
-      "activation-init",
-      "autograd",
-      "optimization",
-      "modules",
-      "dataloader",
-      "training-loop",
-      "checkpoint",
-      "gradient-accumulation",
-      "mixed-precision",
-      "memory-checkpointing",
-      "distributed-training",
-      "training-diagnostics"
-    ]
-  },
   "conditional": {},
   "deferred": [
     {
@@ -274,5 +268,42 @@
     "generative",
     "policy-models",
     "vla-architecture"
-  ]
+  ],
+  "lessonTitles": {
+    "tensor": "张量操作、广播机制与 einsum 语义",
+    "mlp": "MLP：结构、前向与反向传播",
+    "cnn-receptive-field": "CNN：卷积计算与感受野",
+    "attention": "注意力机制：MHA、MQA 与 GQA",
+    "rope": "旋转位置编码 RoPE 与长度外推",
+    "norm-ffn": "现代归一化与激活：RMSNorm 与 SwiGLU",
+    "masking-autoregressive": "序列掩码与标签对齐",
+    "kv-cache": "KV Cache 与增量解码",
+    "multimodal": "视觉编码器与多模态对齐",
+    "vae": "潜变量模型与 VAE",
+    "diffusion": "Diffusion：DDPM 与 DDIM",
+    "score-sde": "Score、SDE 与概率流 ODE",
+    "flow-matching": "Flow Matching 与 Rectified Flow",
+    "dit-adaln": "DiT 与 AdaLN-Zero",
+    "behavior-cloning": "行为克隆与协变量偏移",
+    "action-chunking": "Action Chunking、Temporal Ensembling 与 RTC",
+    "generative-policy": "ACT、Diffusion Policy 与 Flow Policy",
+    "vla-architecture": "VLA：视觉语言骨干与动作专家",
+    "lora": "LoRA 与参数高效微调",
+    "policy-gradient": "REINFORCE 与连续动作概率",
+    "ppo": "PPO 与 Actor-Critic",
+    "dpo-grpo": "DPO 与 GRPO",
+    "matrix-grad": "线性代数与矩阵求导",
+    "activation-init": "激活与初始化",
+    "autograd": "PyTorch 自动微分",
+    "optimization": "梯度下降与 AdamW",
+    "modules": "PyTorch 模块与参数",
+    "dataloader": "数据采样与批处理",
+    "training-loop": "训练循环",
+    "checkpoint": "保存与恢复",
+    "gradient-accumulation": "梯度累积",
+    "mixed-precision": "混合精度",
+    "memory-checkpointing": "显存与重计算",
+    "distributed-training": "DDP 与全局统计",
+    "training-diagnostics": "训练诊断"
+  }
 }

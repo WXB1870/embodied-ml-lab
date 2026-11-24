@@ -1401,5 +1401,224 @@
       ],
       "takeaway": "DPO 与 GRPO 优化信号不同；机器人任务还必须定义轨迹级奖励、成功判据和安全约束。"
     }
+  },
+  {
+    "id": "generative-post-training",
+    "number": 23,
+    "module": "posttraining",
+    "title": "生成式策略与 VLA 的后训练挑战",
+    "subtitle": "从动作概率比到优势加权生成回归与随机去噪路径。",
+    "minutes": 24,
+    "tags": [
+      "VLA",
+      "扩散策略",
+      "Flow Matching",
+      "AWR",
+      "AWAC",
+      "DPPO",
+      "Flow-GRPO",
+      "路径概率"
+    ],
+    "prerequisites": [
+      "generative-policy",
+      "ppo",
+      "dpo-grpo"
+    ],
+    "relatedLessons": [
+      "vla-architecture",
+      "score-sde",
+      "flow-matching"
+    ],
+    "why": "同一个动作块可以由多条去噪路径生成。选择优化动作、路径还是样本权重，决定了训练所需的数据和可计算量。",
+    "lead": "已有一个会抓取物体的生成式 VLA，现在希望用回报改善其接触后的稳定性。先确认日志是否保存生成过程、回报对应哪段真实动作，以及当前采样器能提供哪种密度，再选择后训练目标。",
+    "objectives": [
+      "推导动作块的边际概率与去噪路径概率，定位 PPO、GRPO 直接使用时缺失的量。",
+      "沿批维、动作时间和去噪步追踪优势加权回归与路径概率比。",
+      "解释 AWR、AWAC、DPPO 和 Flow-GRPO 使用的反馈、采样分布与代价。"
+    ],
+    "sections": [
+      {
+        "id": "action-marginal",
+        "title": "标准 PPO / GRPO 为什么需要动作概率",
+        "lead": "给定策略条件 \\(s\\) 和同一个已采样动作块 \\(a\\)，PPO 的比值以及采用重要性比的 GRPO 目标都需要新旧策略在同一随机变量上的 log-prob。组内基线改变的是优势估计，概率比依然需要对应的采样分布。",
+        "body": [
+          "设反向扩散从 \\(x_K\\sim p_K\\) 出发，动作块是 \\(a=x_0\\)。单个随机去噪转移可以有高斯密度，最终动作的条件密度要对整条未观测路径积分。测试时调用采样器得到 \\(a\\)，仍然缺少标准动作级 PPO 比值所需的两侧边际密度。",
+          "确定性 Flow ODE 将随机初始噪声推到动作分布。满足可逆和正则条件时可通过连续变换公式，将基分布密度与速度场散度沿轨迹积分来估计密度。常见 VLA 推理只解速度 ODE，额外的散度、反向求解和数值误差使得反复计算大动作块的精确概率比代价很高。",
+          "行为克隆的去噪 MSE 衡量预测误差，速度回归 MSE 衡量向量场误差。这些训练标量缺少动作似然的归一化与潜变量积分。把它们直接当成 log-prob，会让裁剪边界对应到训练误差尺度。"
+        ],
+        "formula": "\\begin{aligned}p_\\theta(a\\mid s)&=\\int p_K(x_K)\\prod_{k=1}^{K}p_\\theta(x_{k-1}\\mid x_k,s)\\,\\mathrm d x_{1:K},\\quad x_0=a,\\\\ r_\\theta(s,a)&=\\exp\\!\\bigl(\\log p_\\theta(a\\mid s)-\\log p_{\\rm old}(a\\mid s)\\bigr).\\end{aligned}"
+      },
+      {
+        "id": "weighted-regression",
+        "title": "利用离线数据做优势加权回归",
+        "lead": "高回报数据能够提升已有动作模式的学习权重。AWR 从回报与状态基线估计优势，AWAC 用离策略 critic 估计优势，并推动 actor 学习回放中的高优势动作。",
+        "body": [
+          "原始 AWR/AWAC 的 actor 损失是以 \\(\\exp(\\hat A/\\beta)\\) 加权的对数似然。生成式 VLA 可以沿用其样本加权思想，用可计算的速度或噪声回归替换似然目标。这是一种优势加权生成式行为克隆，继承了基本采样与回归流程。",
+          "例子选用噪声到数据的方向。对每个观测对应的动作块抽取噪声 \\(\\epsilon\\) 和生成时间 \\(t\\)，令 \\(x_t=(1-t)\\epsilon+ta\\)，回归目标为 \\(a-\\epsilon\\)。先把动作时序和动作维归约成每块一个误差，再乘上停止梯度的样本权重。示例在批内归一化权重，使损失更易读，实际训练也可用裁剪后的指数权重做批均值。",
+          "温度 \\(\\beta\\) 越小，权重越集中。错误的 critic 可能把分布外或偶然高回报样本放大。监控权重分布、有效样本数和低频成功模式的保留情况。数据支持不足时，补采相同任务阶段的有效轨迹。"
+        ],
+        "formula": "\\mathcal L=\\frac{\\sum_i w_i\\lVert v_\\theta(x_{t_i},t_i,s_i)-(a_i-\\epsilon_i)\\rVert^2}{\\sum_i w_i},\\qquad w_i=\\exp(\\hat A_i/\\beta)."
+      },
+      {
+        "id": "denoising-mdp",
+        "title": "DPPO 将随机去噪转移作为策略动作",
+        "lead": "一个环境时刻会展开为多步去噪。去噪子状态包含机器人条件、当前带噪动作块与去噪索引，子动作是采出的下一块。",
+        "body": [
+          "在同一个旧策略样本上保存 \\(x_k,x_{k-1}\\) 和旧转移 log-prob。更新时用新策略重算同一转移的密度，先对动作块的时间维和坐标维求和，得到每个去噪步的标量 log-prob。DPPO 在扩展 MDP 上用逐转移比值做 PPO 更新，并把环境回报沿去噪步分配。其实现可以只微调后段去噪步，并对早期去噪步折扣。",
+          "路径 log 比值在去噪步上相加。逐步裁剪的 PPO 与把全路径比值相乘后整体裁剪属于不同目标。完整路径乘积可能因步数增加迅速放大方差，逐步目标仍需按算法指定的优势和裁剪规则实现。",
+          "机器人通常执行动作块的前缀，然后基于新观测重新规划。训练日志要记录执行了多少动作、期间是否中断、状态何时刷新，以及旧策略真正使用的采样方差。采样时丢掉路径或中途改变求解器，无法用旧日志还原这些转移。"
+        ],
+        "formula": "\\log r_{i,k}=\\log p_\\theta(x_{i,k-1}\\mid x_{i,k},s_i)-\\log p_{\\rm old}(x_{i,k-1}\\mid x_{i,k},s_i)."
+      },
+      {
+        "id": "flow-grpo",
+        "title": "Flow-GRPO 把确定性流转为可计分的随机采样",
+        "lead": "确定性 ODE 的一步更新给定当前状态后是点质量，换参数后两条轨迹的条件支持可能互不重合。Flow-GRPO 用随机转移建立可比较的条件密度。",
+        "body": [
+          "原论文构造与原 Flow ODE 在连续时间下具有相同边际分布的 SDE，漂移随扩散项调整。离散采样后，用每一步的高斯转移计算 log-prob。离散步长和噪声强度会影响近似误差，直接在原 ODE 步后加任意高斯噪声也会改变样本分布。",
+          "针对同一条件从旧策略采 \\(G\\) 条路径，给各路径的终点计算回报 \\(R_g\\)。组内相对优势由同组均值与方差得到，去噪各步使用对应路径的优势与新旧转移比值。组内回报相同会给出零优势，可用任务成功的稀疏度和组内回报方差解释训练信号不足。",
+          "Flow-GRPO 原论文验证的是文本到图像。将其方法用于 VLA 时，每一组需要定义可比较的机器人初始条件、可复现的环境回报，以及路径采样和真实控制的预算。长时序任务还涉及从终点奖励向环境动作分配信用。"
+        ],
+        "formula": "\\hat A_g=\\frac{R_g-\\operatorname{mean}_{j=1}^{G}(R_j)}{\\operatorname{std}_{j=1}^{G}(R_j)+\\varepsilon}."
+      },
+      {
+        "id": "shape-trace",
+        "title": "Shape 追踪与方法选择",
+        "lead": "把环境批、动作块时间、去噪步明确分开，在比值和回报的归约处检查 Shape。",
+        "body": [
+          "优势加权回归中，预测与目标是 [B,T,D]，先归约为 [B] 的动作块损失。优势权重也是 [B]，两个向量逐元素相乘后才能归约为标量。固定长度示例中，若直接乘 [B] 与 [B,T,D]，广播会对齐到右端的 D 维，维度数相等时尤其难发现。",
+          "随机路径可存为 [B,K+1,T,D]，每步高斯元素 log-prob [B,K,T,D] 沿 T、D 求和成为 [B,K]。组采样将批展开为 [B,G,K,T,D]，优势 [B,G] 沿 K 广播。如果机器人轨迹另有环境时序 H，在采样和训练缓冲中单独保留这一轴。",
+          "只有动作与反馈时，优势加权回归对日志的要求较低。已有可复现的随机扩散采样器和交互回报时，可使用 DPPO 的逐步更新。需要对确定性流做在线组采样时，先验证所选随机转移具有可计算的密度，再评估修改采样器的成本。"
+        ]
+      }
+    ],
+    "shapes": [
+      {
+        "name": "动作块、噪声、速度预测",
+        "shape": "[B,T,D]",
+        "meaning": "样本批 B、动作时间 T、动作维 D"
+      },
+      {
+        "name": "生成时间",
+        "shape": "[B,1,1]",
+        "meaning": "每条动作块使用一个生成时间，沿 T 和 D 广播"
+      },
+      {
+        "name": "回放优势",
+        "shape": "[B]",
+        "meaning": "每条动作块一个固定权重，来自回报估计或 critic"
+      },
+      {
+        "name": "历史去噪轨迹",
+        "shape": "[B,G,K+1,T,D]",
+        "meaning": "每个初始条件采 G 条路径，各含 K 次随机转移"
+      },
+      {
+        "name": "逐转移 log-prob",
+        "shape": "[B,G,K]",
+        "meaning": "已对动作块的 T、D 维求和，保留去噪步 K"
+      }
+    ],
+    "code": {
+      "title": "PyTorch · 优势加权 Flow Matching",
+      "source": "import torch\n\ndef weighted_flow_loss(prediction, target, advantage, beta=1.0):\n    # Reduce the action block first so each advantage weights one sample.\n    per_chunk = (prediction - target).square().mean(dim=(1, 2))\n    logits = (advantage.detach().float() / beta).clamp(max=20.0)\n    weights = logits.softmax(dim=0)\n    return (weights * per_chunk).sum()\n\ntorch.manual_seed(7)\nB, T, D = 3, 4, 2\nactions = torch.randn(B, T, D)\nnoise = torch.randn_like(actions)\ntime = torch.rand(B, 1, 1)\nstate = torch.randn(B, 1, 1)\nnoisy_actions = (1 - time) * noise + time * actions\ninputs = torch.cat((noisy_actions, time.expand(B, T, 1),\n                    state.expand(B, T, 1)), dim=-1)\nexpert = torch.nn.Linear(D + 2, D)\nadvantage = torch.tensor([-1.0, 0.0, 1.0])\nprediction = expert(inputs)\nloss = weighted_flow_loss(prediction, actions - noise, advantage)\nloss.backward()\nassert prediction.shape == actions.shape\nassert torch.isfinite(expert.weight.grad).all()\nprint(prediction.shape, loss.item())",
+      "explanations": [
+        {
+          "lines": "3–8",
+          "text": "先归约 T、D，再用批内 softmax 归一化分离梯度的优势权重。示例要求正温度。"
+        },
+        {
+          "lines": "10–19",
+          "text": "构造动作块的直线概率路径，时间和状态扩展到每个动作时刻，输入维度为 D+2。"
+        },
+        {
+          "lines": "20–26",
+          "text": "线性专家输出 [B,T,D]。反向更新专家参数，优势由训练数据提供。"
+        }
+      ],
+      "expected": "打印 torch.Size([3, 4, 2]) 与有限标量，专家权重获得有限梯度。"
+    },
+    "exercise": {
+      "title": "计算已观测去噪路径的 log 概率比",
+      "runtime": "python",
+      "prompt": "输入同一路径各去噪步的新旧标量 log-prob。返回全路径的 log 比值，拒绝空路径与长度不一致的输入。",
+      "starter": "import math\n\ndef path_log_ratio(logp_new, logp_old):\n    raise NotImplementedError",
+      "solution": "import math\n\ndef path_log_ratio(logp_new, logp_old):\n    if len(logp_new) != len(logp_old) or not logp_new:\n        raise ValueError(\"expected the same nonempty path\")\n    return math.fsum(new - old for new, old in zip(logp_new, logp_old))",
+      "tests": "assert math.isclose(path_log_ratio([-1.0, -2.0], [-1.5, -1.0]), -0.5)\nassert path_log_ratio([-3.0], [-3.0]) == 0.0\nfor new, old in [([], []), ([-1.0], [-1.0, -2.0])]:\n    try:\n        path_log_ratio(new, old)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"invalid path was accepted\")",
+      "hints": [
+        "利用路径密度的乘积分解，先求各步 log-prob 差，再求和。"
+      ],
+      "explanation": [
+        "输出比较的是同一条带潜变量的路径。获得动作最终密度需要对其他可能路径积分。"
+      ]
+    },
+    "pytorchTask": {
+      "title": "实现按动作块加权的 Flow 回归",
+      "prompt": "prediction 与 target 的 Shape 均为 [B,T,D]，advantage 是 [B]，beta 为正数。先计算每块的 MSE，再把停止梯度的 advantage 除以 beta、上界截为 20，在 B 维做 softmax，返回加权和。",
+      "starter": "import torch\n\ndef weighted_flow_loss(prediction, target, advantage, beta=1.0):\n    raise NotImplementedError",
+      "solution": "import torch\n\ndef weighted_flow_loss(prediction, target, advantage, beta=1.0):\n    # Reduce the action block first so each advantage weights one sample.\n    per_chunk = (prediction - target).square().mean(dim=(1, 2))\n    logits = (advantage.detach().float() / beta).clamp(max=20.0)\n    weights = logits.softmax(dim=0)\n    return (weights * per_chunk).sum()",
+      "tests": "pred = torch.stack((torch.zeros(3, 2), torch.full((3, 2), 2.0))).requires_grad_()\ntarget = torch.zeros_like(pred)\nadv = torch.tensor([0.0, 1.0], requires_grad=True)\nloss = weighted_flow_loss(pred, target, adv)\nexpected = 4 * torch.softmax(adv.detach(), dim=0)[1]\nassert loss.ndim == 0 and torch.allclose(loss, expected)\nloss.backward()\nassert pred.grad is not None and torch.isfinite(pred.grad).all()\nassert adv.grad is None\nassert torch.allclose(weighted_flow_loss(pred.detach(), target, torch.zeros(2)), torch.tensor(2.0))",
+      "hints": [
+        "用 dim=(1, 2) 先归约误差，确保每条样本只有一个误差和一个权重。",
+        "权重由固定优势计算，对优势调用 detach。"
+      ],
+      "explanation": [
+        "均匀优势会退化为批平均。较高优势会把更多梯度预算分配给对应动作块。"
+      ]
+    },
+    "knowledgeChecks": [
+      {
+        "question": "面试追问：为什么有每步高斯的 log-prob，仍然算不出动作级 PPO 比值？",
+        "answer": [
+          "每步密度条件化在给定的中间噪声状态。完整路径密度是这些转移与基分布密度的乘积，动作边际要积分掉所有中间噪声状态。具有良好正则性的 Flow ODE 可以用变量变换数值计算密度，通常需要额外求解和散度计算。"
+        ],
+        "codeFocus": "用 path_log_ratio 核对同一路径的加法，说明为什么两条不同路径不能逐项相减。",
+        "acceptance": [
+          "明确动作边际、路径联合密度和逐步转移三个随机变量。"
+        ]
+      },
+      {
+        "question": "面试追问：优势加权 Flow 回归与 Flow-GRPO 各自需要记录哪些数据？",
+        "answer": [
+          "加权回归需要对齐的观测、真实动作块和该块的优势估计，可在训练时重新抽噪声。Flow-GRPO 用旧采样策略生成成组路径与回报，需要保存同一随机转移的输入、输出和旧 log-prob，才能对新策略重算比值。"
+        ],
+        "codeFocus": "说明为何 weighted_flow_loss 可以重新抽生成时间，逐转移比值必须复用旧路径样本。",
+        "acceptance": [
+          "说出回放数据、在线奖励、旧策略 log-prob 和组内基线的用途。"
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "title": "把去噪误差当动作 log-prob",
+        "detail": "回归误差依赖抽取的噪声与生成时间。使用 AWR 风格的回归时把它保留在监督目标里。"
+      },
+      {
+        "title": "对错误维度归约",
+        "detail": "先归约动作块的 T、D 维，再对齐逐步优势或样本权重。对 G 求均值和沿 K 折扣是两种不同统计。"
+      },
+      {
+        "title": "用当前策略重新抽样后计算旧比值",
+        "detail": "成对比较同一路径的转移。按训练期间实际采样器、噪声方差以及版本记录旧 log-prob。"
+      }
+    ],
+    "sources": [
+      {
+        "title": "AWR 原论文：指数优势加权回归",
+        "url": "https://arxiv.org/abs/1910.00177"
+      },
+      {
+        "title": "AWAC 原论文：离策略价值估计与加权 actor",
+        "url": "https://arxiv.org/abs/2006.09359"
+      },
+      {
+        "title": "DPPO 原论文：扩展 MDP 与扩散策略微调",
+        "url": "https://arxiv.org/abs/2409.00588"
+      },
+      {
+        "title": "Flow-GRPO 原论文：ODE 到 SDE 与组内相对优势",
+        "url": "https://arxiv.org/abs/2505.05470"
+      }
+    ]
   }
 ]
