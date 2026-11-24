@@ -150,7 +150,7 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
     content:"";
     position:absolute;
     inset:0;
-    z-index:0;
+    z-index:-1;
     border-radius:inherit;
     pointer-events:none;
     opacity:0;
@@ -158,7 +158,6 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
     transition:opacity .2s ease;
   }
   .topic-card:hover::after,.practice-card:hover::after,.agent-card:hover::after,.feature-card:hover::after{opacity:1}
-  .topic-card>* ,.practice-card>* ,.agent-card>* ,.feature-card>*{position:relative;z-index:1}
   .button,.search-trigger,.icon-button{
     translate:var(--mag-x,0px) var(--mag-y,0px);
     transition:translate .18s cubic-bezier(.2,.7,.2,1),transform .18s ease,box-shadow .18s ease;
@@ -173,6 +172,7 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
   }
   body.pointer-active .cursor-aura{opacity:1}
 }
+ .button,.search-trigger,.icon-button{position:relative;isolation:isolate;overflow:hidden}
 .pointer-ripple{
   position:absolute;z-index:4;pointer-events:none;border-radius:50%;
   background:currentColor;opacity:.16;transform:scale(0);
