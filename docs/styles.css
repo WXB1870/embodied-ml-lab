@@ -110,3 +110,5 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
 @media(prefers-reduced-motion:reduce){.lv-visual *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 
 .lv-stage>label,.lv-stage>.lv-params,.lv-stage>.lv-attn-controls{display:none!important}.lv-interactive-controls{margin:12px 0 14px;padding:10px 12px;background:#f4f7fb;border-radius:5px}.lv-interactive-controls>label{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:#586b84}.lv-interactive-controls input[type=range]{flex:1;min-width:130px;accent-color:#4779ba}.lv-interactive-controls output{font-variant-numeric:tabular-nums;color:#2e5f9d;font-weight:600}.lv-interactive-controls select{border:1px solid #d5dfeb;border-radius:4px;padding:5px 8px;background:#fff;color:#435872}
+
+.lv-code-line{align-items:baseline;flex-wrap:wrap}.lv-code-line small{display:block;margin-left:30px;white-space:normal;max-width:740px;color:#8794a6;font:10px/1.65 var(--sans)}
