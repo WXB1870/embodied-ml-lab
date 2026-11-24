@@ -131,12 +131,12 @@ topic_report=root/'topics-validation.json'
 downloads=root/'dist'/'downloads';downloads.mkdir(exist_ok=True)
 readme='''# Embodied × ML 学习代码包
 
-课程按网络基础与视觉表征、现代 Transformer 与多模态骨干、生成模型与连续时间建模、具身策略架构与动作建模、高效微调与后训练对齐五个主干模块组织；训练工程基础收录于附录。
+课程按网络基础与视觉表征、现代 Transformer 与多模态骨干、生成模型与连续时间建模、具身策略架构与动作建模、高效微调与后训练对齐、具身智能体与技能编排六个主干模块组织；训练工程基础收录于附录。Robot Agent 模块为纯理论课程，不包含编程实现和手撕练习。
 
 ## 使用顺序
 
-1. 按文章中的推导阅读，结合短代码和完整实现核对结果。
-2. 在 `exercises/python/` 找到本节标准库练习，独立完成 TODO。
+1. 按文章中的原理、对比矩阵和运行链路阅读；带代码的课程再结合实现核对。
+2. 需要编程训练的课程可在 `exercises/python/` 完成标准库练习；Robot Agent 模块不设置编程题。
 3. 使用 `python 文件名.py` 执行，该文件末尾带断言测试。
 4. 阅读 `demos/` 的完整 PyTorch 示例；改动输入，观察张量形状和输出。
 5. 完成 `exercises/torch/` 中对应的 PyTorch 任务。
@@ -161,12 +161,12 @@ GPU/CUDA 版本请按 https://pytorch.org/get-started/locally/ 选择安装命�
 ## 目录
 
 - `topics/`：保留的专题讲义、附加实现与编程练习。
-- `demos/`：{lesson_count} 个完整带注释 PyTorch 教学演示。
-- `exercises/python/`：{lesson_count} 个标准库练习，带 TODO 和测试。
-- `exercises/torch/`：{lesson_count} 个 PyTorch 练习，带 TODO 和测试。
+- `demos/`：课程对应的完整带注释 PyTorch 教学演示。
+- `exercises/python/`：适用课程的标准库练习，带 TODO 和测试。
+- `exercises/torch/`：适用课程的 PyTorch 练习，带 TODO 和测试。
 - `solutions/python/`、`solutions/torch/`：对应参考答案和同一套测试。
-- `curriculum/`：五个模块 22 节核心课程及训练工程附录的中文课程数据。
-- `lessons/`：每节完整 Markdown 讲义，可直接阅读或放入 Obsidian；含推导、算例、代码说明、讨论与参考解。
+- `curriculum/`：六个核心模块 27 节课程及训练工程附录的中文课程数据。
+- `lessons/`：每节 Markdown 讲义；Robot Agent 课程包含架构、权衡矩阵、运行链路和工程排查。
 - `validation.json`：基础课程的实际运行验证结果。
 - `topics/validation.json`：四个详细专题的实际运行验证结果。
 - `curriculum/curriculum.json`：研究补齐依据、开源可视化与进阶边界。
@@ -182,7 +182,7 @@ GPU/CUDA 版本请按 https://pytorch.org/get-started/locally/ 选择安装命�
 浮点计算可能随硬件和库版本产生微小差异，断言中使用容差比较。
 
 ## 课程索引
-'''.replace('{lesson_count}',str(len(lessons)))
+'''
 for l in lessons:readme+=f"- {l['number']:02d} {l['title']} (`{l['id']}`)\n"
 (downloads/'README.md').write_text(readme)
 def lesson_markdown(l):
