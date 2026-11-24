@@ -143,6 +143,7 @@ function updateLearningVisual(root){
  const prev=root.querySelector('[data-lv-prev]'),next=root.querySelector('[data-lv-next]');
  if(prev)prev.disabled=step===0;if(next)next.disabled=step===c.steps.length-1;
  const explain=root.querySelector('[data-lv-explain]');if(explain)explain.textContent=c.steps[step];
+ root.querySelectorAll('.lv-interactive-controls input[type=range]').forEach(function(input){const output=input.parentElement.querySelector('output');if(output)output.textContent=Number(input.value).toFixed(input.step&&Number(input.step)<1?2:0);});
  const stage=root.querySelector('[data-lv-stage]');if(stage)stage.innerHTML=lvStage(id,step,root);
 }
 function initLearningVisuals(scope){
