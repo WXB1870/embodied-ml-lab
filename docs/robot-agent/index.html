@@ -34,6 +34,40 @@
 <header class="article-heading"><h1>Robot Agent：自主决策、技能组合与持续进化</h1></header>
 <p class="article-intro">这部分不是通用 LLM Agent 教程。目标是理解并设计一个以 Agent 为决策核心、以异构 Skill 为执行能力、能够通过经验持续改进自身技能的机器人系统。</p>
 
+<style>
+.agent-toc{border:1px solid #dfe6ef;border-radius:7px;background:#fff;margin:22px 0 36px;padding:17px 19px}
+.agent-toc-head{display:flex;align-items:baseline;gap:12px;margin-bottom:11px}
+.agent-toc-head strong{font-size:14px;color:#354b69}.agent-toc-head span{font-size:11px;color:#8996a8}
+.agent-toc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 20px}
+.agent-toc-grid a{display:flex;gap:10px;padding:6px 0;font-size:12px;color:#5b6c83;line-height:1.7}
+.agent-toc-grid a span{font:10px var(--mono);color:#9aabc0;min-width:19px;padding-top:2px}
+.agent-toc-grid a:hover{color:var(--blue);text-decoration:underline;text-underline-offset:3px}
+.agent-toc a:focus-visible{outline:2px solid #6b94d6;outline-offset:2px}
+.agent-audit{margin:18px 0;padding:15px 18px;border:1px solid #e5eaf1;border-radius:6px;background:#fbfcfe}
+.agent-audit h3{font-size:14px;margin:0 0 7px;color:#3d5879}.agent-audit p{font-size:13px;color:#65758b;margin:0;line-height:1.85}
+@media(max-width:600px){.agent-toc{padding:14px}.agent-toc-grid{grid-template-columns:1fr;gap:0}.agent-toc-head{display:block}.agent-toc-head span{display:block;margin-top:3px}}
+</style>
+<nav class="agent-toc" aria-label="本专题目录">
+<div class="agent-toc-head"><strong>本专题目录</strong><span>按学习顺序阅读，也可直接跳转</span></div>
+<div class="agent-toc-grid">
+<a href="#architecture"><span>01</span>系统边界与总体架构</a>
+<a href="#agent-loop-deep"><span>02</span>Agent Loop 与决策闭环</a>
+<a href="#skill-contract-deep"><span>03</span>Tool、Skill、Policy 的区别</a>
+<a href="#vla-execution-deep"><span>04</span>长时序 VLA 执行</a>
+<a href="#world-model-deep"><span>05</span>World Model as a Skill</a>
+<a href="#code-policy-deep"><span>06</span>Code-as-Policy</a>
+<a href="#coding-agent-tools"><span>07</span>Coding Agent 工具与 Runtime</a>
+<a href="#memory-evolution-deep"><span>08</span>经验记忆与持续进化</a>
+<a href="#openeta-code-walkthrough"><span>09</span>OpenETA 真实代码拆解</a>
+<a href="#evaluation-deep"><span>10</span>评估方法与指标</a>
+<a href="#curriculum"><span>11</span>学习路线与优先级</a>
+<a href="#projects"><span>12</span>代表项目与源码入口</a>
+<a href="#reading-order"><span>13</span>代码阅读方法</a>
+<a href="#capstone"><span>14</span>综合实战：持续进化的开门 Agent</a>
+<a href="#interactive-labs"><span>15</span>交互式算法演示</a>
+<a href="#scope"><span>16</span>学习边界与参考资料</a>
+</div>
+</nav>
 <div class="agent-hero">
 <h2>最终目标：Agent 决定做什么，Skill 负责把事情做好</h2>
 <p>Agent 接收任务和环境状态，判断下一步需要什么能力；它可以调用长时序 VLA、World Model、视觉感知、运动控制或 Code Policy。复杂技能还可以继续组合子技能。执行结果和经验返回 Agent，用于继续决策或改进技能。</p>
@@ -382,8 +416,110 @@ else:
 <p>固定场景集用于控制比较噪声，Held-out 场景用于检查泛化。不能只在 Agent 刚刚失败的那个场景上反复调到成功，然后就宣称技能变强。还应保留旧版本、生成差异、评估记录和回滚路径。</p>
 </section>
 
+<section class="article-section" id="coding-agent-tools">
+<h2><span class="section-number">07</span>Coding Agent 工具与 Runtime：让 Agent 能开发、调试和维护 Skill</h2>
+<p class="section-lead">有必要学习，而且它是 Code Policy Evolution 的基础设施。RAX 使用 Coding Agent Harness 驱动机器人探索；RoboScript 也把 Actor、Reviser、工具 Hub 和任务记忆分开。你需要理解的不是某个 CLI 的快捷键，而是 Coding Agent 如何通过一组通用工具，把“修改程序”变成可观察、可验证、可回滚的工程闭环。</p>
+<div class="agent-callout"><strong>先区分两套工具：</strong>Coding Agent 工具用于理解和修改 Skill 的代码与工程；Robot Agent 工具用于感知和改变物理世界。前者可以生成或维护后者，但不应因为 Coding Agent 有 Shell，就让它绕过机器人 Runtime 直接控制硬件。</div>
+<h3>7.1 Coding Agent 常见工具分类</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>工具类别</th><th>典型操作</th><th>在 Skill Evolution 中的用途</th></tr></thead><tbody>
+<tr><td>仓库导航与检索</td><td><code>list_dir</code>、<code>glob</code>、<code>grep</code>、代码搜索</td><td>定位 Skill、接口定义、配置、调用链和相关测试</td></tr>
+<tr><td>文件读取与编辑</td><td><code>read_file</code>、<code>write_file</code>、<code>edit</code>、<code>apply_patch</code></td><td>阅读实现、局部修改控制逻辑、生成新 Skill 或更新配置</td></tr>
+<tr><td>命令执行</td><td><code>shell</code>、Python、脚本、包管理器</td><td>运行仿真、数据处理、训练/推理脚本和诊断程序</td></tr>
+<tr><td>长进程管理</td><td>启动进程、读取输出、轮询状态、发送终止信号</td><td>管理长时间仿真、评测、训练和日志收集</td></tr>
+<tr><td>验证工具</td><td>单元测试、集成测试、Lint、类型检查、构建、Benchmark</td><td>检查新代码是否正确、是否破坏旧技能、是否真的提升任务表现</td></tr>
+<tr><td>版本控制</td><td><code>git status</code>、<code>diff</code>、<code>log</code>、分支、提交、回滚</td><td>记录 Skill 版本、比较候选修改、保留基线和恢复能力</td></tr>
+<tr><td>外部知识与接口</td><td>Browser、文档检索、MCP、API</td><td>查阅机器人 SDK、控制器文档、模型接口和外部工具 Schema</td></tr>
+<tr><td>记忆与技能加载</td><td>Memory、Skills、项目规则、任务上下文</td><td>复用历史经验、加载开发规范和专用机器人能力说明</td></tr>
+<tr><td>委派与并行工作</td><td>Sub-agent、任务分派、结果汇总</td><td>并行分析日志、检查代码、设计测试；主 Agent 负责集成判断</td></tr>
+</tbody></table></div></div>
+<p>这些是能力类别，不是所有 Coding Agent 都有同名的独立工具。例如 Codex 可以主要通过 Shell 和 Apply Patch 完成文件检索与修改；Claude Code 通常提供 Read、Edit、Write、Glob、Grep、Bash 等工具。工具名称和粒度不同，但底层能力高度重合。不要把某个产品的工具清单当作通用标准。</p>
+<h3>7.2 最小工具集与进阶工具集</h3>
+<p>对你的机器人技能开发，最小可用集合其实不大：读取/搜索文件、精确编辑、执行命令、查看长进程输出、运行测试、查看 Git Diff。缺少其中任何一类，Agent 都容易退化成“生成代码后让人手动检查”。</p>
+<p>进阶能力包括 Browser/MCP、Sub-agent、长期 Memory、工作区快照、并行仿真和资源调度。它们不是第一天就必须全部部署的功能；只有在任务确实需要跨仓库研究、并行诊断、调用外部服务或管理长时运行时才增加。</p>
+<h3>7.3 Coding Agent 的 Harness：工具不等于 Agent</h3>
+<p>一个 Coding Agent 系统至少包含四个不同部分：模型负责提出下一步工具调用；Harness 维护对话、上下文和工具循环；Workspace/Sandbox 提供文件系统与进程执行环境；工具执行器真正完成读写、命令和测试。模型本身通常不直接访问文件系统或操作系统，而是请求 Harness 执行工具，再根据工具结果继续推理。</p>
+<div class="agent-code">while not finished:
+    context = assemble(
+        task=goal,
+        repo_state=workspace.summary(),
+        history=compact(history),
+        tool_schemas=registry.schemas()
+    )
+
+    call = model.next_tool_call(context)
+
+    # Harness 校验工具、路径、参数和权限
+    request = policy.validate(call)
+
+    # Workspace 在受限环境中执行
+    result = sandbox.execute(request)
+
+    history.append(call)
+    history.append(result)
+
+    if result.changed_files:
+        update_workspace_index()
+    if call.is_terminal:
+        finished = True</div>
+<p>这说明工具能力、模型能力和执行环境是三个独立变量。换更强的模型不自动带来更安全的文件权限；增加更多工具也不自动让 Agent 更聪明。真正的能力来自模型、工具描述、上下文组织、执行反馈和 Runtime 约束的共同设计。</p>
+<h3>7.4 把 Coding Agent 接入机器人项目时，必须增加的边界</h3>
+<ul>
+<li><strong>Workspace 隔离：</strong>Agent 修改的是候选工作区或 Git Worktree，不直接覆盖正在运行的机器人版本。</li>
+<li><strong>命令与资源预算：</strong>限制 GPU、仿真并发、运行时长、磁盘和网络访问；长进程必须可查看和终止。</li>
+<li><strong>权限分层：</strong>读取日志、修改代码、运行仿真、连接真机应是不同权限级别。真实机器人动作不能仅因为 Shell 可用就自动获得。</li>
+<li><strong>Secrets 隔离：</strong>API Key、SSH 私钥和机器人凭据由执行环境注入，不能写入 Prompt、日志或生成代码。</li>
+<li><strong>验证后晋升：</strong>候选 Skill 先通过静态检查、接口测试、仿真和回归评测，再进入稳定 Skill Registry。</li>
+<li><strong>可追溯：</strong>保存模型版本、Prompt/任务上下文、工具调用、文件 Diff、测试结果和最终晋升决定。</li>
+</ul>
+<h3>7.5 一次完整的 Code Policy 修改循环</h3>
+<div class="agent-code"># 这是受控的工程流程示意，不是让模型直接操作真机
+baseline = git.checkout("skills/open_door@v12")
+candidate = git.create_worktree("open_door-v13-candidate")
+
+agent.inspect(
+    files=["controller.py", "skill.yaml", "tests/"],
+    failures=memory.retrieve("contact_slipped")
+)
+
+agent.patch(
+    target="controller.py",
+    scope="approach and contact recovery only"
+)
+
+checks = [
+    run_lint(candidate),
+    run_unit_tests(candidate),
+    run_interface_contract(candidate),
+    run_sim_eval(candidate, heldout_seeds),
+    compare_with_baseline(candidate, baseline)
+]
+
+if all_required_checks_pass(checks):
+    create_reviewable_skill_release(candidate)
+else:
+    archive_candidate_and_keep_baseline()</div>
+<p>关键点是把“代码修改”与“部署晋升”分开。Coding Agent 可以提出候选修改，但是否晋升由独立评估规则决定。对探索期可以降低流程复杂度，但不能省略最基本的回归测试和旧版本保留。</p>
+<h3>7.6 与 Robot Agent 工具体系如何衔接？</h3>
+<div class="comparison"><div class="table-wrap"><table><thead><tr><th>开发期 Coding Agent</th><th>运行期 Robot Agent</th></tr></thead><tbody>
+<tr><td>读写代码、搜索仓库、运行测试</td><td>读取 World State、调用 Perception Skill</td></tr>
+<tr><td>启动仿真、分析日志、修改策略</td><td>调用 VLA、World Model、MPC Skill</td></tr>
+<tr><td>Git 分支、Diff、版本发布</td><td>Skill Registry、版本选择、执行监控</td></tr>
+<tr><td>测试候选程序、生成评测报告</td><td>验证物理结果、判断子目标是否完成</td></tr>
+<tr><td>把经验转化为代码/参数更新</td><td>把任务反馈和失败证据交给学习流程</td></tr>
+</tbody></table></div></div>
+<p>两者可以由同一个基础模型驱动，也可以共享 Memory 和工具协议，但建议使用不同的权限配置和 Runtime。开发期 Agent 有代码写入权限，运行期 Agent 通常只应调用经过审核和注册的 Skill。</p>
+<h3>7.7 源码与文档学习</h3>
+<ul>
+<li><a href="https://developers.openai.com/api/docs/guides/agents/sandboxes" target="_blank" rel="noopener">OpenAI Agents SDK：Sandbox Agents</a>：理解 Shell、Filesystem、Skills、Memory 与隔离工作区。</li>
+<li><a href="https://openai.github.io/openai-agents-js/guides/tools/" target="_blank" rel="noopener">OpenAI Agents SDK：Tools</a>：理解 Shell、Apply Patch、Computer Use 如何通过 Harness 执行。</li>
+<li><a href="https://github.com/openai/codex" target="_blank" rel="noopener">Codex 源码</a>：观察 Shell 执行、Apply Patch、权限与执行环境的工程实现。</li>
+<li><a href="https://github.com/robot-agent-exploration/rax/blob/main/docs/AGENT_HARNESSES.md" target="_blank" rel="noopener">RAX Agent Harnesses</a>：理解 Coding Agent Harness 与机器人环境、探索预算和模型 Provider 如何解耦。</li>
+<li><a href="https://github.com/OpenMOSS/OpenETA/blob/main/docs/architecture.md" target="_blank" rel="noopener">OpenETA Architecture</a>：对照运行期 Robot Agent 的 Tool Registry、MCP 边界和执行监督。</li>
+</ul>
+<div class="agent-audit"><h3>本节学习结论</h3><p>你不需要把 Coding Agent 的所有工具都做成机器人 Agent 的工具。需要掌握的是：一套开发期工具链负责生成和改进 Skill；另一套运行期技能接口负责安全、可验证地执行 Skill。两者通过版本化的 Skill Artifact、评测结果和经验记忆连接。</p></div>
+</section>
 <section class="article-section" id="memory-evolution-deep">
-<h2><span class="section-number">07</span>持续进化不只有改代码：RAX、Voyager 与 RoboScript 的三种记忆</h2>
+<h2><span class="section-number">08</span>持续进化不只有改代码：RAX、Voyager 与 RoboScript 的三种记忆</h2>
 <p class="section-lead">这三个项目值得放在一起比较，因为它们沉淀的“经验”并不是同一种东西。理解差别，才能选择你的系统应该改程序、改任务记忆，还是改模型。</p>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>系统</th><th>主要沉淀</th><th>进化方式</th><th>适合解决</th></tr></thead><tbody>
 <tr><td>Voyager</td><td>可执行代码技能库</td><td>生成、执行、根据错误迭代并检索技能</td><td>技能逐步积累与组合</td></tr>
@@ -424,7 +560,7 @@ else:
 </section>
 
 <section class="article-section" id="openeta-code-walkthrough">
-<h2><span class="section-number">08</span>真实项目代码拆解：OpenETA 的一次 Tool Call 如何走完</h2>
+<h2><span class="section-number">09</span>真实项目代码拆解：OpenETA 的一次 Tool Call 如何走完</h2>
 <p class="section-lead">这里以 OpenETA 的公开架构文档和 Agent Command Pipeline 为例。它的价值不是证明某一种架构最好，而是展示如何把 Agent 决策、Tool Registry、模拟器边界和物理动作副作用分开。</p>
 <h3>8.1 从观察到命令：主链路</h3>
 <div class="agent-code">Observation + Task + Memory + Tool/Skill References
@@ -467,7 +603,7 @@ else:
 </section>
 
 <section class="article-section" id="evaluation-deep">
-<h2><span class="section-number">09</span>怎样判断 Agent 真的变强了？</h2>
+<h2><span class="section-number">10</span>怎样判断 Agent 真的变强了？</h2>
 <p class="section-lead">Robot Agent 不能只看最终成功率。否则你无法知道改进来自更好的任务决策、更强的 VLA、更稳定的控制，还是更多的尝试次数。</p>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>层级</th><th>核心指标</th><th>要回答的问题</th></tr></thead><tbody>
 <tr><td>Agent 决策</td><td>Skill 选择准确率、无效调用、重规划次数、决策延迟</td><td>是否选对能力？是否过度调用大模型？</td></tr>
@@ -491,7 +627,7 @@ else:
 </section>
 
 <section class="article-section" id="curriculum">
-<h2><span class="section-number">10</span>学习路线：从 Agent 决策到持续进化</h2>
+<h2><span class="section-number">11</span>学习路线：从 Agent 决策到持续进化</h2>
 <p class="section-lead">建议按下面顺序学习。每一部分都围绕一个系统问题展开，避免把课程变成零散术语清单。</p>
 <ol class="agent-roadmap">
 <li><h3>Agent Loop 与任务级决策 <span class="agent-priority">P0</span></h3><p>Observe–Reason–Act–Verify；任务状态、目标分解、工具调用、终止条件；快速路径与深度推理的触发机制。重点回答 Agent 如何决定“下一步做什么”。</p></li>
@@ -506,7 +642,7 @@ else:
 </section>
 
 <section class="article-section" id="projects">
-<h2><span class="section-number">15</span>代表项目：按你的目标选择阅读重点</h2>
+<h2><span class="section-number">12</span>代表项目：按你的目标选择阅读重点</h2>
 <p>下面不是简单的“最好项目排行榜”，而是为不同知识问题选取的代表案例。项目之间并非互斥分类：一个系统可以同时包含 Agent Runtime、VLA、几何工具和经验进化。</p>
 <div class="agent-project">
 <h3>RAX · 机器人在线探索与 Code Policy 进化</h3>
@@ -549,7 +685,7 @@ else:
 </section>
 
 <section class="article-section" id="reading-order">
-<h2><span class="section-number">16</span>代码阅读顺序</h2>
+<h2><span class="section-number">13</span>代码阅读顺序</h2>
 <p>不要从头到尾通读仓库。每个项目都按同一组问题追踪一次真实任务：</p>
 <ol>
 <li>入口在哪里？任务上下文和环境观测如何进入 Agent？</li>
@@ -564,7 +700,7 @@ else:
 </section>
 
 <section class="article-section" id="capstone">
-<h2><span class="section-number">17</span>综合实战：持续进化的开门 Agent</h2>
+<h2><span class="section-number">14</span>综合实战：持续进化的开门 Agent</h2>
 <p>以你熟悉的柜门/抽屉操作为主线，不必从便利店通用任务开始。这个任务能同时考察几何、接触、长时序执行、模型预测和技能改进。</p>
 <div class="agent-code">User goal: 打开陌生柜门并取出目标物体
 
@@ -582,13 +718,13 @@ Agent:
 </section>
 
 <section class="article-section" id="interactive-labs">
-<h2><span class="section-number">18</span>交互式算法演示</h2>
+<h2><span class="section-number">15</span>交互式算法演示</h2>
 <p class="section-lead">通过逐步执行和伪代码，理解 Agent 如何选择 Skill、调用长时序 VLA、利用 World Model，并让 Code Policy 根据经验迭代。以下均为可控的教学模拟，不连接真实机器人或执行任意生成代码。</p>
 <div id="agent-learning-extras"><p class="agent-note">交互演示正在加载…</p></div>
 </section>
 
 <section class="article-section" id="scope">
-<h2><span class="section-number">19</span>本章学习边界</h2>
+<h2><span class="section-number">16</span>本章学习边界</h2>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>本章深入学习</th><th>已有课程复用，不重复展开</th></tr></thead><tbody>
 <tr><td>Agent 决策、Skill Runtime、任务状态与经验管理</td><td>Transformer、VLM 基础与多模态融合</td></tr>
 <tr><td>长时序 VLA 的 Skill 化与任务级监督</td><td>π0.5 内部网络、Flow Matching 训练推导</td></tr>
