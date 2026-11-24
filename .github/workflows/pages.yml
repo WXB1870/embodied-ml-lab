@@ -46,7 +46,7 @@ jobs:
           touch dist/.nojekyll
           test -s dist/index.html
           test -s dist/learn/flow-matching/index.html
-          test -s dist/robot-agent/index.html
+          test -s dist/learn/agent-architecture/index.html
           test -s dist/data/lessons.json
           test -s dist/data/curriculum.json
 
