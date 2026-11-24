@@ -442,7 +442,12 @@
       "pitfall-1": "section-shapes-parameters",
       "pitfall-2": "pitfall-2",
       "pitfall-3": "section-tokens-readout"
-    }
+    },
+    "relatedLessons": [
+      "attention",
+      "vae",
+      "behavior-cloning"
+    ]
   },
   {
     "id": "activation-init",
@@ -948,7 +953,11 @@
       "pitfall-2": "question-8",
       "pitfall-3": "section-receptive-field",
       "pitfall-4": "section-equivariance"
-    }
+    },
+    "relatedLessons": [
+      "multimodal",
+      "vla-architecture"
+    ]
   },
   {
     "id": "autograd",
