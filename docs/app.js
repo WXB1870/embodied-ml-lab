@@ -242,7 +242,7 @@ document.addEventListener('click',async event=>{
  const tocLink=event.target.closest('.reader-sidebar a[data-section],.mobile-toc a[data-section]');
  if(tocLink){const mobile=tocLink.closest('.mobile-toc');if(mobile)mobile.open=false;if(tocLink.getAttribute('href')===location.hash){event.preventDefault();scrollToSection();}}
  const link=event.target.closest('a[href]');
- if(link&&!event.defaultPrevented&&event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey&&!link.hasAttribute('download')&&!link.target){
+ if(link&&lessons.length&&!event.defaultPrevented&&event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey&&!link.hasAttribute('download')&&!link.target){
   const url=new URL(link.href,location.origin);
   if(url.origin===location.origin&&(/^\/(learn|topics|practice|guide)(\/|$)/.test(localPath(url.pathname))||localPath(url.pathname)==='/')&&(!url.hash||url.hash.startsWith('#/'))){
    event.preventDefault();navigate(url.hash.startsWith('#/')?url.hash:url.pathname+url.search);return;
