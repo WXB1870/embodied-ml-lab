@@ -77,6 +77,8 @@ for(const lesson of lessons){
   assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length+(lesson.advancedSections||[]).length);
   assert.ok(!html.includes('id="discussion"'));
   assert.ok(!html.includes('class="key-points"'));
+  assert.ok(!html.includes('learning-connections')&&!html.includes('related-details'));
+  if(lesson.prerequisites.length)assert.equal((html.match(/class="prerequisite-reading"/g)||[]).length,1);
   if(lesson.theoryOnly){
    assert.ok(!html.includes('class="chapter-goals"')&&!html.includes('id="chapter-review"'));
    assert.ok(!html.includes('class="article-action"')&&!html.includes('<pre')&&!html.includes('class="inline-visual"'));
@@ -84,10 +86,12 @@ for(const lesson of lessons){
    const code=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'code','python',new URLSearchParams())`);
    const exercise=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);
    assert.ok(!code.includes('id="code-implementation"')&&!exercise.includes('id="exercise-editor"'));
-   assert.equal((html.match(/class="reader-tabs"/g)||[]).length,1);
+   assert.ok(!html.includes('class="reader-tabs"')&&!html.includes('class="reader-bar"'));
+   assert.ok(html.includes('class="mobile-toc"'));
    assert.ok(!html.includes('>代码</a>')&&!html.includes('>练习</a>'));
    assert.ok(!evaluate('renderPractice()').includes(lesson.title));
   }else{
+   assert.ok(html.includes('class="reader-tabs"'));
    assert.ok(html.includes('class="chapter-goals"')&&html.includes('id="chapter-review"'));
    if(lesson.advancedSections?.length)assert.ok(html.includes('advanced-material'));
    const practice=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'exercise','python',new URLSearchParams())`);

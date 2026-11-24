@@ -28,8 +28,9 @@ def section_learning_markdown(section, asset_prefix='../../'):
     if section.get('comparison'):
         table = section['comparison']
         clean = lambda value: str(value).replace('|', '\\|').replace('\n', ' ')
-        lines += ['### ' + table['title'], '| ' + ' | '.join(map(clean, table['columns'])) + ' |', '|' + '---|' * len(table['columns'])]
-        lines += ['| ' + ' | '.join(map(clean, row)) + ' |' for row in table['rows']]
+        rows = ['| ' + ' | '.join(map(clean, table['columns'])) + ' |', '|' + '---|' * len(table['columns'])]
+        rows += ['| ' + ' | '.join(map(clean, row)) + ' |' for row in table['rows']]
+        lines += ['### ' + table['title'], '\n'.join(rows)]
     lines += [section_example_markdown(section)]
     if section.get('focus'):
         focus = section['focus']

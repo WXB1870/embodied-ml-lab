@@ -194,16 +194,18 @@ for l in lessons:readme+=f"- {l['number']:02d} {l['title']} (`{l['id']}`)\n"
 def lesson_markdown(l):
     text=f"# {l['title']}\n\n{l['subtitle']}\n\n"
     if l.get('lead'):text+=l['lead']+'\n\n'
-    if l.get('prerequisites'):text+='前置知识：'+' · '.join(f"[{lookup[id]['title']}]({site_url}/learn/{id}/)" for id in l['prerequisites'])+'\n\n'
     for section in l['sections']:
         text+='## '+section['title']+'\n\n'+section.get('lead','')+'\n\n'
+        if section.get('quote'):
+            text+='\n>\n'.join('> '+paragraph for paragraph in section['quote'])+'\n\n'
         for paragraph in section['body']:text+=paragraph+'\n\n'
-        if section.get('comparison'):
-            comp=section['comparison'];text+='### '+comp['title']+'\n\n| '+' | '.join(comp['columns'])+' |\n| '+' | '.join(['---']*len(comp['columns']))+' |\n'
-            for row in comp['rows']:text+='| '+' | '.join(str(cell).replace('|','\\|') for cell in row)+' |\n'
-            text+='\n'
+        if section.get('bullets'):text+='\n'.join('- '+item for item in section['bullets'])+'\n\n'
         text+=section_learning_markdown(section, '../')+'\n\n'
-    text+='## 代表项目与参考资料\n\n'+'\n'.join(f"- [{item['title']}]({item['url']})" for item in l['sources'])+'\n'
+    text+='## 参考资料\n\n'
+    for item in l['sources']:
+        note = '。'+item['note'] if item.get('note') else ''
+        text+=f"- [{item['title']}]({item['url']}){note}\n"
+    if l.get('prerequisites'):text+='\n前置阅读：'+' · '.join(f"[{lookup[id]['title']}]({site_url}/learn/{id}/)" for id in l['prerequisites'])+'\n\n'
     return text
 report=root/'validation.json'
 if report.exists():
