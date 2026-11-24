@@ -22,14 +22,59 @@
 @media(max-width:600px){.agent-flow{grid-template-columns:1fr}.agent-arrow{justify-self:center;transform:rotate(90deg)}.agent-skill-grid{grid-template-columns:1fr}.agent-hero{padding:20px}.agent-code{font-size:11px}}
 </style>
 <script defer src="/embodied-ml-lab/learning-visuals.js?v=20261124-learning-labs"></script>
-<style>.agent-learning-grid{display:grid;grid-template-columns:1fr;gap:20px;margin:18px 0}.agent-learning-item{min-width:0}.agent-learning-item .lv-visual{margin-top:12px}@media(min-width:900px){.agent-learning-grid{grid-template-columns:1fr 1fr}.agent-learning-item:first-child,.agent-learning-item:last-child{grid-column:1/-1}}</style></head>
+<style>.agent-learning-grid{display:grid;grid-template-columns:1fr;gap:20px;margin:18px 0}.agent-learning-item{min-width:0}.agent-learning-item .lv-visual{margin-top:12px}@media(min-width:900px){.agent-learning-grid{grid-template-columns:1fr 1fr}.agent-learning-item:first-child,.agent-learning-item:last-child{grid-column:1/-1}}</style>
+<style>
+/* Robot Agent 专题导航：桌面侧栏，窄屏折叠目录。 */
+.agent-page{max-width:1180px!important;padding-left:300px!important}
+.agent-toc{position:fixed;z-index:25;left:max(18px,calc((100vw - 1180px)/2));top:104px;width:250px;max-height:calc(100vh - 126px);overflow:auto;overscroll-behavior:contain;border:1px solid #dfe6ef;border-radius:7px;background:#fff;padding:14px 15px;box-shadow:0 4px 18px rgba(35,58,91,.04)}
+.agent-toc>summary{display:flex;flex-direction:column;gap:3px;list-style:none;cursor:default;margin-bottom:9px}
+.agent-toc>summary::-webkit-details-marker{display:none}
+.agent-toc>summary strong{font-size:13px;color:#354b69}
+.agent-toc>summary span{font-size:10px;color:#8996a8}
+.agent-toc-grid{display:grid;gap:1px}
+.agent-toc-grid a{display:flex;gap:8px;padding:5px 4px;border-left:2px solid transparent;font-size:11px;line-height:1.65;color:#5b6c83;border-radius:2px}
+.agent-toc-grid a span{font:10px var(--mono);color:#9aabc0;min-width:18px;padding-top:1px}
+.agent-toc-grid a:hover,.agent-toc-grid a[aria-current="location"]{color:var(--blue);background:#f4f7fc;border-left-color:var(--blue);text-decoration:none}
+.agent-page .article-section,.agent-page [id]{scroll-margin-top:94px}
+.agent-page .article-heading h1{font-size:30px}
+.agent-learning-grid{display:grid;grid-template-columns:1fr;gap:20px;margin:18px 0}
+.agent-learning-item{min-width:0}
+.agent-learning-item .lv-visual{margin:0}
+.agent-lab-card{border:1px solid #dfe6ef;border-radius:8px;padding:17px 18px;background:#fff;min-width:0}
+.agent-lab-card>header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px}
+.agent-lab-card>header h3{font-size:16px;margin:0 0 4px;color:#30445f}
+.agent-lab-card>header p{font-size:12px;color:#718096;margin:0;line-height:1.75}
+.agent-lab-kicker{font-size:10px;letter-spacing:.07em;color:#6e83a2}
+.agent-lab-controls{display:flex;gap:12px 18px;align-items:center;flex-wrap:wrap;margin:13px 0;padding:10px 12px;background:#f4f7fb;border-radius:5px}
+.agent-lab-controls label{display:flex;align-items:center;gap:8px;flex:1 1 210px;min-width:0;font-size:11px;color:#586b84}
+.agent-lab-controls select{max-width:100%;border:1px solid #d5dfeb;border-radius:4px;padding:5px 8px;background:#fff;color:#435872}
+.agent-lab-controls input[type=range]{flex:1;min-width:70px;accent-color:#4779ba}
+.agent-lab-controls output{min-width:36px;text-align:right;color:#2e5f9d;font:600 11px var(--mono)}
+.agent-lab-stage{min-height:138px;padding:14px;background:#f7f9fc;border:1px solid #e8edf3;border-radius:6px;overflow:hidden}
+.agent-lab-stage p{font-size:11px;line-height:1.8;color:#718096;margin:10px 0 0}
+.agent-lab-stage svg{display:block;width:100%;max-height:230px}
+.agent-lab-results{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.agent-lab-results>div{flex:1;min-width:105px;padding:9px 11px;background:#fff;border:1px solid #e4eaf1;border-radius:5px}
+.agent-lab-results span{display:block;font-size:10px;color:#8290a2}
+.agent-lab-results b{display:block;font-size:15px;color:#344b69;font-variant-numeric:tabular-nums}
+.agent-lab-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+.agent-lab-actions button{border:1px solid #d8e0eb;background:#fff;color:#435872;border-radius:5px;padding:6px 10px;font-size:11px}
+.agent-lab-actions button[aria-pressed="true"]{border-color:#91afd8;background:#edf4fd;color:#2d5f9c}
+.agent-lab-code{margin:0;padding:10px 12px;background:#fff;border:1px solid #e5eaf0;border-radius:5px;font:11px/1.8 var(--mono);overflow:auto;white-space:pre}
+.agent-lab-code .active{display:block;background:#e6effb;color:#234f84;margin:0 -12px;padding:0 12px}
+.agent-lab-note{font-size:11px!important;color:#718096!important;margin:10px 0 0!important}
+@media(min-width:900px){.agent-learning-grid{grid-template-columns:1fr 1fr}.agent-learning-item:first-child,.agent-learning-item:last-child{grid-column:1/-1}}
+@media(max-width:1100px){.agent-page{max-width:900px!important;padding-left:32px!important}.agent-toc{position:sticky;left:auto;top:80px;width:100%;max-height:none;margin:18px 0 30px;padding:0;box-shadow:none}.agent-toc>summary{cursor:pointer;display:flex;flex-direction:row;align-items:baseline;gap:12px;padding:12px 14px;margin:0}.agent-toc>summary:after{content:'展开目录';margin-left:auto;font-size:10px;color:#7d8da2}.agent-toc[open]>summary{border-bottom:1px solid #edf0f4}.agent-toc[open]>summary:after{content:'收起目录'}.agent-toc-grid{padding:9px 13px 12px;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px 15px}.agent-toc-grid a{font-size:12px;padding:6px 4px}}
+@media(max-width:600px){.agent-page{padding:30px 20px 60px!important}.agent-toc-grid{grid-template-columns:1fr}.agent-page .article-heading h1{font-size:25px}.agent-lab-card{padding:14px}.agent-lab-controls label{flex-basis:100%}}
+@media(prefers-reduced-motion:reduce){.agent-page *{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+</style></head>
 <body>
 <a class="skip-link" href="#main">跳到正文</a>
 <header class="site-header"><div class="header-inner">
 <a href="/embodied-ml-lab/" class="brand" aria-label="Embodied ML 首页"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Embodied <b>ML</b></a>
 <nav aria-label="主导航"><a href="/embodied-ml-lab/">课程目录</a><a href="/embodied-ml-lab/practice/">课程练习</a><a class="active" href="/embodied-ml-lab/robot-agent/">Robot Agent</a></nav>
 </div></header>
-<main id="main" class="page narrow">
+<main id="main" class="page narrow agent-page">
 <div class="article-context"><a href="/embodied-ml-lab/">Embodied ML Lab</a><span class="agent-priority">专题学习路线 · 08</span></div>
 <header class="article-heading"><h1>Robot Agent：自主决策、技能组合与持续进化</h1></header>
 <p class="article-intro">这部分不是通用 LLM Agent 教程。目标是理解并设计一个以 Agent 为决策核心、以异构 Skill 为执行能力、能够通过经验持续改进自身技能的机器人系统。</p>
@@ -47,9 +92,9 @@
 .agent-audit h3{font-size:14px;margin:0 0 7px;color:#3d5879}.agent-audit p{font-size:13px;color:#65758b;margin:0;line-height:1.85}
 @media(max-width:600px){.agent-toc{padding:14px}.agent-toc-grid{grid-template-columns:1fr;gap:0}.agent-toc-head{display:block}.agent-toc-head span{display:block;margin-top:3px}}
 </style>
-<nav class="agent-toc" aria-label="本专题目录">
-<div class="agent-toc-head"><strong>本专题目录</strong><span>按学习顺序阅读，也可直接跳转</span></div>
-<div class="agent-toc-grid">
+<details class="agent-toc" open>
+<summary><strong>本专题目录</strong><span>按学习顺序阅读，也可直接跳转</span></summary>
+<nav class="agent-toc-grid" aria-label="本专题目录">
 <a href="#architecture"><span>01</span>系统边界与总体架构</a>
 <a href="#agent-loop-deep"><span>02</span>Agent Loop 与决策闭环</a>
 <a href="#skill-contract-deep"><span>03</span>Tool、Skill、Policy 的区别</a>
@@ -57,18 +102,17 @@
 <a href="#world-model-deep"><span>05</span>World Model as a Skill</a>
 <a href="#code-policy-deep"><span>06</span>Code-as-Policy</a>
 <a href="#coding-agent-tools"><span>07</span>Coding Agent 工具与 Runtime</a>
-<a href="#agent-memory-systems"><span>08</span>数据库、Memory 与检索</a>
-<a href="#memory-evolution-deep"><span>09</span>经验记忆与持续进化</a>
-<a href="#openeta-code-walkthrough"><span>10</span>OpenETA 真实代码拆解</a>
-<a href="#evaluation-deep"><span>11</span>评估方法与指标</a>
-<a href="#curriculum"><span>12</span>学习路线与优先级</a>
-<a href="#projects"><span>13</span>代表项目与源码入口</a>
-<a href="#reading-order"><span>14</span>代码阅读方法</a>
-<a href="#capstone"><span>15</span>综合实战：持续进化的开门 Agent</a>
-<a href="#interactive-labs"><span>16</span>交互式算法演示</a>
-<a href="#scope"><span>17</span>学习边界与参考资料</a>
-</div>
+<a href="#memory-evolution-deep"><span>08</span>经验记忆与持续进化</a>
+<a href="#openeta-code-walkthrough"><span>09</span>OpenETA 真实代码拆解</a>
+<a href="#evaluation-deep"><span>10</span>评估方法与指标</a>
+<a href="#curriculum"><span>11</span>学习路线与优先级</a>
+<a href="#projects"><span>12</span>代表项目与源码入口</a>
+<a href="#reading-order"><span>13</span>代码阅读方法</a>
+<a href="#capstone"><span>14</span>综合实战：持续进化的开门 Agent</a>
+<a href="#interactive-labs"><span>15</span>交互式算法演示</a>
+<a href="#scope"><span>16</span>学习边界与参考资料</a>
 </nav>
+</details>
 <div class="agent-hero">
 <h2>最终目标：Agent 决定做什么，Skill 负责把事情做好</h2>
 <p>Agent 接收任务和环境状态，判断下一步需要什么能力；它可以调用长时序 VLA、World Model、视觉感知、运动控制或 Code Policy。复杂技能还可以继续组合子技能。执行结果和经验返回 Agent，用于继续决策或改进技能。</p>
@@ -830,7 +874,7 @@ Agent:
 <section class="article-section" id="interactive-labs">
 <h2><span class="section-number">16</span>交互式算法演示</h2>
 <p class="section-lead">通过逐步执行和伪代码，理解 Agent 如何选择 Skill、调用长时序 VLA、利用 World Model，并让 Code Policy 根据经验迭代。以下均为可控的教学模拟，不连接真实机器人或执行任意生成代码。</p>
-<div id="agent-learning-extras"><p class="agent-note">交互演示正在加载…</p></div>
+<div id="agent-learning-extras"><div class="agent-audit"><h3>交互演示需要 JavaScript</h3><p>即使交互未加载，前文的系统架构、伪代码和案例仍可独立阅读。启用 JavaScript 后可操作决策分支、状态机、预测评分和策略进化实验。</p></div></div>
 </section>
 
 <section class="article-section" id="scope">
