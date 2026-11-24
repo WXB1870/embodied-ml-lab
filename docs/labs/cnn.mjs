@@ -2,15 +2,15 @@ import {layerGeometry, computeReceptiveField} from './cnn-math.mjs';
 
 const layer = (s=1,p=1,d=1)=>({k:3,s,p,d});
 const presets = [
-  ['3×3 三层堆叠（ERF 衰减）', [layer(),layer(),layer()], '对中央输出，7×7 理论框的中心有 49 条路径，四角各只有 1 条。'],
-  ['空洞卷积棋盘盲区', [layer(1,2,2),layer(1,2,2),layer(1,2,2)], '每层都跨两格取样，13×13 理论框内只有 49 个像素可达。'],
-  ['混合空洞 HDC', [layer(),layer(1,2,2),layer(1,3,3)], '依次使用 d = 1、2、3，中心输出的 13×13 理论框被完整覆盖。'],
+  ['普通 3×3 堆叠', [layer(),layer(),layer()], '对中央输出，7×7 理论框的中心有 49 条路径，四角各只有 1 条。'],
+  ['固定空洞率 2、2、2', [layer(1,2,2),layer(1,2,2),layer(1,2,2)], '每层都跨两格取样。试着切换到 1、2、3：理论框一样大，斜纹会怎样变化？'],
+  ['混合空洞率 1、2、3', [layer(),layer(1,2,2),layer(1,3,3)], '依次使用 d = 1、2、3，相邻层能补上采样间隙，中央输出的 13×13 理论框被完整覆盖。'],
   ['Stride=2 边界截断', [layer(2),layer(2)], '左上输出的理论框延伸到填充区。移到中央输出，比较输入域内的面积和路径分布。']
 ];
 const values={k:[1,3,5,7],s:[1,2],p:[0,1,2,3],d:[1,2,3]};
 const pct=v=>(100*v).toFixed(1)+'%';
 const options=(choices,value)=>choices.map(v=>'<option'+(v===value?' selected':'')+'>'+v+'</option>').join('');
-function initial() {return {layers:presets[0][1].map(l=>({...l})), n:21, selected:0, y:10,x:10, locked:false};}
+function initial() {return {layers:presets[1][1].map(l=>({...l})), n:21, selected:1, y:10,x:10, locked:false};}
 function parameters(state) {
   return state.layers.map((l,i)=>`<div class="cnn-layer"><span>第 ${i+1} 层</span>${Object.entries(values).map(([key,choices])=>
     `<label>${key}<select data-layer="${i}" data-key="${key}" aria-label="第 ${i+1} 层 ${key}">${options(choices,l[key])}</select></label>`).join('')}</div>`).join('');
@@ -30,17 +30,24 @@ function heat(r,n) {
     `<path d="${path}" fill="url(#cnn-hatch)"/>`).join('')+
     `<rect width="${n}" height="${n}" fill="url(#cnn-input-grid)"/><rect x="${Math.max(0,x0)}" y="${Math.max(0,y0)}" width="${Math.max(0,Math.min(n,x1+1)-Math.max(0,x0))}" height="${Math.max(0,Math.min(n,y1+1)-Math.max(0,y0))}" fill="none" stroke="var(--ink)" stroke-width=".13" stroke-dasharray=".37 .2"/>`;
 }
+function metrics(rows) {
+  return rows.map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+}
 function stats(r) {
-  const rows=[
-    ['理论跨度 / 总步长',r.span+'×'+r.span+' / '+r.jump],
+  return metrics([
+    ['理论跨度',r.span+'×'+r.span],
+    ['可达像素 / 框内真实像素',r.reachable+' / '+r.inBoundsArea+' · '+(r.inBoundsArea?pct(r.coverage):'—')]
+  ]);
+}
+function pathDetails(r) {
+  return metrics([
+    ['总步长',r.jump],
     ['域内 / 理论面积',r.inBoundsArea+' / '+r.area],
-    ['可达 / 域内',r.reachable+' / '+r.inBoundsArea+' · '+(r.inBoundsArea?pct(r.coverage):'—')],
     ['几何中心 / 边缘最小非零',(r.centerPath??'—')+' / '+(r.edgeMin??'—')],
     ['峰值 / 最小非零',r.total?r.maxPath+' / '+r.minPath:'—'],
     ['90% 核心 / 域内',r.total?r.corePixels+' / '+r.inBoundsArea+' · '+pct(r.coreFraction):'—'],
     ['总路径数',r.total.toLocaleString('en-US')]
-  ];
-  return rows.map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+  ]);
 }
 function grids(state,r) {
   const n=state.n,out=r.sizes.at(-1);
@@ -52,11 +59,12 @@ function grids(state,r) {
     ${gridDefs('cnn-output')}<rect width="${out}" height="${out}" fill="url(#cnn-output-grid)"/><rect data-marker x="${state.x}" y="${state.y}" width="1" height="1" fill="var(--blue)"/></svg></div></div>
     <div class="cnn-legend"><span>虚线 · 理论框在输入域内的边界</span><span>斜纹 · 域内零路径</span><span>颜色深度 · 相对路径数</span></div>
     <p class="lab-readout" data-inspect>悬停输入查看权重，在输出上点击锁定，再点一次解锁。</p>
-    <div class="lab-flow">空间尺寸 <strong>${r.sizes.map(v=>v+'×'+v).join(' → ')}</strong></div>
-    <dl class="lab-metrics" data-stats>${stats(r)}</dl>`;
+    <dl class="lab-metrics" data-stats>${stats(r)}</dl>
+    <details class="lab-settings" data-path-details><summary>路径统计与空间尺寸</summary><div class="lab-flow">空间尺寸 <strong>${r.sizes.map(v=>v+'×'+v).join(' → ')}</strong></div>
+    <dl class="lab-metrics" data-counts>${pathDetails(r)}</dl><p class="lab-foot">90% 核心是累积达到总路径数 90% 所需的最少像素，占比以理论框内的真实输入像素为分母。</p></details>`;
 }
 function layout(state,r) {
-  return `<header><h2>感受野路径探针</h2><p>从一个输出像素沿全一卷积核反传，比较理论跨度与实际路径的集中程度。</p></header>
+  return `<header><h3>理论框里，哪些像素能影响输出？</h3><p>这里固定卷积核权重为 1，省去激活函数，因此输入梯度恰好等于路径数。训练后的 CNN 还受权重与激活状态影响。</p></header>
     <div class="lab-buttons">${presets.map(([name],i)=>`<button data-preset="${i}" aria-pressed="${i===state.selected}">${name}</button>`).join('')}</div>
     <p class="lab-note" data-note>${presets[state.selected][2]}</p>
     <details class="lab-settings"><summary>卷积参数</summary><div class="lab-controls">
@@ -86,6 +94,7 @@ export function mount(root) {
     get('[data-marker]').setAttribute('x',x);get('[data-marker]').setAttribute('y',y);
     get('[data-target]').textContent=(state.locked?'已锁定':'目标')+` (${y}, ${x})`;
     get('[data-stats]').innerHTML=stats(result);
+    get('[data-counts]').innerHTML=pathDetails(result);
     if(probe) inspect(...probe);
   }
   function configure(recenter) {
@@ -100,7 +109,9 @@ export function mount(root) {
     const out=g.sizes.at(-1), start=state.selected===3?0:Math.floor(out/2);
     state.y=recenter?start:Math.min(state.y,out-1);state.x=recenter?start:Math.min(state.x,out-1);
     result=computeReceptiveField(state.layers,state.n,state.y,state.x);
+    const expanded=get('[data-path-details]')?.open;
     get('[data-view]').innerHTML=grids(state,result);
+    if(expanded)get('[data-path-details]').open=true;
   }
   function pixel(svg,e) {
     const n=svg.viewBox.baseVal.width, rect=svg.getBoundingClientRect();

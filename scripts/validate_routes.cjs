@@ -74,17 +74,25 @@ for(const lesson of lessons){
  test(lesson.id+' theory rendering follows its course type',()=>{
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
   assert.ok(html.includes('class="article-intro"'));
-  const labName=({'cnn-receptive-field':'cnn',attention:'attention'})[lesson.id];
+  const expectedLabs={
+   'cnn-receptive-field':[['receptive-field','cnn','data-marker']],
+   attention:[['1','attention','data-probabilities'],['mqa-gqa-kv-sharing','kv-sharing','data-headmap']]
+  }[lesson.id]||[];
   const published=fs.readFileSync(path.join(dist,'learn',lesson.id,'index.html'),'utf8');
-  for(const page of [html,published])assert.equal((page.match(/data-course-lab="/g)||[]).length,labName?1:0);
-  assert.equal(published.includes('data-course-lab-style'),Boolean(labName));
-  if(labName){
-   assert.ok(published.includes('data-course-lab="'+labName+'"'));
-   const lab=published.slice(published.indexOf('data-course-lab="'),published.indexOf('class="chapter-goals"'));
-   assert.ok(lab.includes('<svg') && lab.includes(labName==='cnn'?'data-marker':'data-headmap'));
-   for(const tab of ['code','exercise']){
-    assert.ok(!evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'${tab}','python',new URLSearchParams())`).includes('data-course-lab='));
+  assert.equal(published.includes('data-course-lab-style'),Boolean(expectedLabs.length));
+  for(const page of [html,published]){
+   assert.equal((page.match(/data-course-lab="/g)||[]).length,expectedLabs.length);
+   for(const [section,name,marker] of expectedLabs){
+    const start=page.indexOf('id="section-'+section+'"');
+    const end=page.indexOf('<section class="article-section"',start+1);
+    const body=page.slice(start,end<0?undefined:end);
+    const formula=body.indexOf('class="formula"'), lab=body.indexOf('data-course-lab="'+name+'"');
+    assert.ok(start>=0 && formula>=0 && lab>formula,name+' must follow its chapter formula');
+    if(page===published)assert.ok(body.slice(lab).includes(marker),name+' missing prerendered content');
    }
+  }
+  if(expectedLabs.length)for(const tab of ['code','exercise']){
+   assert.ok(!evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'${tab}','python',new URLSearchParams())`).includes('data-course-lab='));
   }
   assert.doesNotMatch(html,/data-learning-visual|data-lv-|class="inline-visual"|data-explorer=/);
   assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length+(lesson.advancedSections||[]).length);

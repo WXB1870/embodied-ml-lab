@@ -5,16 +5,14 @@
   font-variant-numeric:tabular-nums; line-height:1.5;
 }
 .math-lab:empty,.math-lab [hidden]{display:none}
-.math-lab header h2{font-size:21px;margin:0 0 6px}
+.math-lab header h3{font-size:17px;margin:0 0 6px}
 .math-lab header p,.math-lab .lab-foot{color:var(--muted);font-size:12px;line-height:1.6;margin:6px 0}
 .math-lab h4{font-size:13px;margin:9px 0 5px}
 .math-lab h4 small{margin-left:.5em;color:var(--muted);font-size:11px;font-weight:400}
 .math-lab button,.math-lab select{border:1px solid var(--line);background:#fff;border-radius:5px;padding:5px 8px;font-size:12px}
-.math-lab button[aria-pressed=true],.math-lab button[aria-selected=true]{color:var(--blue-dark);border-color:var(--blue);background:var(--pale)}
+.math-lab button[aria-pressed=true]{color:var(--blue-dark);border-color:var(--blue);background:var(--pale)}
 .math-lab button:disabled{cursor:default}
-.math-lab .lab-buttons,.math-lab .lab-controls,.math-lab .lab-tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:12px 0 6px}
-.math-lab .lab-tabs{border-bottom:1px solid var(--line);padding:0 0 9px;gap:8px}
-.math-lab .lab-tabs button{font-weight:600}
+.math-lab .lab-buttons,.math-lab .lab-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:12px 0 6px}
 .math-lab .lab-note{margin:8px 0 12px;padding:4px 0 4px 10px;border-left:2px solid var(--blue);font-size:13px}
 .math-lab .lab-controls{gap:9px 14px}
 .math-lab .lab-controls label,.math-lab .cnn-layer label{display:inline-flex;gap:5px;align-items:center;font-size:12px}
@@ -25,7 +23,7 @@
 .math-lab .lab-settings summary{width:fit-content;cursor:pointer}
 .math-lab .cnn-layer{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:6px 0}
 .math-lab .cnn-layer>span{color:var(--muted)}
-.math-lab .cnn-grids,.math-lab .att-plots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(8px,2vw,22px)}
+.math-lab .cnn-grids{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(8px,2vw,22px)}
 .math-lab svg{display:block;width:100%;height:auto}
 .math-lab .cnn-grids svg{max-width:280px;aspect-ratio:1;outline:1px solid var(--line);overflow:hidden;cursor:crosshair}
 .math-lab svg:focus-visible,.math-lab [data-head]:focus-visible{outline:2px solid var(--blue)}
@@ -38,7 +36,7 @@
 .math-lab .att-legend span:before{content:'';display:inline-block;width:11px;height:8px;margin-right:5px;background:#697789}
 .math-lab .att-legend span+span:before,.math-lab .att-scaled{background:var(--blue);fill:var(--blue)}
 .math-lab .att-raw{fill:#697789}.math-lab .plot-rule{stroke:var(--line);fill:none}
-.math-lab .att-plots svg text{fill:var(--muted);font-size:11px}
+.math-lab .att-chart svg text,.math-lab .att-detail svg text{fill:var(--muted);font-size:11px}
 .math-lab .att-table{width:100%;margin:4px 0;border-collapse:collapse}
 .math-lab .att-table td,.math-lab .att-table th{padding:5px 8px;font-size:12px;line-height:1.5}
 .math-lab .att-table th{font-weight:500}.math-lab .att-table td,.math-lab .att-table thead th:not(:first-child){text-align:right}
@@ -47,4 +45,6 @@
 .math-lab .head-group text{fill:currentColor;text-anchor:middle;font-size:12px;pointer-events:none}
 .math-lab .head-edge{fill:none;stroke:currentColor;stroke-width:1.4}
 .math-lab .muted-group{opacity:.18}.math-lab [data-head]{cursor:crosshair}
-@media(max-width:580px){.math-lab .att-plots{grid-template-columns:1fr}.math-lab .lab-range input{width:115px}.math-lab .cnn-grids h4 small{display:block;margin-left:0}.math-lab .lab-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:580px){.math-lab .lab-range input{width:115px}.math-lab .cnn-grids h4 small{display:block;margin-left:0}.math-lab .lab-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.math-lab .att-chart,.math-lab .att-detail>svg{max-width:520px}
+.math-lab .lab-metrics+.lab-settings,.math-lab [data-summary]+details{margin-top:12px}

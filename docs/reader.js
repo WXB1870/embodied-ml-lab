@@ -110,7 +110,7 @@ function renderComparison(c){
 }
 function renderSection(s,index,kind,item){
  const scene=s.quote?.length?`<blockquote>${s.quote.map(p=>`<p>${inline(p)}</p>`).join('')}</blockquote>`:'';
- return `<section class="article-section" id="${sectionId(kind,s,index)}" data-reading-section><h2>${item.theoryOnly?'':`<span class="section-number">${pad(index+1)}</span>`}${inline(cleanTitle(s.title))}</h2>${s.lead?`<p class="section-lead">${inline(s.lead)}</p>`:''}${scene}${renderFigures(s,0)}${renderWorkedExample(s.example,0)}${s.body.map((p,i)=>`<p>${inline(p)}</p>${renderFigures(s,i+1)}${renderWorkedExample(s.example,i+1)}`).join('')}${s.formula?`<div class="formula">${mathMarkup(s.formula,true)}</div>`:''}${s.bullets?.length?`<ul${item.theoryOnly?' class="diagnostic-list"':''}>${s.bullets.map(b=>`<li>${inline(b)}</li>`).join('')}</ul>`:''}${s.code?codeBlock(s.code,s.codeKind==='fragment'?'Python · 实现片段':'Python')+(s.codeExplanation?`<p class="code-note">${inline(s.codeExplanation)}</p>`:''):''}${renderFigures(s)}${renderComparison(s.comparison)}${renderWorkedExample(s.example)}${renderFocus(s.focus)}${kind==='lesson'&&!item.theoryOnly?renderPseudocode(item.id,s.id):''}</section>`;
+ return `<section class="article-section" id="${sectionId(kind,s,index)}" data-reading-section><h2>${item.theoryOnly?'':`<span class="section-number">${pad(index+1)}</span>`}${inline(cleanTitle(s.title))}</h2>${s.lead?`<p class="section-lead">${inline(s.lead)}</p>`:''}${scene}${renderFigures(s,0)}${renderWorkedExample(s.example,0)}${s.body.map((p,i)=>`<p>${inline(p)}</p>${renderFigures(s,i+1)}${renderWorkedExample(s.example,i+1)}`).join('')}${s.formula?`<div class="formula">${mathMarkup(s.formula,true)}</div>`:''}${kind==='lesson'?renderCourseLab(item.id,s.id):''}${s.bullets?.length?`<ul${item.theoryOnly?' class="diagnostic-list"':''}>${s.bullets.map(b=>`<li>${inline(b)}</li>`).join('')}</ul>`:''}${s.code?codeBlock(s.code,s.codeKind==='fragment'?'Python · 实现片段':'Python')+(s.codeExplanation?`<p class="code-note">${inline(s.codeExplanation)}</p>`:''):''}${renderFigures(s)}${renderComparison(s.comparison)}${renderWorkedExample(s.example)}${renderFocus(s.focus)}${kind==='lesson'&&!item.theoryOnly?renderPseudocode(item.id,s.id):''}</section>`;
 }
 function renderFigures(section,afterParagraph){
  const figures=section.figures||(section.figure?[section.figure]:[]);
@@ -285,18 +285,23 @@ function renderChapterGoals(l){
 function renderChapterReview(l){
  return `<section class="article-section chapter-review" id="chapter-review" data-reading-section><h2>读后自测</h2><p>先不看正文，写下答案，并用算例、推导或代码说明理由，再核对练习页的分析。</p><ol>${l.knowledgeChecks.slice(0,2).map((q,i)=>`<li><p>${inline(q.question)}</p><a href="${lessonHref(l.id,'exercise')+'&anchor=question-'+i}">核对参考解 →</a></li>`).join('')}</ol></section>`;
 }
-function renderCourseLab(id){
- const name=id==='cnn-receptive-field'?'cnn':id==='attention'?'attention':null;
- if(!name)return '';
+const courseLabs={
+ 'cnn-receptive-field':{'receptive-field':['cnn','理论感受野与可达像素']},
+ attention:{'1':['attention','点积缩放与 Softmax 饱和'],'mqa-gqa-kv-sharing':['kv-sharing','Query 与 KV 头共享']}
+};
+function renderCourseLab(lesson,section){
+ const lab=courseLabs[lesson]?.[section];
+ if(!lab)return '';
+ const [name,title]=lab,anchor=name==='kv-sharing'?'kv-sharing-lab':'math-lab';
  const initial=typeof prerenderedLabs==='undefined'?'':prerenderedLabs[name];
- return `<section id="math-lab" class="math-lab" aria-label="${name==='cnn'?'感受野路径探针':'注意力实验'}" data-course-lab="${name}">${initial}</section>`;
+ return `<section id="${anchor}" class="math-lab" aria-label="${title}" data-course-lab="${name}">${initial}</section>`;
 }
 function renderLessonTheory(l){
  if(l.theoryOnly){
   return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${renderSources(l.sources,l.id)}`;
  }
  const notation=`<details class="detail-box shape-details"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>变量</th><th>形状</th><th>含义</th></tr></thead><tbody>${l.shapes.map(s=>`<tr><td>${inline(s.name)}</td><td>${shapeMarkup(s.shape)}</td><td>${inline(s.meaning)}</td></tr>`).join('')}</tbody></table></div></details>`;
- return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderCourseLab(l.id)}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">开始练习 →</a></p>`;
+ return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">开始练习 →</a></p>`;
 }
 function renderTopicTheory(t){
  return `<p class="article-intro">${inline(t.lead)}</p><details class="detail-box notation"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>符号</th><th>形状</th><th>含义</th></tr></thead><tbody>${t.notation.map(n=>`<tr><td>${inline(n.symbol)}</td><td>${shapeMarkup(n.shape)}</td><td>${inline(n.meaning)}</td></tr>`).join('')}</tbody></table></div></details>${t.sections.map((s,i)=>renderSection(s,i,'topic',t)).join('')}${renderSources(t.sources,null,t.relatedLessons)}<p class="article-action"><a class="button primary" href="${topicHref(t.id,'code')}">阅读代码实现 →</a><a href="${topicHref(t.id,'labs')}">开始练习 →</a></p>`;

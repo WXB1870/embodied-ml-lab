@@ -34,8 +34,8 @@ function page(route,title,description,expression,{noindex=false,redirect}={}){
   .replace('</head>',`<link rel="canonical" href="${origin+sitePath(route)}">${noindex?'<meta name="robots" content="noindex">':''}${redirect?'<meta http-equiv="refresh" content="0;url='+escape(sitePath(redirect))+'">':''}</head>`)
   .replace(/<main id="main"[\s\S]*?<\/main>/,`<main id="main" tabindex="-1" data-prerendered>${content}</main>`);
  if(content.includes('data-course-lab='))html=html
-  .replace(/(src="\/(?:reader|app)\.js)\?v=[^"]+/g,'$1?v=20261124-svg-labs')
-  .replace('</head>','<link rel="stylesheet" data-course-lab-style href="/labs/labs.css"></head>');
+  .replace(/(src="\/(?:reader|app)\.js)\?v=[^"]+/g,'$1?v=20261124-lesson-labs')
+  .replace('</head>','<link rel="stylesheet" data-course-lab-style href="/labs/labs.css?v=lesson"></head>');
  html=vm.runInContext('normalizeInternalLinks('+JSON.stringify(html)+')',context);
  const file=route==='/404/'?path.join(dist,'404.html'):path.join(dist,route,'index.html');
  fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,html);
@@ -43,7 +43,7 @@ function page(route,title,description,expression,{noindex=false,redirect}={}){
 }
 async function buildPages(){
  context.prerenderedLabs={};
- for(const name of ['cnn','attention']){
+ for(const name of ['cnn','attention','kv-sharing']){
   const lab=await import(require('node:url').pathToFileURL(path.join(dist,'labs',name+'.mjs')).href);
   context.prerenderedLabs[name]=lab.renderInitial();
  }
