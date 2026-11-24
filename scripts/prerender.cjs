@@ -15,7 +15,7 @@ const context={console,URL,URLSearchParams,location,katex,EML_BASE_PATH:basePath
  document:{addEventListener:noop,getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[]},
  setTimeout:noop,clearTimeout:noop,requestAnimationFrame:noop,history:{replaceState:noop,pushState:noop}};
 context.window=context;vm.createContext(context);
-for(const name of ['math.js','explorers.js','p0-explorers.js','deep-explorers.js','learning-visuals.js','reader.js'])vm.runInContext(fs.readFileSync(path.join(dist,name),'utf8'),context,{filename:name});
+for(const name of ['math.js','reader.js'])vm.runInContext(fs.readFileSync(path.join(dist,name),'utf8'),context,{filename:name});
 const app=fs.readFileSync(path.join(dist,'app.js'),'utf8');
 vm.runInContext(app.slice(0,app.indexOf("document.addEventListener('click'")),context,{filename:'app-core.js'});
 vm.runInContext(`curriculum=${JSON.stringify(curriculum)};MODULES=curriculum.modules;lessons=${JSON.stringify(lessons)};topics=${JSON.stringify(topics)};byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topicById=Object.fromEntries(topics.map(t=>[t.id,t]));registerTopicExercises();markReading=()=>{};`,context);

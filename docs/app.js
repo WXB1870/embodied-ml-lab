@@ -142,7 +142,11 @@ function canonicalRoute(){
  if(path==='/reference'){pendingQuery=params.get('q');href='#/';}
  if(path==='/map')href=byId[params.get('node')]?lessonHref(params.get('node')):'#/';
  if(path==='/progress')href='#/guide?section=drafts';
- if(path==='/visuals'){const v=P0_VISUALS.find(x=>x.id===params.get('demo'));href=v?lessonHref(v.lessons[0])+'&anchor=visual-'+v.id:'#/';}
+ if(path==='/visuals'){
+  const lessonsByDemo={"gradient":"autograd","mlp":"mlp","cnn":"cnn-receptive-field","softmax":"probability","attention":"attention","tokens":"masking-autoregressive","loss":"losses","accumulation":"gradient-accumulation","geometry":"vision-preprocessing","conditioning":"dit-adaln","flow":"flow-matching","flow-ode":"flow-matching","latency":"execution-latency","bellman":"returns-bellman"};
+  const demo=params.get('demo');
+  href=Object.hasOwn(lessonsByDemo,demo)?lessonHref(lessonsByDemo[demo]):'#/';
+ }
  if(path.startsWith('/learn/')&&params.get('tab')==='quiz')href=lessonHref(path.split('/')[2])+'&anchor=discussion';
  if(path.startsWith('/learn/')&&(params.has('pitfall')||/^(discussion|mistakes|question-\d+|pitfall-\d+)$/.test(params.get('anchor')||'')))href=routeHref(location.pathname+location.search);
  if(path.startsWith('/topics/')&&['reference','questions'].includes(params.get('tab')))href=topicHref(path.split('/')[2],'guide',params.get('tab')==='questions'?'&anchor=discussion':'');
@@ -167,7 +171,7 @@ function render(){
  else{if(!robots){robots=document.createElement('meta');robots.name='robots';document.head.appendChild(robots);}robots.content='noindex';}
  $$('[data-nav]').forEach(el=>{const chosen=el.dataset.nav===active;el.classList.toggle('active',chosen);if(chosen)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
  document.title=(title?title+' · ':'')+'Embodied ML';
- initExplorers();if(typeof initLearningVisuals==='function')initLearningVisuals(document);bindEditor();bindPracticeFilters();trackSections();
+ bindEditor();bindPracticeFilters();trackSections();
  if(pendingQuery)requestAnimationFrame(()=>openSearch(pendingQuery));
 }
 function notFound(){return '<div class="page narrow"><h1>没有找到这篇内容</h1><a class="button primary" href="#/">返回课程目录</a></div>';}

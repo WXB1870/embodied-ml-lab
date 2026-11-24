@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const sandbox={P0_VISUALS:[],emlExplorer:()=>'',initExplorers:()=>{},p0Heading:()=>''};
 vm.createContext(sandbox);
-const f=vm.runInContext(fs.readFileSync(__dirname+'/../dist/deep-explorers.js','utf8')+';DeepFlow;',sandbox);
+const f=vm.runInContext(fs.readFileSync(__dirname+'/../docs/deep-explorers.js','utf8')+';DeepFlow;',sandbox);
 let count=0;
 const near=(a,b,e=1e-7)=>{assert(Math.abs(a-b)<e);count++;};
 for(const sigma of [.3,.7,1.5]){

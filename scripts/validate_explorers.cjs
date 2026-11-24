@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const context = vm.createContext({document:{addEventListener(){}},emlExplorer(){return '';},initExplorers(){}});
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/p0-explorers.js'),'utf8'),context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../docs/p0-explorers.js'),'utf8'),context);
 const math=vm.runInContext('P0Math',context);
 let checks=0;
 function near(actual,expected,message){assert.ok(Math.abs(actual-expected)<1e-9,`${message}: ${actual} vs ${expected}`);checks++;}
@@ -34,7 +34,7 @@ assert.equal(math.queue(900,10).available,0);checks++;
 near(math.bellman(1,.9,4,false),4.6,'bootstrap on continuation or external truncation');
 near(math.bellman(1,.9,4,true),1,'no bootstrap on termination');
 const mlpContext=vm.createContext({document:{addEventListener(){}}});
-vm.runInContext(fs.readFileSync(path.join(__dirname,'../dist/explorers.js'),'utf8'),mlpContext);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../docs/explorers.js'),'utf8'),mlpContext);
 const params=vm.runInContext('mlpParameterCounts',mlpContext);
 near(params(4).total,88,'four-class MLP H=4');
 near(params(32).first,544,'MLP first layer H=32');

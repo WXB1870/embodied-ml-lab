@@ -7,12 +7,6 @@ const TOPIC_META={
  'flow-matching':{name:'Flow Matching',description:'概率路径、条件期望与 ODE 生成'}
 };
 const CORE_LESSON_TOPIC={mlp:'mlp','cnn-receptive-field':'cnn',attention:'transformer','flow-matching':'flow-matching'};
-const TOPIC_VISUAL_SECTION={
- mlp:{id:'mlp',section:'shapes-parameters'},
- cnn:{id:'cnn',section:'spatial-shape'},
- transformer:{id:'attention',section:'visibility-patterns'},
- 'flow-matching':{id:'flow-ode',section:'ode-solvers'}
-};
 
 function renderCatalog(){
  const last=lastReading(),coreModules=MODULES.filter(m=>m.id!=='appendix'),appendix=MODULES.find(m=>m.id==='appendix');
@@ -119,18 +113,175 @@ function renderComparison(c){
  return `<section class="comparison"><h3>${inline(c.title)}</h3><div class="table-wrap"><table><thead><tr>${c.columns.map(x=>`<th>${inline(x)}</th>`).join('')}</tr></thead><tbody>${c.rows.map(row=>`<tr>${row.map(x=>`<td>${inline(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
 }
 function renderSection(s,index,kind,item){
- const visual=TOPIC_VISUAL_SECTION[kind==='topic'?item.id:item.theoryTopic];
- return `<section class="article-section" id="${sectionId(kind,s,index)}" data-reading-section><h2><span class="section-number">${pad(index+1)}</span>${inline(cleanTitle(s.title))}</h2>${s.lead?`<p class="section-lead">${inline(s.lead)}</p>`:''}${renderFigures(s,0)}${renderWorkedExample(s.example,0)}${s.body.map((p,i)=>`<p>${inline(p)}</p>${renderFigures(s,i+1)}${renderWorkedExample(s.example,i+1)}`).join('')}${s.formula?`<div class="formula">${mathMarkup(s.formula,true)}</div>`:''}${s.bullets?.length?`<ul>${s.bullets.map(b=>`<li>${inline(b)}</li>`).join('')}</ul>`:''}${s.code?codeBlock(s.code,s.codeKind==='fragment'?'Python · 实现片段':'Python')+(s.codeExplanation?`<p class="code-note">${inline(s.codeExplanation)}</p>`:''):''}${renderFigures(s)}${renderComparison(s.comparison)}${renderWorkedExample(s.example)}${renderFocus(s.focus)}${visual&&visual.section===s.id?renderInlineVisual(visual.id):''}${(kind==='lesson'||kind==='topic')&&LV[item.id]&&LV[item.id].section===s.id?renderLessonLearning(item.id):''}</section>`;
+ return `<section class="article-section" id="${sectionId(kind,s,index)}" data-reading-section><h2><span class="section-number">${pad(index+1)}</span>${inline(cleanTitle(s.title))}</h2>${s.lead?`<p class="section-lead">${inline(s.lead)}</p>`:''}${renderFigures(s,0)}${renderWorkedExample(s.example,0)}${s.body.map((p,i)=>`<p>${inline(p)}</p>${renderFigures(s,i+1)}${renderWorkedExample(s.example,i+1)}`).join('')}${s.formula?`<div class="formula">${mathMarkup(s.formula,true)}</div>`:''}${s.bullets?.length?`<ul>${s.bullets.map(b=>`<li>${inline(b)}</li>`).join('')}</ul>`:''}${s.code?codeBlock(s.code,s.codeKind==='fragment'?'Python · 实现片段':'Python')+(s.codeExplanation?`<p class="code-note">${inline(s.codeExplanation)}</p>`:''):''}${renderFigures(s)}${renderComparison(s.comparison)}${renderWorkedExample(s.example)}${renderFocus(s.focus)}${kind==='lesson'?renderPseudocode(item.id,s.id):''}</section>`;
 }
 function renderFigures(section,afterParagraph){
  const figures=section.figures||(section.figure?[section.figure]:[]);
  return figures.filter(f=>f.afterParagraph===afterParagraph).map(f=>{const src=f.src.startsWith('/')?f.src:'/'+f.src;const dimensions=Number.isInteger(f.width)&&Number.isInteger(f.height)&&f.width>0&&f.height>0?` width="${f.width}" height="${f.height}"`:'';return `<figure class="research-figure"><p class="figure-reading-hint">${src.endsWith('.gif')?'点击图片可打开原动图。':'图片较宽时可横向滚动；点击可打开原图。'}</p><a href="${esc(src)}" target="_blank" rel="noopener" aria-label="${esc((f.alt||section.title)+'（打开原图）')}"><img${dimensions} src="${esc(src)}" alt="${esc(f.alt||section.title)}" loading="lazy"></a><figcaption>${inline(f.caption||'')}</figcaption></figure>`;}).join('');
 }
-function renderInlineVisual(id){
- const visual=P0_VISUALS.find(x=>x.id===id);if(!visual)return '';
- const content=emlExplorer(visual.explorer);if(!content)return '';
- return `<details class="inline-visual" id="visual-${visual.id}"><summary>交互演示：${esc(visual.title)}</summary><div>${content}</div></details>`;
+const LESSON_PSEUDOCODE={
+ "tensor": {section: "2", lines: [
+  "X: [B,T,D]",
+  "X = reshape(X, [B,T,H,d])",
+  "X = transpose(X, (0,2,1,3))",
+  "Y = X + bias[None,None,:,:]",
+  "loss = sum(error*mask) / sum(mask)"
+ ]},
+ "mlp": {section: "affine-nonlinearity", lines: [
+  "z1 = x @ W1 + b1",
+  "h1 = activation(z1)",
+  "y = h1 @ W2 + b2",
+  "loss = criterion(y, target)",
+  "loss.backward(); optimizer.step()"
+ ]},
+ "cnn-receptive-field": {section: "local-correlation", lines: [
+  "for each output (i,j):",
+  "    patch = X[..., i*s-p:i*s-p+k, j*s-p:j*s-p+k]",
+  "    Y[...,i,j] = sum(patch * W)",
+  "rf += (kernel-1) * jump",
+  "jump *= stride"
+ ]},
+ "attention": {section: "0", lines: [
+  "Q = X @ Wq; K = X @ Wk; V = X @ Wv",
+  "S = Q @ K.transpose(-2,-1) / sqrt(d)",
+  "A = softmax(S + mask, dim=-1)",
+  "C = A @ V",
+  "Y = merge_heads(C) @ Wo"
+ ]},
+ "rope": {section: "rope-complex", lines: [
+  "for pair i in range(d/2):",
+  "    theta = position * base**(-2*i/d)",
+  "    q_pair = rotate(q_pair, theta)",
+  "    k_pair = rotate(k_pair, theta)",
+  "score = q_rot @ k_rot"
+ ]},
+ "norm-ffn": {section: "0", lines: [
+  "mu = mean(x, dim=-1)",
+  "rms = sqrt(mean(x*x, dim=-1) + eps)",
+  "x_norm = (x-mu) / std  # LayerNorm",
+  "gate = silu(x @ Wg); value = x @ Wv",
+  "y = (gate * value) @ Wo"
+ ]},
+ "multimodal": {section: "1", lines: [
+  "patches = patchify(images)",
+  "vision_tokens = vision_encoder(patches)",
+  "text_tokens = language_encoder(input_ids)",
+  "vision_tokens = projector(vision_tokens)",
+  "multimodal = pack(vision_tokens, text_tokens)"
+ ]},
+ "masking-autoregressive": {section: "4", lines: [
+  "for q in query_positions:",
+  "    for k in key_positions:",
+  "        visible[q,k] = allowed(q.region, k.region)",
+  "scores = scores.masked_fill(~visible, -inf)",
+  "loss = masked_loss(logits, labels, loss_mask)"
+ ]},
+ "kv-cache": {section: "1", lines: [
+  "K_cache, V_cache = prefill(prefix)",
+  "for token in generated_tokens:",
+  "    k_new, v_new = project(token)",
+  "    K_cache = append(K_cache, k_new)",
+  "    output = attention(q_new, K_cache, V_cache)"
+ ]},
+ "vae": {section: "reparameterization", lines: [
+  "mu, logvar = encoder(x)",
+  "eps = randn_like(mu)",
+  "z = mu + exp(0.5*logvar) * eps",
+  "x_hat = decoder(z)",
+  "loss = recon(x_hat,x) + beta * KL"
+ ]},
+ "flow-matching": {section: "linear-path", lines: [
+  "x0 ~ p_source; x1 ~ p_data; t ~ Uniform(0,1)",
+  "xt = (1-t)*x0 + t*x1",
+  "target_v = x1 - x0",
+  "loss = mse(v_theta(xt,t,condition), target_v)",
+  "x = ode_integrate(v_theta, x_init, 0, 1)"
+ ]},
+ "diffusion": {section: "0", lines: [
+  "eps ~ Normal(0,I)",
+  "xt = sqrt(alpha_bar[t])*x0 + sqrt(1-alpha_bar[t])*eps",
+  "eps_hat = model(xt,t,condition)",
+  "x0_hat = (xt-sqrt(1-alpha_bar[t])*eps_hat)/sqrt(alpha_bar[t])",
+  "x_prev = scheduler.step(eps_hat,t,xt)"
+ ]},
+ "score-sde": {section: "forward-sde", lines: [
+  "dx = f(x,t)dt + g(t)dW",
+  "score = grad_x log p_t(x)",
+  "reverse_drift = f - g(t)^2 * score",
+  "probability_flow = f - 0.5*g(t)^2*score",
+  "integrate reverse dynamics from noise to data"
+ ]},
+ "dit-adaln": {section: "5", lines: [
+  "shift, scale, gate = cond_mlp(time, condition)",
+  "h = norm(x) * (1 + scale) + shift",
+  "x = x + gate * attention(h)",
+  "x = x + gate_ffn * ffn(norm(x))",
+  "prediction = output_head(x)"
+ ]},
+ "behavior-cloning": {section: "2", lines: [
+  "obs, expert_action = dataset.sample()",
+  "pred = policy(obs)",
+  "loss = masked_mse(pred, expert_action)",
+  "loss.backward(); optimizer.step()",
+  "evaluate_closed_loop(policy, environment)"
+ ]},
+ "action-chunking": {section: "5", lines: [
+  "old_chunk = active_plan",
+  "new_chunk = await policy.predict(latest_obs)",
+  "keep = committed_old_prefix",
+  "transition = blend(old_overlap, new_overlap)",
+  "plan = keep + transition + new_future"
+ ]},
+ "generative-policy": {section: "receding-horizon-protocol", lines: [
+  "condition = encode(observation, instruction)",
+  "ACT: action = decoder(condition, z)",
+  "Diffusion: action = denoise_loop(noise, condition)",
+  "Flow: action = ode_integrate(velocity, noise, condition)",
+  "execute_prefix(action); observe_again()"
+ ]},
+ "vla-architecture": {section: "vlm-to-policy", lines: [
+  "vision = vision_encoder(images)",
+  "language = language_model(tokens)",
+  "state = state_projector(robot_state)",
+  "velocity = action_expert(noisy_actions, time, condition)",
+  "actions = ode_solver(velocity)"
+ ]},
+ "lora": {section: "1", lines: [
+  "base = x @ W  # W frozen",
+  "low_rank = (x @ A) @ B",
+  "y = base + (alpha / rank) * low_rank",
+  "loss = task_loss(y, target)",
+  "update(A, B); keep(W)"
+ ]},
+ "policy-gradient": {section: "0", lines: [
+  "action ~ pi_theta(.|state)",
+  "reward = env.step(action)",
+  "advantage = return - baseline",
+  "loss = -log_prob(action) * advantage",
+  "optimizer.step()"
+ ]},
+ "ppo": {section: "ppo-2", lines: [
+  "delta_t = r_t + gamma*(1-done)*V_next - V_t",
+  "A_t = delta_t + gamma*lambda*(1-done)*A_next",
+  "ratio = exp(new_logp - old_logp)",
+  "objective = min(ratio*A, clip(ratio,1-eps,1+eps)*A)",
+  "actor_loss = -mean(objective)"
+ ]},
+ "dpo-grpo": {section: "grpo-group", lines: [
+  "DPO: ratio = logp(chosen)-logp(rejected)",
+  "loss = -logsigmoid(beta*(ratio-ref_ratio))",
+  "mean = group_mean(rewards)",
+  "advantage = (rewards-mean)/(group_std+eps)",
+  "update_policy_with_valid_log_prob(advantage)"
+ ]}
+};
+
+function renderPseudocode(lessonId, sectionId){
+ const block=LESSON_PSEUDOCODE[lessonId];
+ if(!block || block.section!==sectionId)return '';
+ return `<details class="detail-box"><summary>算法伪代码</summary><pre class="lesson-pseudocode" tabindex="0"><code>${esc(block.lines.join('\n'))}</code></pre></details>`;
 }
+
 function renderChapterGoals(l){
  return `<aside class="chapter-goals" aria-label="本章学习目标"><h2>本章学习目标</h2><ul>${l.objectives.map(goal=>`<li>${inline(goal)}</li>`).join('')}</ul></aside>`;
 }
@@ -141,9 +292,8 @@ function renderLessonTheory(l){
  if(l.theoryOnly){
   return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderLearningConnections(l)}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${renderSources(l.sources,l.id)}`;
  }
- const visuals=l.theoryTopic?[]:P0_VISUALS.filter(v=>v.lessons[0]===l.id);
  const notation=`<details class="detail-box shape-details"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>变量</th><th>形状</th><th>含义</th></tr></thead><tbody>${l.shapes.map(s=>`<tr><td>${inline(s.name)}</td><td>${shapeMarkup(s.shape)}</td><td>${inline(s.meaning)}</td></tr>`).join('')}</tbody></table></div></details>`;
- return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderLearningConnections(l)}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${visuals.map(v=>renderInlineVisual(v.id)).join('')}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">开始练习 →</a></p>`;
+ return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderLearningConnections(l)}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">开始练习 →</a></p>`;
 }
 function renderTopicTheory(t){
  return `<p class="article-intro">${inline(t.lead)}</p><details class="detail-box notation"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>符号</th><th>形状</th><th>含义</th></tr></thead><tbody>${t.notation.map(n=>`<tr><td>${inline(n.symbol)}</td><td>${shapeMarkup(n.shape)}</td><td>${inline(n.meaning)}</td></tr>`).join('')}</tbody></table></div></details>${t.sections.map((s,i)=>renderSection(s,i,'topic',t)).join('')}${renderSources(t.sources,null,t.relatedLessons)}<p class="article-action"><a class="button primary" href="${topicHref(t.id,'code')}">阅读代码实现 →</a><a href="${topicHref(t.id,'labs')}">开始练习 →</a></p>`;

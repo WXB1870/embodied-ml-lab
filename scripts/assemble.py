@@ -124,7 +124,10 @@ for id in ids:dfs(id)
 data=root/'dist'/'data';data.mkdir(exist_ok=True)
 # Keep the browser runtime used by prerender in sync with its authored source.
 dist=root/'dist'
-for asset in ['app.js','reader.js','styles.css','math.js','explorers.js','p0-explorers.js','deep-explorers.js','learning-visuals.js']:
+# Old checkouts and incremental builds can still contain retired browser bundles.
+for retired in ['explorers.js', 'p0-explorers.js', 'deep-explorers.js', 'learning-visuals.js']:
+    (dist/retired).unlink(missing_ok=True)
+for asset in ['app.js','reader.js','styles.css','math.js']:
     source=root/'docs'/asset
     if not source.is_file():raise SystemExit(f'Missing browser asset: {source}')
     shutil.copyfile(source,dist/asset)
