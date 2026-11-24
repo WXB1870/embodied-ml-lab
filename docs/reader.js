@@ -70,7 +70,7 @@ function readerContents(kind,item,tab){
  return entries.map((e,i)=>`<a href="${esc(e.href)}" data-section="${esc(e.id)}"><span>${pad(i+1)}</span>${inline(e.title)}</a>`).join('');
 }
 function renderReader(kind,item,tab,body){
- const tabs=kind==='topic'?[['guide','原理'],['code','代码'],['labs','练习']]:[['theory','原理'],['code','代码'],['exercise','练习']];
+ const tabs=kind==='topic'?[['guide','原理'],['code','代码'],['labs','练习']]:item.theoryOnly?[['theory','原理']]:[['theory','原理'],['code','代码'],['exercise','练习']];
  const contents=readerContents(kind,item,tab),module=kind==='lesson'?moduleFor(item):null;
  const context=module?`<a href="#/?chapter=${module.id}">${esc(module.name)}</a>`:'<a href="#/">核心专题</a>';
  const core=null;
@@ -79,6 +79,7 @@ function renderReader(kind,item,tab,body){
 }
 
 function renderLesson(l,tab,mode,params){
+ if(l.theoryOnly)tab='theory';
  currentLesson=l;currentTab=tab;
  const body=tab==='code'?renderLessonCode(l):tab==='exercise'?renderLessonExercises(l,mode,params?.get('lab')):renderLessonTheory(l);
  return renderReader('lesson',l,tab,body);
@@ -153,6 +154,9 @@ function renderChapterReview(l){
  return `<section class="article-section chapter-review" id="chapter-review" data-reading-section><h2>读后自测</h2><p>先不看正文，写下答案，并用算例、推导或代码说明理由，再核对练习页的分析。</p><ol>${l.knowledgeChecks.slice(0,2).map((q,i)=>`<li><p>${inline(q.question)}</p><a href="${lessonHref(l.id,'exercise')+'&anchor=question-'+i}">核对参考解 →</a></li>`).join('')}</ol></section>`;
 }
 function renderLessonTheory(l){
+ if(l.theoryOnly){
+  return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderLearningConnections(l)}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${renderSources(l.sources,l.id)}`;
+ }
  const visuals=l.theoryTopic?[]:P0_VISUALS.filter(v=>v.lessons[0]===l.id);
  const notation=`<details class="detail-box shape-details"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>变量</th><th>形状</th><th>含义</th></tr></thead><tbody>${l.shapes.map(s=>`<tr><td>${inline(s.name)}</td><td>${shapeMarkup(s.shape)}</td><td>${inline(s.meaning)}</td></tr>`).join('')}</tbody></table></div></details>`;
  return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderLearningConnections(l)}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${visuals.map(v=>renderInlineVisual(v.id)).join('')}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">进入课程练习 →</a></p>`;
@@ -198,8 +202,8 @@ function renderExercise(l,mode,singleRuntime=false){
 }
 function renderPractice(){
  const topicGroups=practiceFilter==='all'||practiceFilter==='topics'?topics:[];
- const modules=MODULES.filter(m=>practiceFilter==='all'||practiceFilter===m.id);
- return `<div class="page practice-page"><header class="page-heading"><h1>课程练习</h1></header><label class="practice-filter">按主题查看<select id="practice-module"><option value="all">全部主题</option><option value="topics" ${practiceFilter==='topics'?'selected':''}>专题进阶练习</option>${MODULES.map(m=>`<option value="${m.id}" ${practiceFilter===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>${modules.map(m=>`<section class="practice-chapter"><h2>${esc(m.name)}</h2><div class="practice-rows">${lessons.filter(l=>l.module===m.id).map(l=>`<div class="practice-row"><a class="practice-course" href="${lessonHref(l.id)}">${esc(l.title)}</a><a href="${lessonHref(l.id,'exercise')}">Python →</a><a href="${lessonHref(l.id,'exercise','torch')}">PyTorch →</a></div>`).join('')}</div></section>`).join('')}${topicGroups.length?`<section><h2>专题进阶练习</h2><div class="practice-topic-grid">${topicGroups.map(t=>`<section class="practice-topic"><h3>${esc(TOPIC_META[t.id].name)}</h3><ul>${t.labs.map(l=>`<li><a href="${topicHref(t.id,'labs','&lab='+l.id)}"><span>${esc(l.title)}</span><small>${l.runtime==='python'?'Python':'PyTorch'} →</small></a></li>`).join('')}</ul></section>`).join('')}</div></section>`:''}</div>`;
+ const modules=MODULES.filter(m=>(practiceFilter==='all'||practiceFilter===m.id)&&lessons.some(l=>l.module===m.id&&!l.theoryOnly));
+ return `<div class="page practice-page"><header class="page-heading"><h1>课程练习</h1></header><label class="practice-filter">按主题查看<select id="practice-module"><option value="all">全部主题</option><option value="topics" ${practiceFilter==='topics'?'selected':''}>专题进阶练习</option>${MODULES.filter(m=>lessons.some(l=>l.module===m.id&&!l.theoryOnly)).map(m=>`<option value="${m.id}" ${practiceFilter===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>${modules.map(m=>`<section class="practice-chapter"><h2>${esc(m.name)}</h2><div class="practice-rows">${lessons.filter(l=>l.module===m.id&&!l.theoryOnly).map(l=>`<div class="practice-row"><a class="practice-course" href="${lessonHref(l.id)}">${esc(l.title)}</a><a href="${lessonHref(l.id,'exercise')}">Python →</a><a href="${lessonHref(l.id,'exercise','torch')}">PyTorch →</a></div>`).join('')}</div></section>`).join('')}${topicGroups.length?`<section><h2>专题进阶练习</h2><div class="practice-topic-grid">${topicGroups.map(t=>`<section class="practice-topic"><h3>${esc(TOPIC_META[t.id].name)}</h3><ul>${t.labs.map(l=>`<li><a href="${topicHref(t.id,'labs','&lab='+l.id)}"><span>${esc(l.title)}</span><small>${l.runtime==='python'?'Python':'PyTorch'} →</small></a></li>`).join('')}</ul></section>`).join('')}</div></section>`:''}</div>`;
 }
 function renderGuide(){
  return `<div class="page narrow"><header class="page-heading"><h1>下载与运行</h1></header><section class="guide-section"><h2>学习资料</h2><div class="download-links"><a class="button primary" href="downloads/embodied-ml-study-pack.zip" download>下载完整学习包</a><a href="downloads/embodied-ml-topics.zip" download>下载专题练习包</a></div></section><section class="guide-section"><h2>运行环境</h2><p>Python 3.11 / 3.12 · CPU PyTorch 默认</p>${codeBlock('python -m venv .venv\nsource .venv/bin/activate  # Windows: .venv\\\\Scripts\\\\Activate.ps1\npython -m pip install torch','终端')}<p>GPU 安装方式见 <a href="https://pytorch.org/get-started/locally/" target="_blank" rel="noopener">PyTorch 官方安装说明 ↗</a>。Python 练习可在线运行；PyTorch 练习需本地运行。</p></section><section class="guide-section" id="drafts"><details class="detail-box"><summary>草稿备份</summary><div class="detail-body"><p>草稿保存在当前浏览器；导出包含草稿、笔记与记录，导入会合并草稿和笔记。</p><div class="download-links"><button class="button" data-action="export-drafts">导出备份</button><button class="button" data-action="import-drafts">导入备份</button></div></div></details></section><section class="guide-section"><details class="detail-box"><summary>历史课程归档（${lessons.filter(l=>l.module==='legacy').length} 节）</summary><div class="detail-body"><p>旧版课程继续保留；已迁移主题会跳转至对应的新课程。</p><ul class="reading-routes">${lessons.filter(l=>l.module==='legacy').map(l=>`<li><a href="${lessonHref(l.id)}">${esc(l.title)}</a></li>`).join('')}</ul></div></details></section></div>`;
@@ -212,12 +216,14 @@ function buildSearchIndex(){
  for(const l of lessons){
   add({doc:moduleFor(l).name,title:l.title,href:lessonHref(l.id),text:[l.lead||'',l.subtitle,...l.tags].join(' '),kind:'article',key:l.id});
   l.sections.forEach((s,i)=>add({doc:l.title,title:cleanTitle(s.title),href:sectionHref('lesson',l,s,i),text:sectionText(s),kind:'section',key:l.id}));
+  if(!l.theoryOnly){
   add({doc:l.title,title:l.code.title,href:lessonHref(l.id,'code'),text:l.code.source+' '+l.code.explanations.map(e=>e.text).join(' '),kind:'code',key:l.id});
   for(const d of l.extraImplementations||[])add({doc:l.title,title:d.title,href:lessonHref(l.id,'code')+'&anchor=demo-'+d.id,text:d.description+' '+d.source,kind:'code',key:l.id});
   for(const task of l.extraLabs||[])add({doc:l.title,title:task.title,href:lessonHref(l.id,'exercise')+'&lab='+task.id,text:task.prompt,kind:'exercise',key:l.id});
   for(const [mode,key] of [['python','exercise'],['torch','pytorchTask']]){const task=l[key];add({doc:l.title,title:task.title||l.title+' · '+(mode==='python'?'Python':'PyTorch')+' 练习',href:lessonHref(l.id,'exercise',mode),text:task.prompt,kind:'exercise',key:l.id});}
   for(const [i,q] of (l.knowledgeChecks||[]).entries())add({doc:l.title,title:q.question,href:lessonHref(l.id,'exercise')+'&anchor=question-'+i,text:q.answer.join(' '),kind:'discussion',key:l.id});
   for(const [i,p] of (l.pitfalls||[]).entries())add({doc:l.title,title:p.title,href:lessonHref(l.id,'exercise')+'&anchor=pitfall-'+i,text:[p.detail,p.fix].filter(Boolean).join(' '),kind:'pitfall',key:l.id});
+  }
  }
 }
 function sectionSearchText(s){return [s.lead||'',...s.body,...(s.bullets||[]),s.code||'',s.codeExplanation||'',s.formula?'\\['+s.formula+'\\]':'',s.example?[s.example.title,...s.example.steps,s.example.conclusion].join(' '):'',s.focus?[s.focus.title,s.focus.explanation,s.focus.check].join(' '):''].join(' ');}
