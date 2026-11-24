@@ -166,7 +166,7 @@ document.addEventListener('click',function(e){
  updateLearningVisual(root);
 });
 document.addEventListener('visibilitychange',function(){if(document.hidden)document.querySelectorAll('[data-learning-visual]').forEach(function(root){if(root._lvTimer){clearInterval(root._lvTimer);root._lvTimer=null;const b=root.querySelector('[data-lv-play]');if(b)b.textContent='自动播放';}});});
-window.addEventListener('beforeunload',function(){document.querySelectorAll('[data-learning-visual]').forEach(function(root){if(root._lvTimer)clearInterval(root._lvTimer);});});
+if(window.addEventListener)window.addEventListener('beforeunload',function(){document.querySelectorAll('[data-learning-visual]').forEach(function(root){if(root._lvTimer)clearInterval(root._lvTimer);});});
 
 function initAgentLearning(){
  const host=document.getElementById('agent-learning-extras');
