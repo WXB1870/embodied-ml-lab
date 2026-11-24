@@ -1207,7 +1207,7 @@
       "面试手撕"
     ],
     "prerequisites": [
-      "vae"
+      "tensor"
     ],
     "objectives": [
       "构造直线路径及其条件速度监督",
