@@ -6,7 +6,7 @@
 <meta name="description" content="下载完整讲义、PyTorch 代码及练习，配置本地运行环境。">
 <link rel="icon" href="/embodied-ml-lab/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/embodied-ml-lab/vendor/katex/katex.min.css"><link rel="stylesheet" href="/embodied-ml-lab/styles.css?v=20261124-pointer-motion">
 <script defer src="/embodied-ml-lab/vendor/katex/katex.min.js"></script><script defer src="/embodied-ml-lab/math.js"></script>
-<script defer src="/embodied-ml-lab/explorers.js"></script><script defer src="/embodied-ml-lab/p0-explorers.js"></script><script defer src="/embodied-ml-lab/deep-explorers.js"></script><script defer src="/embodied-ml-lab/reader.js?v=20261124-curriculum-v2"></script><script defer src="/embodied-ml-lab/app.js?v=20261124-pointer-motion"></script>
+<script defer src="/embodied-ml-lab/explorers.js"></script><script defer src="/embodied-ml-lab/p0-explorers.js"></script><script defer src="/embodied-ml-lab/deep-explorers.js"></script><script defer src="/embodied-ml-lab/reader.js?v=20261124-minimal-ui-2"></script><script defer src="/embodied-ml-lab/app.js?v=20261124-pointer-motion"></script>
 <link rel="canonical" href="https://wxb1870.github.io/embodied-ml-lab/guide/"></head>
 <body>
 <a class="skip-link" href="#main">跳到正文</a>
@@ -15,16 +15,10 @@
 <nav aria-label="主导航"><a href="/embodied-ml-lab/" data-nav="catalog">课程目录</a><a href="/embodied-ml-lab/practice/" data-nav="practice">课程练习</a></nav>
 <button class="search-trigger" data-action="search" aria-label="搜索全文"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span>搜索</span><kbd>⌘ K</kbd></button>
 </div></header>
-<main id="main" tabindex="-1" data-prerendered><div class="page narrow"><header class="page-heading"><h1>学习路线与运行说明</h1></header><section class="guide-section"><h2>五个模块，22 节核心课程</h2><p>课程定位为学院派理论推导、PyTorch 工程实现与面试手撕训练营。建议按以下顺序学习：</p><ol class="reading-routes">
-  <li><strong>网络基础与视觉表征：</strong>Tensor → MLP → CNN。先掌握张量轴、非线性映射和空间感受野。</li>
-  <li><strong>现代 Transformer 与多模态骨干：</strong>Attention → RoPE → Norm/FFN → Multimodal → Mask → KV Cache。</li>
-  <li><strong>生成模型与连续时间建模：</strong>VAE → Flow Matching → Diffusion → Score/SDE → DiT。</li>
-  <li><strong>具身策略架构与动作建模：</strong>BC → Action Chunking / RTC → ACT、Diffusion Policy、Flow Policy → VLA。</li>
-  <li><strong>高效微调与后训练对齐：</strong>LoRA → Policy Gradient → PPO → DPO / GRPO。</li>
-  </ol><p>矩阵求导、激活与初始化、PyTorch 自动微分和训练工程放在附录，按需查阅。Robot Agent 是独立专题，继续学习任务级决策、Skill Runtime、World Model 与 Code Policy Evolution。</p></section><section class="guide-section"><h2>讲义与代码</h2><p>每节包含理论、代码、Python 练习和 PyTorch 练习。先独立实现，再对照参考答案和测试。</p><div class="download-links"><a class="button primary" href="/embodied-ml-lab/downloads/embodied-ml-study-pack.zip" download>下载完整学习包</a><a href="/embodied-ml-lab/downloads/embodied-ml-topics.zip" download>下载专题练习包</a></div></section><section class="guide-section"><h2>本地 PyTorch 环境</h2><p>示例以 Python 3.11 / 3.12 和 CPU PyTorch 为默认环境。GPU 版本按 <a href="https://pytorch.org/get-started/locally/" target="_blank" rel="noopener">PyTorch 官方安装说明</a>选择。</p><pre><code>python -m venv .venv
+<main id="main" tabindex="-1" data-prerendered><div class="page narrow"><header class="page-heading"><h1>下载与运行</h1></header><section class="guide-section"><h2>学习资料</h2><div class="download-links"><a class="button primary" href="/embodied-ml-lab/downloads/embodied-ml-study-pack.zip" download>下载完整学习包</a><a href="/embodied-ml-lab/downloads/embodied-ml-topics.zip" download>下载专题练习包</a></div></section><section class="guide-section"><h2>运行环境</h2><p>Python 3.11 / 3.12 · CPU PyTorch 默认</p><pre><code>python -m venv .venv
 source .venv/bin/activate
-python -m pip install torch</code></pre></section></div></main>
-<footer class="site-footer"><span>Embodied ML</span><a href="/embodied-ml-lab/guide/">下载与说明</a><a href="https://rl-robotics.github.io/" target="_blank" rel="noopener">界面参考</a></footer>
+python -m pip install torch</code></pre><p>GPU 安装方式见 <a href="https://pytorch.org/get-started/locally/" target="_blank" rel="noopener">PyTorch 官方安装说明 ↗</a>。Python 练习可在线运行；PyTorch 练习需本地运行。</p></section><section class="guide-section" id="drafts"><details class="detail-box"><summary>草稿备份</summary><div class="detail-body"><p>草稿保存在当前浏览器；导出包含草稿、笔记与记录，导入会合并草稿和笔记。</p><div class="download-links"><button class="button" data-action="export-drafts">导出备份</button><button class="button" data-action="import-drafts">导入备份</button></div></div></details></section></div></main>
+<footer class="site-footer"><span>Embodied ML</span><a href="/embodied-ml-lab/guide/">下载</a></footer>
 <dialog id="search-dialog" aria-label="搜索全文"><div class="search-head"><input id="search-input" type="search" maxlength="120" placeholder="搜索概念、推导或代码，例如：LayerNorm 梯度" aria-label="搜索全文" autocomplete="off"><button class="icon-button" data-action="close-search" aria-label="关闭搜索">×</button></div><div id="search-results"></div><div class="search-foot">搜索文章正文与代码 <kbd>Esc 关闭</kbd></div></dialog>
 <div id="toast" role="status" aria-live="polite"></div><input id="import-drafts" type="file" accept="application/json,.json" hidden>
 <noscript><p class="noscript-note">正文、公式和代码可直接阅读；在线练习与搜索需要 JavaScript。</p></noscript>
