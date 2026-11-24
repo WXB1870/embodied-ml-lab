@@ -169,7 +169,7 @@ document.addEventListener('visibilitychange',function(){if(document.hidden)docum
 if(window.addEventListener)window.addEventListener('beforeunload',function(){document.querySelectorAll('[data-learning-visual]').forEach(function(root){if(root._lvTimer)clearInterval(root._lvTimer);});});
 
 function initAgentLearning(){
- const host=document.getElementById('agent-learning-extras');
+ const host=document.getElementById?document.getElementById('agent-learning-extras'):null;
  if(!host)return;
  const ids=['agent-loop','skill-runtime','long-vla','world-model','geometry','code-policy','evolution','meta-policy'];
  host.innerHTML='<div class="agent-learning-grid">'+ids.map(function(id){return '<div class="agent-learning-item">'+renderAgentLearning(id)+'</div>';}).join('')+'</div>';
