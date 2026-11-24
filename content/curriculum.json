@@ -82,7 +82,7 @@
       "id": "appendix",
       "name": "附录：训练工程速查",
       "short": "训练工程速查",
-      "desc": "按需查阅经典基础、PyTorch 机制与训练工程实践，不计入 20 节核心课程。",
+      "desc": "按需查阅矩阵求导、初始化、PyTorch 机制与训练工程，不计入核心课程。",
       "lessons": [
         "matrix-grad",
         "activation-init",
@@ -102,7 +102,7 @@
   ],
   "appendix": {
     "title": "附录：训练工程速查",
-    "description": "不占据主干学习流的基础与工程参考。",
+    "description": "按需查阅矩阵求导、初始化、PyTorch 机制与训练工程，不打断核心课程学习流。",
     "lessons": [
       "matrix-grad",
       "activation-init",
