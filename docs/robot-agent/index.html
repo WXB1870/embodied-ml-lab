@@ -164,6 +164,14 @@ decision = agent.choose(
 <p>重点看 observe → reason → act → verify → observe 的因果闭环、Tool / Skill 分离、Host 与 Agent 的执行边界，以及经验如何经过验证后演化。适合学习一个真正的 Robot Agent Runtime 如何组织代码。</p>
 <a href="https://github.com/OpenMOSS/OpenETA" target="_blank" rel="noopener">GitHub 源码</a><a href="https://arxiv.org/abs/2608.03924" target="_blank" rel="noopener">论文</a><a href="https://github.com/OpenMOSS/OpenETA/blob/main/docs/architecture.md" target="_blank" rel="noopener">架构文档</a>
 </div>
+<div class="agent-project" id="roboscript">
+<h3>RoboScript / WICL · 世界交互驱动的任务记忆学习 <span class="agent-priority">2026-11-10 开源</span></h3>
+<p><strong>持续进化方向的重点案例。</strong> 冻结基础模型，先从单条示教学出任务记忆，再在仿真中反复尝试、修订，最后冻结记忆并在未见场景部署。与 RAX 将探索成果编译为可执行代码不同，RoboScript 主要更新可读的 Task Memory（对象角色、工作流、完成条件、结构化抓取/放置参数和失败经验）；可选的 Skill Builder 才负责生成代码技能。这里的 World 指交互环境，而非必须采用学习式 World Model。</p>
+<p><strong>真实执行路径：</strong> Demo Reader → Memory v0 → Actor 调用感知与运动工具 → 环境判定 → Reviser 修改记忆 → 新场景练习 → 冻结部署。部署时 Agent 只能读取 RGB-D、机器人状态和运动规划反馈等可部署信息；Hub 管理工具可见性和执行，独立评测器判定成功。学习阶段允许仿真真值监督，因此不能称作全程无特权数据学习。</p>
+<p><strong>证据：</strong> 作者在 RoboTwin 2.0 全部 50 项任务报告平均成功率 83.4%（clean 83.6%、randomized 83.2%），对照训练策略 61.7%。单条示教不等于一次交互：方法仍需要多轮仿真练习，并可使用预先构建的技能。结果为作者报告，尚未在此独立复现；真机展示涉及跨本体参数适配，公开仓库尚不含完整硬件部署代码。</p>
+<p><strong>源码阅读：</strong> 先读架构与学习协议，再沿 <code>packages/methods/src/roboscript_methods/wicl/</code> 追踪模仿、练习和冻结评测；读 <code>rsi/</code> 理解独立反思文档、规则修订与配对评测。最后从 Mock quickstart 追踪 AgentSession、Hub、工具调用和独立 judge；无需 GPU 或模型即可尝试该示例。重点比较“改任务记忆”“改技能代码”“改模型权重”三条进化路径。</p>
+<a href="https://arxiv.org/abs/2611.12885" target="_blank" rel="noopener">论文</a><a href="https://archeone-ai.github.io/RoboScript/" target="_blank" rel="noopener">项目与实验</a><a href="https://github.com/ArcheOne-AI/RoboScript" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/ArcheOne-AI/RoboScript/blob/main/docs/architecture.md" target="_blank" rel="noopener">架构</a><a href="https://github.com/ArcheOne-AI/RoboScript/blob/main/docs/concepts/learning.md" target="_blank" rel="noopener">学习协议</a><a href="https://github.com/ArcheOne-AI/RoboScript/blob/main/examples/tutorials/quickstart_mock/run.py" target="_blank" rel="noopener">Mock 源码</a>
+</div>
 <div class="agent-project">
 <h3>Voyager · 持续学习与可复用代码技能</h3>
 <p>不是实体机器人项目，而是非常清晰的终身技能学习范例：自动课程、可增长的可执行技能库、执行反馈、自验证和程序迭代。重点迁移其技能检索与程序改进思想，不直接照搬 Minecraft 的环境接口。</p>
@@ -198,7 +206,7 @@ decision = agent.choose(
 <li>轨迹、错误和经验保存在哪里？如何检索？</li>
 <li>Code Policy 如何生成、修改、测试、版本化和晋升？</li>
 </ol>
-<p>推荐顺序：先读 OpenETA 理解物理闭环与执行边界；再读 RAX 理解在线探索和代码技能进化；再读 Voyager 理解技能库与长期积累；随后读 Q0-Preview 和 HoloAgent-0，比较空间推理与空间记忆路线。</p>
+<p>推荐顺序：先读 OpenETA 理解物理闭环与执行边界；再读 RAX 理解在线探索和代码技能进化；对照 RoboScript 理解任务记忆如何在不改模型权重的情况下持续优化；再读 Voyager 理解技能库与长期积累；随后读 Q0-Preview 和 HoloAgent-0，比较空间推理与空间记忆路线。</p>
 </section>
 
 <section class="article-section" id="capstone">
