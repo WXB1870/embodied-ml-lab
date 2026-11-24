@@ -250,3 +250,5 @@ body{
  .reader-body>.article-intro{font-size:14px;margin-bottom:14px!important}
  .article-section{margin:30px 0}
 }
+/* Minimal interface: keep structure and accessible names, remove repeated helper chrome. */
+.search-foot,.reader-sidebar>p,.site-footer a[href="https://rl-robotics.github.io/"]{display:none!important}
