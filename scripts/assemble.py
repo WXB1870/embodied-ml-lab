@@ -58,25 +58,19 @@ for number,l in enumerate(lessons,1):
         advanced_labs=set(t.get('advancedLabIds', []))
         l['extraLabs']=copy.deepcopy([d for d in t['labs'] if d['id'] not in advanced_labs])
         l['advancedLabs']=copy.deepcopy([d for d in t['labs'] if d['id'] in advanced_labs])
-required=['id','number','module','title','subtitle','minutes','tags','prerequisites','objectives','why','lead','sections','shapes','code','exercise','pytorchTask','pitfalls','sources','knowledgeChecks']
+required=['id','number','module','title','subtitle','minutes','tags','prerequisites','objectives','why','lead','sections','sources']
 for l in lessons:
     for k in required: assert k in l,(l['id'],k)
     for p in l['prerequisites']: assert p in ids,(l['id'],'unknown prerequisite',p)
-    assert len(l['sections'])>=3
-    assert len(l['knowledgeChecks'])>=2
-    for q in l['knowledgeChecks']:
-        assert q['question'] and isinstance(q['answer'],list) and len(q['answer'])>=1
-        if not l.get('theoryTopic'):
-            assert q.get('acceptance'),(l['id'],'knowledge check needs acceptance criteria')
-            assert q.get('codeFocus'),(l['id'],'knowledge check needs code focus')
-    for key in ['exercise','pytorchTask']:
-        assert l[key].get('hints') and l[key].get('explanation'),(l['id'],key,'missing answer explanation')
+    assert (len(l['sections'])==4 if l.get('theoryOnly') else len(l['sections'])>=3),(l['id'],'invalid section count')
     for section in l['sections']:
         assert isinstance(section.get('lead'),str) and section['lead'].strip(),(l['id'],section.get('id'),'missing section introduction')
-        if 'afterParagraph' in section.get('example',{}):
-            assert 0<=section['example']['afterParagraph']<=len(section['body']),(l['id'],section['id'],'example placement')
-        if section.get('code'):compile(section['code'],l['id']+'/section','exec')
-        if section.get('codeKind')=='fragment':assert section.get('codeExplanation'),(l['id'],section['id'],'fragment needs context')
+        assert len(section.get('body',[]))>=2,(l['id'],section.get('id'),'insufficient section content')
+        if section.get('code') and not l.get('theoryOnly'):compile(section['code'],l['id']+'/section','exec')
+        if section.get('comparison'):
+            comparison=section['comparison']
+            assert comparison.get('title') and len(comparison.get('columns',[]))>=2 and comparison.get('rows'),(l['id'],section['id'],'invalid comparison matrix')
+            assert all(len(row)==len(comparison['columns']) for row in comparison['rows']),(l['id'],section['id'],'comparison row shape')
         for figure in section.get('figures',[section['figure']] if section.get('figure') else []):
             assert figure.get('alt') and figure.get('caption'),(l['id'],section['id'],'figure needs description')
             if 'afterParagraph' in figure:assert type(figure['afterParagraph']) is int and 0<=figure['afterParagraph']<=len(section['body']),(l['id'],section['id'],'figure position')
@@ -90,6 +84,21 @@ for l in lessons:
         if section.get('focus'):
             focus=section['focus']
             assert focus.get('kind') in ['常用','易错'] and all(focus.get(k) for k in ['title','explanation','check']),(l['id'],'invalid focus block')
+    for source in l['sources']:assert source['url'].startswith('https://')
+    if l.get('theoryOnly'):
+        assert not any(k in l for k in ['code','exercise','pytorchTask','extraImplementations','extraLabs']),(l['id'],'theory-only course must not contain code or practice payloads')
+        assert not l.get('knowledgeChecks'),(l['id'],'theory-only course must not add practice questions')
+        continue
+    required_teaching=['shapes','code','exercise','pytorchTask','pitfalls','knowledgeChecks']
+    for k in required_teaching:assert k in l,(l['id'],k)
+    assert len(l['knowledgeChecks'])>=2
+    for q in l['knowledgeChecks']:
+        assert q['question'] and isinstance(q['answer'],list) and len(q['answer'])>=1
+        if not l.get('theoryTopic'):
+            assert q.get('acceptance'),(l['id'],'knowledge check needs acceptance criteria')
+            assert q.get('codeFocus'),(l['id'],'knowledge check needs code focus')
+    for key in ['exercise','pytorchTask']:
+        assert l[key].get('hints') and l[key].get('explanation'),(l['id'],key,'missing answer explanation')
     for e in l['code']['explanations']:
         line_numbers=[int(n) for n in re.findall(r'\d+',str(e['lines']))]
         assert line_numbers and min(line_numbers)>0 and max(line_numbers)<=len(l['code']['source'].splitlines()),(l['id'],'invalid code explanation',e)
@@ -99,7 +108,6 @@ for l in lessons:
             numbers=[int(n) for n in re.findall(r'\d+',str(e['lines']))]
             assert numbers and 0<min(numbers)<=max(numbers)<=len(demo['source'].splitlines()),(l['id'],demo['id'],'invalid explanation')
     assert len(l.get('extraImplementations',[]))==len({d['id'] for d in l.get('extraImplementations',[])}),(l['id'],'duplicate implementation')
-    for s in l['sources']:assert s['url'].startswith('https://')
     for code in [l['code']['source'],l['exercise']['starter'],l['exercise']['solution'],l['exercise']['tests'],l['pytorchTask']['starter'],l['pytorchTask']['solution'],l['pytorchTask']['tests']]:compile(code,l['id'],'exec')
 # Check the course dependency graph is acyclic.
 visited=set();visiting=set();lookup={l['id']:l for l in lessons}
@@ -119,7 +127,7 @@ for asset in ['app.js','reader.js','styles.css','math.js','explorers.js','p0-exp
     shutil.copyfile(source,dist/asset)
 # Preserve the old URL as a compatibility redirect; Robot Agent is now a core curriculum module.
 agent_target=dist/'robot-agent';agent_target.mkdir(parents=True,exist_ok=True)
-legacy_target=site_url+'/learn/robot-agent-loop/'
+legacy_target=site_url+'/learn/agent-architecture/'
 (agent_target/'index.html').write_text(
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
     '<meta name="robots" content="noindex">'
@@ -193,47 +201,16 @@ for l in lessons:readme+=f"- {l['number']:02d} {l['title']} (`{l['id']}`)\n"
 def lesson_markdown(l):
     text=f"# {l['title']}\n\n{l['subtitle']}\n\n"
     if l.get('lead'):text+=l['lead']+'\n\n'
-    text+='## 学习目标\n\n'+'\n'.join('- '+objective for objective in l['objectives'])+'\n\n'
     if l.get('prerequisites'):text+='前置知识：'+' · '.join(f"[{lookup[id]['title']}]({site_url}/learn/{id}/)" for id in l['prerequisites'])+'\n\n'
     for section in l['sections']:
-        text+='## '+section['title']+'\n\n'+section.get('lead','')+'\n\n'+section_figures_markdown(section,'../',0)+'\n\n'+section_example_markdown(section,0)+'\n\n'
-        for i,paragraph in enumerate(section['body'],1):
-            text+=paragraph+'\n\n'+section_figures_markdown(section,'../',i)+'\n\n'+section_example_markdown(section,i)+'\n\n'
-        if section.get('formula'):text+='$$\n'+section['formula']+'\n$$\n\n'
-        if section.get('bullets'):text+='\n'.join('- '+x for x in section['bullets'])+'\n\n'
-        if section.get('code'):
-            if section.get('codeKind')=='fragment':text+='实现片段（所需上下文见代码说明）：\n\n'
-            text+='```python\n'+section['code']+'\n```\n\n'+section.get('codeExplanation','')+'\n\n'
+        text+='## '+section['title']+'\n\n'+section.get('lead','')+'\n\n'
+        for paragraph in section['body']:text+=paragraph+'\n\n'
+        if section.get('comparison'):
+            comp=section['comparison'];text+='### '+comp['title']+'\n\n| '+' | '.join(comp['columns'])+' |\n| '+' | '.join(['---']*len(comp['columns']))+' |\n'
+            for row in comp['rows']:text+='| '+' | '.join(str(cell).replace('|','\\|') for cell in row)+' |\n'
+            text+='\n'
         text+=section_learning_markdown(section, '../')+'\n\n'
-    text+='## 张量形状\n\n| 变量 | 形状 | 含义 |\n|---|---|---|\n'
-    for shape in l['shapes']:text+='| '+' | '.join(str(shape[k]).replace('|','\\|') for k in ['name','shape','meaning'])+' |\n'
-    text+='\n## 完整代码与精读\n\n'
-    primary=next((d for d in l.get('extraImplementations',[]) if d['id']==l.get('mainImplementation')),None)
-    if primary:
-        text+='### 本章贯穿案例：'+primary['title']+'\n\n'+primary['description']+'\n\n'
-        text+='[先运行主案例](../topics/'+l['theoryTopic']+'/demos/'+primary['id']+'.py)\n\n预期观察：'+primary['expected']+'\n\n'
-        text+='\n'.join('- 第 '+e['lines']+' 行：'+e['text'] for e in primary['explanations'])+'\n\n'
-        text+='### 补充演示\n\n'
-    if l['code'].get('runtimeNote'):text+=l['code']['runtimeNote']+'\n\n'
-    text+='```python\n'+l['code']['source']+'\n```\n\n'
-    text+='\n'.join('- 第 '+e['lines']+' 行：'+e['text'] for e in l['code']['explanations'])+'\n\n预期观察：'+l['code']['expected']+'\n\n'
-    for demo in l.get('extraImplementations',[]):
-        if demo is primary:continue
-        source=f"../topics/{l['theoryTopic']}/demos/{demo['id']}.py" if l.get('theoryTopic') else f"../demos/{l['id']}/{demo['id']}.py"
-        text+='### '+demo['title']+'\n\n'+demo['description']+'\n\n[完整可运行代码]('+source+')\n\n'
-        text+='\n'.join('- 第 '+e['lines']+' 行：'+e['text'] for e in demo['explanations'])+'\n\n预期观察：'+demo['expected']+'\n\n'
-    for title,key in [('浏览器 Python 练习','exercise'),('本地 PyTorch 练习','pytorchTask')]:
-        task=l[key];text+='## '+title+'\n\n'+task['prompt']+'\n\n```python\n'+task['starter']+'\n```\n\n### 提示\n\n'+'\n'.join('- '+h for h in task['hints'])+'\n\n### 参考实现与解释\n\n```python\n'+task['solution']+'\n```\n\n'+task['explanation']+'\n\n### 断言测试\n\n```python\n'+task['tests']+'\n```\n\n'
-    for lab in l.get('extraLabs',[]):
-        base=f"../topics/{l['theoryTopic']}"
-        text+='### 练习：'+lab['title']+'\n\n'+lab['prompt']+'\n\n[练习与测试]('+base+'/exercises/'+lab['id']+'.py) · [参考实现]('+base+'/solutions/'+lab['id']+'.py)\n\n'+lab['explanation']+'\n\n'
-    text+='## 练习：推导与分析\n\n'
-    for q in l['knowledgeChecks']:
-        text+='### '+q['question']+'\n\n'+'\n\n'.join(q['answer'])+'\n\n'
-        if q.get('codeFocus'):text+='代码定位：'+q['codeFocus']+'\n\n'
-        if q.get('acceptance'):text+='\n'.join('- '+x for x in (q['acceptance'] if isinstance(q['acceptance'],list) else [q['acceptance']]))+'\n\n'
-    text+='## 练习：辨析与纠错\n\n'+'\n\n'.join('### '+x['title']+'\n\n'+x['detail'] for x in l['pitfalls'])+'\n\n'
-    text+='## 原始资料\n\n'+'\n'.join(f"- [{s['title']}]({s['url']})" for s in l['sources'])+'\n'
+    text+='## 代表项目与参考资料\n\n'+'\n'.join(f"- [{item['title']}]({item['url']})" for item in l['sources'])+'\n'
     return text
 report=root/'validation.json'
 if report.exists():
@@ -282,6 +259,7 @@ with zipfile.ZipFile(downloads/'embodied-ml-study-pack.zip','w',zipfile.ZIP_DEFL
     for l in lessons:
         prefix=f"{l['number']:02d}_{l['id']}"
         z.writestr(f'lessons/{prefix}.md',lesson_markdown(l))
+        if l.get('theoryOnly'):continue
         z.writestr(f'demos/{prefix}_demo.py',l['code']['source']+'\n')
         if not l.get('theoryTopic'):
             for demo in l.get('extraImplementations',[]):z.writestr(f"demos/{l['id']}/{demo['id']}.py",demo['source']+'\n')
