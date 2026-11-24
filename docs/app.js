@@ -38,7 +38,8 @@ const moduleFor=l=>MODULES.find(m=>m.id===l.module)||(l.module==='legacy'?{name:
 const LEGACY_LESSON_IDS={
  embeddings:'rope',normalization:'norm-ffn','tokenizer-autoregressive':'masking-autoregressive','kv-cache-inference':'kv-cache',
  'latent-variable-models':'vae','action-chunk':'action-chunking',finetuning:'lora',
- 'contrastive-pretraining':'multimodal','conditioning-fusion':'dit-adaln'
+ 'contrastive-pretraining':'multimodal','conditioning-fusion':'dit-adaln',
+ 'robot-agent-loop':'agent-architecture','robot-skill-runtime':'skill-orchestration','robot-vla-skill':'skill-orchestration','robot-world-model':'skill-orchestration','robot-perception-tools':'skill-orchestration','robot-agent-memory':'planning-memory','robot-code-policy-evolution':'planning-memory','robot-agent-evaluation':'agent-evaluation'
 };
 for(const [oldId,newId] of Object.entries(LEGACY_LESSON_IDS)){
  for(const bucket of ['drafts','notes','passed','viewed']){
