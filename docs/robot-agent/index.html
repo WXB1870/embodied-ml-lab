@@ -521,7 +521,7 @@ decision = agent.rank_options(
 )</div>
 <p>要区分视频生成、潜空间动力学、结构化几何/接触模型和可用于规划的预测接口。只有预测输出能与候选动作、真实执行结果对齐，并且在不确定时能触发主动观察，才真正构成有用的 Agent Tool。</p>
 <h3>7.5 Memory、数据库与任务状态工具</h3>
-<p>数据库和记忆工具对 Robot Agent 有用，但它们服务的是机器人任务，不是通用 Coding Agent。常见运行时接口包括：</p>
+<p>数据库和记忆工具服务于机器人任务状态、历史 Episode 和可复用 Skill。常见运行时接口包括：</p>
 <ul>
 <li><code>get_world_state()</code>：读取当前物体、部件、机器人和任务状态。</li>
 <li><code>query_episodes(filters)</code>：按机器人本体、物体类别、任务阶段、失败码和 Skill 版本筛选历史 Episode。</li>
