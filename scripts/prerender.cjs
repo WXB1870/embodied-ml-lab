@@ -26,15 +26,16 @@ const pages=[];
 function page(route,title,description,expression,{noindex=false,redirect}={}){
  location.pathname=sitePath(route);location.search=route.includes('/code/')?'?tab=code':route.includes('/exercise/')?'?tab=exercise':'';
  vm.runInContext('state=emptyState();currentLesson=null;currentTab="theory";',context);
+ const activeNav=route==='/practice/'?'practice':route==='/guide/'?'guide':'catalog';
  const content=vm.runInContext('normalizeInternalLinks('+expression+')',context);
  formulas+=(content.match(/class="katex"/g)||[]).length;
  let html=shell.replace(/<title>[\s\S]*?<\/title>/,`<title>${escape(title)} · Embodied ML Lab</title>`)
   .replace(/<meta name="description" content="[^"]*">/,`<meta name="description" content="${escape(description)}">`)
   .replace('<head>',`<head><script>window.EML_BASE_PATH=${JSON.stringify(basePath)};</script>`)
   .replace('</head>',`<link rel="canonical" href="${origin+sitePath(route)}">${noindex?'<meta name="robots" content="noindex">':''}${redirect?'<meta http-equiv="refresh" content="0;url='+escape(sitePath(redirect))+'">':''}</head>`)
+  .replace('data-nav="'+activeNav+'"', 'data-nav="'+activeNav+'" aria-current="page"')
   .replace(/<main id="main"[\s\S]*?<\/main>/,`<main id="main" tabindex="-1" data-prerendered>${content}</main>`);
  if(content.includes('data-course-lab='))html=html
-  .replace(/(src="\/(?:reader|app)\.js)\?v=[^"]+/g,'$1?v=20261124-lesson-labs')
   .replace('</head>','<link rel="stylesheet" data-course-lab-style href="/labs/labs.css?v=lesson"></head>');
  html=vm.runInContext('normalizeInternalLinks('+JSON.stringify(html)+')',context);
  const file=route==='/404/'?path.join(dist,'404.html'):path.join(dist,route,'index.html');

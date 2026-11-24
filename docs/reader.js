@@ -8,21 +8,75 @@ const TOPIC_META={
 };
 const CORE_LESSON_TOPIC={mlp:'mlp','cnn-receptive-field':'cnn',attention:'transformer','flow-matching':'flow-matching'};
 
+const COURSE_STAGES=['基础与骨干','生成与策略','对齐与智能体'];
+const COURSE_ROADMAP={
+ 'network-foundations':['Tensor & Backbone','M4 4h16v16H4zM4 12h16M12 4v16'],
+ transformers:['Transformer / VLM','M5 5h4v4H5zM15 5h4v4h-4zM10 15h4v4h-4zM7 9v3l5 3 5-3V9'],
+ generative:['Diffusion / Flow','M3 17c4 0 4-10 9-10s5 6 9 6M3 12c4 0 4-6 9-6s5 11 9 11'],
+ policies:['Embodied Policy / VLA','M4 12h3l3-6 4 12 3-6h3'],
+ posttraining:['Post-Training','M5 5v14h14M8 15l4-4 3 2 5-6M16 7h4v4'],
+ 'robot-agent':['Robot Agent','M5 8h14v11H5zM12 8V4m-3 8v2m6-2v2M2 12h3m14 0h3']
+};
+function catalogIcon(path){
+ return `<svg class="line-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${path}"/></svg>`;
+}
+function renderRoadmap(modules){
+ return `<nav class="roadmap" aria-labelledby="roadmap-heading">
+  <h2 id="roadmap-heading">学习路线</h2>
+  <div class="roadmap-layout">
+   <svg class="roadmap-wires" viewBox="0 0 400 240" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M93 34H307V120H93V206H307"/>
+    <path class="wire-arrows" d="m198 30 4 4-4 4m105 34 4 4 4-4m-109 44-4 4 4 4m-113 37 4 4 4-4m101 41 4 4-4 4"/>
+   </svg>
+   <ol>${modules.filter(m=>Object.hasOwn(COURSE_ROADMAP,m.id)).map(m=>{
+    const [label,path]=COURSE_ROADMAP[m.id];
+    return `<li><a class="roadmap-node" href="#chapter-${m.id}">${catalogIcon(path)}<span>${esc(label)}</span></a></li>`;
+   }).join('')}</ol>
+  </div>
+ </nav>`;
+}
 function renderCatalog(){
  const last=lastReading(),coreModules=MODULES.filter(m=>m.id!=='appendix'),appendix=MODULES.find(m=>m.id==='appendix');
- const courseList=ids=>'<ul>'+ids.map(id=>'<li><a href="'+lessonHref(id)+'">'+esc(curriculum.lessonTitles[id]??byId[id].title)+'<span aria-hidden="true">→</span></a></li>').join('')+'</ul>';
- const chapters=coreModules.map((m,i)=>
-  '<section class="chapter" id="chapter-'+m.id+'"><header class="chapter-heading"><span class="chapter-number">'+pad(i+1)+'</span><h3>'+esc(m.name)+'</h3></header>'+courseList(m.lessons)+'</section>'
- ).join('');
- const appendixGroups=appendix.groups.map(group=>
-  '<section class="chapter" id="chapter-'+group.id+'"><h2>'+esc(group.name)+'</h2>'+courseList(group.lessons)+'</section>'
- ).join('');
- return '<div class="page catalog-page"><header class="catalog-heading"><h1>具身智能与大模型算法研发</h1>'+
-  '<p>学院派公式推导 · PyTorch 算子手撕 · 机器人 Agent 系统设计</p>'+
-  '<div class="catalog-actions"><a class="button" href="/practice/">PyTorch 手撕题库 →</a><a class="button" href="#chapter-robot-agent">06 具身智能体与技能编排 →</a></div></header>'+
-  (last?'<p class="resume-line">继续阅读 <a href="'+esc(last.href)+'">'+esc(last.title)+' →</a></p>':'')+
-  '<section class="course-catalog" aria-labelledby="catalog-heading"><div class="section-heading"><h2 id="catalog-heading">课程目录</h2><a href="/practice/">手撕题库 →</a></div><div class="chapter-list">'+chapters+'</div></section>'+
-  '<div class="chapter-list appendix-groups" id="chapter-appendix">'+appendixGroups+'</div></div>';
+ const coreCount=coreModules.reduce((count,m)=>count+m.lessons.length,0);
+ const courseList=(ids,compact=false)=>`<ul class="${compact?'appendix-links':'course-links'}">${ids.map(id=>`<li><a href="${lessonHref(id)}"><span>${esc(curriculum.lessonTitles[id]??byId[id].title)}</span>${state.viewed[id]?'<span class="visited-mark" role="img" aria-label="已访问" title="已访问">✓</span>':''}<span class="course-arrow" aria-hidden="true">→</span></a></li>`).join('')}</ul>`;
+ const chapters=coreModules.map((m,i)=>`<section class="chapter" data-stage="${Math.floor(i/2)}" id="chapter-${m.id}" tabindex="-1">
+  <header class="chapter-heading"><span class="chapter-number" aria-hidden="true">${pad(i+1)}</span>
+   <div><span class="chapter-stage">${COURSE_STAGES[Math.floor(i/2)]}</span><h3>${esc(m.name)}</h3></div>
+   <span class="chapter-count">${m.lessons.length} 篇</span>
+  </header>${courseList(m.lessons)}
+ </section>`).join('');
+ const appendixGroups=appendix.groups.map(group=>`<section class="appendix-group" id="chapter-${group.id}">
+  <h3>${catalogIcon(group.id==='appendix-a'?'M18 4H6l6 8-6 8h12':'m13 2-9 12h7l-1 8 10-12h-7z')}${esc(group.name)}<span class="chapter-count">${group.lessons.length} 篇</span></h3>
+  ${courseList(group.lessons,true)}
+ </section>`).join('');
+ return `<div class="page catalog-page">
+  <header class="catalog-heading">
+   <div class="hero-copy">
+    <a class="announcement" href="#chapter-robot-agent"><span>NEW</span> 具身智能体与技能编排 <span class="announcement-arrow" aria-hidden="true">→</span></a>
+    <h1>具身智能与<span>大模型算法研发</span></h1>
+    <p>学院派公式推导 · PyTorch 算子手撕 · 机器人 Agent 系统设计</p>
+    <div class="catalog-actions">
+     <a class="button primary" href="/practice/">进入 PyTorch 手撕题库 <span aria-hidden="true">→</span></a>
+     <a class="button" href="#catalog-heading">浏览全部课程目录</a>
+    </div>
+    <ul class="catalog-stats" aria-label="课程概览">
+     <li><strong>${coreModules.length}</strong> 大核心模块</li>
+     <li><strong>${coreCount}</strong> 篇课程精讲</li>
+     <li><strong>${appendix.lessons.length}</strong> 份工程与数学速查</li>
+    </ul>
+   </div>
+   ${renderRoadmap(coreModules)}
+  </header>
+  <section class="course-catalog" aria-labelledby="catalog-heading">
+   <div class="section-heading"><h2 id="catalog-heading">课程目录</h2>
+   ${last?`<a class="resume-line" href="${esc(last.href)}">继续阅读 <strong>${esc(last.title)}</strong> <span aria-hidden="true">→</span></a>`:''}</div>
+   <div class="chapter-list">${chapters}</div>
+  </section>
+  <section class="appendix-toolbox" id="chapter-appendix" aria-labelledby="toolbox-heading">
+   <h2 id="toolbox-heading">工程与数学速查工具箱</h2>
+   <div class="appendix-groups">${appendixGroups}</div>
+  </section>
+ </div>`;
 }
 
 function sectionHref(kind,item,section,index){return kind==='topic'?topicHref(item.id,'guide','&section='+section.id):lessonHref(item.id)+'&section='+(section.id??index);}
@@ -341,20 +395,42 @@ function renderExercise(l,mode,singleRuntime=false){
  const isTorch=mode==='torch',task=isTorch?l.pytorchTask:l.exercise;
  const draft=state.drafts[l.id+':'+mode]??task.starter;
  const filename=pad(l.number)+'_'+l.id+'_'+(isTorch?'torch':'practice')+'.py';
- return `${!singleRuntime?`<div class="runtime-tabs" aria-label="运行环境"><button class="${!isTorch?'active':''}" data-action="runtime" data-mode="python">Python · 在线运行</button><button class="${isTorch?'active':''}" data-action="runtime" data-mode="torch">PyTorch · 本地运行</button></div>`:''}<div class="exercise-head" id="exercise-task" data-reading-section><h2>${inline(task.title||(isTorch?'PyTorch 实现':'Python 实现'))}</h2>${proseParagraphs(task.prompt)}</div><details class="detail-box" id="exercise-tests" data-reading-section><summary>测试用例</summary><div class="detail-body">${codeBlock(task.tests,'tests.py')}</div></details><p class="runtime-note" id="editor-help">Tab 缩进 · Shift+Tab 反缩进 · Enter 自动缩进 · Esc 后按 Tab 移出编辑器。可拖动编程区右下角调整高度。</p><div class="editor-shell" id="exercise-editor" data-reading-section data-mode="${mode}"><div class="editor-toolbar"><span>${pad(l.number)}_${l.id}_${isTorch?'torch':'practice'}.py</span><small>草稿自动保存</small></div><div class="editor-wrap"><pre class="editor-lines" aria-hidden="true">${draft.split('\n').map((_,i)=>i+1).join('\n')}</pre><textarea id="code-editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-describedby="editor-help" aria-label="${isTorch?'PyTorch':'Python'} 代码编辑器">${esc(draft)}</textarea></div><div class="editor-controls">${isTorch?'<button class="button primary" data-action="download-exercise">下载代码与测试</button>':'<button class="button primary" id="run-tests" data-action="run-tests">运行测试</button><button class="button" data-action="run-code">仅运行代码</button><button class="button" data-action="stop-code" hidden>停止</button><button class="text-button" data-action="download-exercise">下载 .py</button>'}<button class="text-button" data-action="copy-exercise">复制代码</button><button class="text-button" data-action="reset-code">恢复题目</button>${!isTorch?'<small>⌘ / Ctrl + Enter 测试 · 加 Shift 仅运行</small>':''}</div></div>${isTorch?`<p class="runtime-note">下载后在文件所在目录运行 <code>python ${esc(filename)}</code>。可先在这里编辑和复制代码；测试需使用本地 Python + PyTorch。<a href="#/guide">环境配置 →</a></p>`:`<details class="detail-box"><summary>自定义试运行（可选）</summary><div class="detail-body"><p class="runtime-note">调用上方实现的函数，用 print(...) 查看结果或用 assert 检查自己的例子。“仅运行代码”会执行此区；“运行测试”使用题目测试，不执行此区。草稿自动保存。</p><textarea id="try-code" class="try-code" spellcheck="false" autocapitalize="off" autocorrect="off" aria-label="自定义 Python 试运行代码" placeholder="例如：print(你的函数(...))">${esc(state.drafts[l.id+':scratch']??'')}</textarea></div></details><div class="output-panel"><div class="output-title"><span>运行结果</span><span id="run-status">等待运行</span></div><pre class="output-console" id="code-output" aria-live="polite">补全 TODO 后运行测试；也可在自定义试运行区调用函数并 print(...)。测试失败时查看 your_code.py 或 tests.py 的行号与断言。</pre></div>`}${task.hints?.length?`<details class="detail-box" id="exercise-hints" data-reading-section><summary>提示</summary><div class="detail-body"><p class="runtime-note">每次只展开一个提示，回到编程区尝试后再继续。</p>${task.hints.map((h,i)=>`<details><summary>提示 ${i+1}</summary><p>${inline(h)}</p></details>`).join('')}</div></details>`:''}<details class="detail-box solution-box" id="exercise-solution" data-reading-section><summary>参考实现与说明</summary><div class="detail-body"><p class="runtime-note">核对思路后，试着收起答案、恢复题目并独立重写；通过测试只表示满足本题提供的检查。</p>${codeBlock(task.solution,'参考实现')}${proseParagraphs(task.explanation)}<button class="button" data-action="fill-solution">将参考实现填入编辑器</button></div></details>`;
+ return `${!singleRuntime?`<div class="runtime-tabs" aria-label="运行环境"><button class="${!isTorch?'active':''}" aria-pressed="${!isTorch}" data-action="runtime" data-mode="python">Python · 在线运行</button><button class="${isTorch?'active':''}" aria-pressed="${isTorch}" data-action="runtime" data-mode="torch">PyTorch · 本地运行</button></div>`:''}<div class="exercise-head" id="exercise-task" data-reading-section><h2>${inline(task.title||(isTorch?'PyTorch 实现':'Python 实现'))}</h2>${proseParagraphs(task.prompt)}</div><details class="detail-box" id="exercise-tests" data-reading-section><summary>测试用例</summary><div class="detail-body">${codeBlock(task.tests,'tests.py')}</div></details><p class="runtime-note" id="editor-help">Tab 缩进 · Shift+Tab 反缩进 · Enter 自动缩进 · Esc 后按 Tab 移出编辑器。可拖动编程区右下角调整高度。</p><div class="editor-shell" id="exercise-editor" data-reading-section data-mode="${mode}"><div class="editor-toolbar"><span>${pad(l.number)}_${l.id}_${isTorch?'torch':'practice'}.py</span><small>草稿自动保存</small></div><div class="editor-wrap"><pre class="editor-lines" aria-hidden="true">${draft.split('\n').map((_,i)=>i+1).join('\n')}</pre><textarea id="code-editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" wrap="off" aria-describedby="editor-help" aria-label="${isTorch?'PyTorch':'Python'} 代码编辑器">${esc(draft)}</textarea></div><div class="editor-controls">${isTorch?'<button class="button primary" data-action="download-exercise">下载代码与测试</button>':'<button class="button primary" id="run-tests" data-action="run-tests">运行测试</button><button class="button" data-action="run-code">仅运行代码</button><button class="button" data-action="stop-code" hidden>停止</button><button class="text-button" data-action="download-exercise">下载 .py</button>'}<button class="text-button" data-action="copy-exercise">复制代码</button><button class="text-button" data-action="reset-code">恢复题目</button>${!isTorch?'<small>⌘ / Ctrl + Enter 测试 · 加 Shift 仅运行</small>':''}</div></div>${isTorch?`<p class="runtime-note">下载后在文件所在目录运行 <code>python ${esc(filename)}</code>。可先在这里编辑和复制代码；测试需使用本地 Python + PyTorch。<a href="#/guide">环境配置 →</a></p>`:`<details class="detail-box"><summary>自定义试运行（可选）</summary><div class="detail-body"><p class="runtime-note">调用上方实现的函数，用 print(...) 查看结果或用 assert 检查自己的例子。“仅运行代码”会执行此区；“运行测试”使用题目测试，不执行此区。草稿自动保存。</p><textarea id="try-code" class="try-code" spellcheck="false" autocapitalize="off" autocorrect="off" aria-label="自定义 Python 试运行代码" placeholder="例如：print(你的函数(...))">${esc(state.drafts[l.id+':scratch']??'')}</textarea></div></details><div class="output-panel"><div class="output-title"><span>运行结果</span><span id="run-status">等待运行</span></div><pre class="output-console" id="code-output" aria-live="polite">补全 TODO 后运行测试；也可在自定义试运行区调用函数并 print(...)。测试失败时查看 your_code.py 或 tests.py 的行号与断言。</pre></div>`}${task.hints?.length?`<details class="detail-box" id="exercise-hints" data-reading-section><summary>提示</summary><div class="detail-body"><p class="runtime-note">每次只展开一个提示，回到编程区尝试后再继续。</p>${task.hints.map((h,i)=>`<details><summary>提示 ${i+1}</summary><p>${inline(h)}</p></details>`).join('')}</div></details>`:''}<details class="detail-box solution-box" id="exercise-solution" data-reading-section><summary>参考实现与说明</summary><div class="detail-body"><p class="runtime-note">核对思路后，试着收起答案、恢复题目并独立重写；通过测试只表示满足本题提供的检查。</p>${codeBlock(task.solution,'参考实现')}${proseParagraphs(task.explanation)}<button class="button" data-action="fill-solution">将参考实现填入编辑器</button></div></details>`;
 }
 function renderPractice(){
  const topicGroups=practiceFilter==='all'||practiceFilter==='topics'?topics:[];
- const modules=MODULES.filter(m=>(practiceFilter==='all'||practiceFilter===m.id)&&lessons.some(l=>l.module===m.id&&!l.theoryOnly));
- return `<div class="page practice-page"><header class="page-heading"><h1>手撕题库</h1></header><label class="practice-filter">按主题查看<select id="practice-module"><option value="all">全部主题</option><option value="topics" ${practiceFilter==='topics'?'selected':''}>专题进阶练习</option>${MODULES.filter(m=>lessons.some(l=>l.module===m.id&&!l.theoryOnly)).map(m=>`<option value="${m.id}" ${practiceFilter===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}</select></label>${modules.map(m=>`<section class="practice-chapter"><h2>${esc(m.name)}</h2><div class="practice-rows">${lessons.filter(l=>l.module===m.id&&!l.theoryOnly).map(l=>`<div class="practice-row"><a class="practice-course" href="${lessonHref(l.id)}">${esc(l.title)}</a><a href="${lessonHref(l.id,'exercise')}">Python →</a><a href="${lessonHref(l.id,'exercise','torch')}">PyTorch →</a></div>`).join('')}</div></section>`).join('')}${topicGroups.length?`<section><h2>专题进阶练习</h2><div class="practice-topic-grid">${topicGroups.map(t=>`<section class="practice-topic"><h3>${esc(TOPIC_META[t.id].name)}</h3><ul>${t.labs.map(l=>`<li><a href="${topicHref(t.id,'labs','&lab='+l.id)}"><span>${esc(l.title)}</span><small>${l.runtime==='python'?'Python':'PyTorch'} →</small></a></li>`).join('')}</ul></section>`).join('')}</div></section>`:''}</div>`;
+ const groups=MODULES.map(module=>({module,entries:module.lessons.map(id=>byId[id]).filter(l=>!l.theoryOnly)})).filter(group=>group.entries.length);
+ const visible=groups.filter(({module})=>practiceFilter==='all'||practiceFilter===module.id);
+ return `<div class="page practice-page">
+  <header class="page-heading"><h1>手撕题库</h1><p>练习公式推导、Python 编程与 PyTorch 算子实现。</p></header>
+  <label class="practice-filter">按主题查看<select id="practice-module">
+   <option value="all">全部主题</option>
+   <option value="topics" ${practiceFilter==='topics'?'selected':''}>专题进阶练习</option>
+   ${groups.map(({module:m})=>`<option value="${m.id}" ${practiceFilter===m.id?'selected':''}>${esc(m.name)}</option>`).join('')}
+  </select></label>
+  ${visible.map(({module:m,entries})=>`<section class="practice-chapter">
+   <header class="practice-section-heading"><h2>${esc(m.name)}</h2><span class="badge badge-practice">基础实现</span></header>
+   <ul class="practice-rows">${entries.map(l=>`<li class="practice-row">
+    <a class="practice-course" href="${lessonHref(l.id)}"><span>${esc(l.title)}</span>${l.tags[0]?`<small class="badge badge-neutral">${esc(l.tags[0])}</small>`:''}</a>
+    <a class="practice-option" href="${lessonHref(l.id,'exercise')}">Python <span aria-hidden="true">→</span></a>
+    <a class="practice-option" href="${lessonHref(l.id,'exercise','torch')}">PyTorch <span aria-hidden="true">→</span></a>
+   </li>`).join('')}</ul>
+  </section>`).join('')}
+  ${topicGroups.length?`<section class="practice-advanced">
+   <header class="practice-section-heading"><h2>专题进阶练习</h2><span class="badge badge-practice">进阶</span></header>
+   <div class="practice-topic-grid">${topicGroups.map(t=>`<section class="practice-topic">
+    <h3>${esc(TOPIC_META[t.id].name)}</h3><ul>${t.labs.map(l=>`<li><a href="${topicHref(t.id,'labs','&lab='+l.id)}"><span>${esc(l.title)}</span><small>${l.runtime==='python'?'Python':'PyTorch'} →</small></a></li>`).join('')}</ul>
+   </section>`).join('')}</div>
+  </section>`:''}
+ </div>`;
 }
 function renderGuide(){
- return `<div class="page narrow"><header class="page-heading"><h1>下载与运行</h1></header><section class="guide-section"><h2>学习资料</h2><div class="download-links"><a class="button primary" href="downloads/embodied-ml-study-pack.zip" download>下载完整学习包</a><a href="downloads/embodied-ml-topics.zip" download>下载专题练习包</a></div></section><section class="guide-section"><h2>运行环境</h2><p>Python 3.11 / 3.12 · CPU PyTorch 默认</p>${codeBlock('python -m venv .venv\nsource .venv/bin/activate  # Windows: .venv\\\\Scripts\\\\Activate.ps1\npython -m pip install torch','终端')}<p>GPU 安装方式见 <a href="https://pytorch.org/get-started/locally/" target="_blank" rel="noopener">PyTorch 官方安装说明 ↗</a>。Python 练习可在线运行；PyTorch 练习需本地运行。</p></section><section class="guide-section" id="drafts"><details class="detail-box"><summary>草稿备份</summary><div class="detail-body"><p>草稿保存在当前浏览器；导出包含草稿、笔记与记录，导入会合并草稿和笔记。</p><div class="download-links"><button class="button" data-action="export-drafts">导出备份</button><button class="button" data-action="import-drafts">导入备份</button></div></div></details></section><section class="guide-section"><details class="detail-box"><summary>历史课程归档（${lessons.filter(l=>l.module==='legacy').length} 节）</summary><div class="detail-body"><p>旧版课程继续保留；已迁移主题会跳转至对应的新课程。</p><ul class="reading-routes">${lessons.filter(l=>l.module==='legacy').map(l=>`<li><a href="${lessonHref(l.id)}">${esc(l.title)}</a></li>`).join('')}</ul></div></details></section></div>`;
+ return `<div class="page narrow guide-page"><header class="page-heading"><h1>下载与运行</h1><p>将讲义、代码和练习带到本地，或备份当前浏览器的练习草稿。</p></header><section class="guide-section"><h2>学习资料</h2><div class="guide-downloads"><div><h3>完整学习包</h3><p>课程讲义、PyTorch 示例及带测试的练习。</p><a class="button primary" href="downloads/embodied-ml-study-pack.zip" download>下载 ZIP <span aria-hidden="true">↓</span></a></div><div><h3>专题练习包</h3><p>MLP、CNN、Transformer 和 Flow Matching 专题。</p><a class="button" href="downloads/embodied-ml-topics.zip" download>下载 ZIP <span aria-hidden="true">↓</span></a></div></div></section><section class="guide-section"><h2>运行环境</h2><p>Python 3.11 / 3.12 · CPU PyTorch 默认</p>${codeBlock('python -m venv .venv\nsource .venv/bin/activate  # Windows: .venv\\\\Scripts\\\\Activate.ps1\npython -m pip install torch','终端')}<p>GPU 安装方式见 <a href="https://pytorch.org/get-started/locally/" target="_blank" rel="noopener">PyTorch 官方安装说明 ↗</a>。Python 练习可在线运行；PyTorch 练习需本地运行。</p></section><section class="guide-section" id="drafts"><details class="detail-box"><summary>草稿备份</summary><div class="detail-body"><p>草稿保存在当前浏览器；导出包含草稿、笔记与记录，导入会合并草稿和笔记。</p><div class="download-links"><button class="button" data-action="export-drafts">导出备份</button><button class="button" data-action="import-drafts">导入备份</button></div></div></details></section><section class="guide-section"><details class="detail-box"><summary>历史课程归档（${lessons.filter(l=>l.module==='legacy').length} 节）</summary><div class="detail-body"><p>旧版课程继续保留；已迁移主题会跳转至对应的新课程。</p><ul class="reading-routes">${lessons.filter(l=>l.module==='legacy').map(l=>`<li><a href="${lessonHref(l.id)}">${esc(l.title)}</a></li>`).join('')}</ul></div></details></section></div>`;
 }
 
 function buildSearchIndex(){
  searchIndex=[];
- function add(entry){const raw=String(entry.text||''),text=EMLMath.searchText(raw,katex),title=EMLMath.searchText(entry.title,katex);searchIndex.push({...entry,text,title,normalized:normalize(entry.doc+' '+entry.title+' '+raw+' '+title+' '+text),normalizedTitle:normalize(title)});}
+ function add(entry){const raw=String(entry.text||''),text=EMLMath.searchText(raw,katex),title=EMLMath.searchText(entry.title,katex);const category=['exercise','discussion','pitfall'].includes(entry.kind)?'practice':byId[entry.key]?.module==='appendix'?'appendix':'theory';searchIndex.push({...entry,text,title,category,normalized:normalize(entry.doc+' '+entry.title+' '+raw+' '+title+' '+text),normalizedTitle:normalize(title)});}
  function sectionText(s){const c=s.comparison;return sectionSearchText(s)+(c?' '+[c.title,...c.columns,...c.rows.flat()].join(' '):'');}
  for(const l of lessons){
   add({doc:moduleFor(l).name,title:l.title,href:lessonHref(l.id),text:[curriculum.lessonTitles[l.id],l.lead||'',l.subtitle,...l.tags].join(' '),kind:'article',key:l.id});
@@ -376,11 +452,15 @@ function searchHighlight(text,terms){
  for(const m of text.matchAll(re)){out+=esc(text.slice(last,m.index))+'<mark>'+esc(m[0])+'</mark>';last=m.index+m[0].length;}
  return out+esc(text.slice(last));
 }
+function searchCategory(category){
+ const label={theory:'理论',practice:'手撕',appendix:'附录'}[category];
+ return `<span class="badge badge-${category}">${label}</span>`;
+}
 function renderSearch(query=''){
  const terms=query.trim().split(/\s+/).filter(Boolean),needles=terms.map(normalize);
- if(!terms.length){$('#search-results').innerHTML=`<p class="search-label">核心专题</p>${topics.map(t=>`<a class="search-result" data-search-result href="${topicHref(t.id)}"><strong>${esc(TOPIC_META[t.id].name)}</strong><p>${esc(TOPIC_META[t.id].description)}</p></a>`).join('')}`;return;}
+ if(!terms.length){$('#search-results').innerHTML=`<p class="search-label">核心专题</p>${topics.map(t=>`<a class="search-result" data-search-result href="${topicHref(t.id)}"><span class="search-result-title"><strong>${esc(TOPIC_META[t.id].name)}</strong>${searchCategory('theory')}</span><p>${esc(TOPIC_META[t.id].description)}</p></a>`).join('')}`;return;}
  const ranked=searchIndex.filter(e=>needles.every(n=>e.normalized.includes(n))).map(e=>({...e,score:needles.reduce((n,term)=>n+(e.normalizedTitle===term?120:e.normalizedTitle.includes(term)?35:2),0)+(e.kind==='article'?10:0)})).sort((a,b)=>b.score-a.score);
  const seen=new Set(),perDoc={},matches=[];
  for(const e of ranked){if(seen.has(e.href))continue;const bucket=e.key+':'+e.kind;if((perDoc[bucket]||0)>=3)continue;seen.add(e.href);perDoc[bucket]=(perDoc[bucket]||0)+1;matches.push(e);if(matches.length===12)break;}
- $('#search-results').innerHTML=matches.length?matches.map(e=>{const raw=e.text.replace(/\s+/g,' '),position=Math.max(0,...terms.map(t=>raw.toLowerCase().indexOf(t.toLowerCase()))),start=Math.max(0,position-35),snippet=(start?'…':'')+raw.slice(start,start+140)+(raw.length>start+140?'…':'');return `<a class="search-result" data-search-result href="${esc(e.href)}"><small>${esc(e.doc)}${e.kind==='code'?' · 代码':e.kind==='exercise'?' · 练习':''}</small><strong>${searchHighlight(e.title,terms)}</strong><p>${searchHighlight(snippet,terms)}</p></a>`;}).join(''):'<p class="empty-state">没有找到匹配内容。试试更短的关键词。</p>';
+ $('#search-results').innerHTML=matches.length?matches.map(e=>{const raw=e.text.replace(/\s+/g,' '),position=Math.max(0,...terms.map(t=>raw.toLowerCase().indexOf(t.toLowerCase()))),start=Math.max(0,position-35),snippet=(start?'…':'')+raw.slice(start,start+140)+(raw.length>start+140?'…':'');return `<a class="search-result" data-search-result href="${esc(e.href)}"><small>${esc(e.doc)}${e.kind==='code'?' · 代码':e.kind==='exercise'?' · 练习':''}</small><span class="search-result-title"><strong>${searchHighlight(e.title,terms)}</strong>${searchCategory(e.category)}</span><p>${searchHighlight(snippet,terms)}</p></a>`;}).join(''):'<p class="empty-state">没有找到匹配内容。试试更短的关键词。</p>';
 }

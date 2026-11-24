@@ -5,7 +5,7 @@ const localPath=value=>SITE_BASE_PATH&&(value===SITE_BASE_PATH||value.startsWith
 let MODULES=[],curriculum={};
 let lessons=[],byId={},topics=[],topicById={},searchIndex=[];
 let currentLesson=null,currentTab='theory',practiceFilter='all';
-let sectionObserver=null;
+let sectionObserver=null,renderedRoute='';
 const STORAGE_KEY='embodied-ml-lab-v1';
 const emptyState=()=>({version:1,drafts:{},notes:{},passed:{},viewed:{},lastLesson:null,lastRead:null});
 let state;
@@ -103,7 +103,7 @@ function normalizeInternalLinks(html){
 function navigate(href,replace=false){
  const url=routeHref(href);
  if(activeJob)terminateRun();
- if(replace)history.replaceState(null,'',url);else if(location.pathname+location.search!==url)history.pushState(null,'',url);
+ if(replace)history.replaceState(null,'',url);else if(location.pathname+location.search+location.hash!==url)history.pushState(null,'',url);
  render();window.scrollTo({top:0,behavior:'instant'});scrollToSection();
 }
 function toast(message){const t=$('#toast');t.textContent=message;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2600);}
@@ -117,13 +117,16 @@ function syntax(line){
  return out+esc(line.slice(last));
 }
 function codeBlock(source,title='Python',actions='',id=''){
- return `<div class="code-frame" ${id?`id="${esc(id)}"`:''}><div class="code-toolbar"><span>${esc(title)}</span><div>${actions}</div></div><pre class="code-block" tabindex="0">${String(source||'').split('\n').map((line,i)=>`<span class="code-line" data-n="${i+1}">${syntax(line)||' '}</span>`).join('')}</pre></div>`;
+ const controls=actions||'<button data-action="copy-block">复制</button>';
+ return `<div class="code-frame" ${id?`id="${esc(id)}"`:''}><div class="code-toolbar"><span>${esc(title)}</span><div>${controls}</div></div><pre class="code-block" tabindex="0">${String(source||'').split('\n').map((line,i)=>`<span class="code-line" data-n="${i+1}">${syntax(line)}</span>`).join('')}</pre></div>`;
 }
 function markReading(kind,item,tab){
  const {params}=parseRoute(),mode=tab==='exercise'?(params.get('mode')==='torch'?'torch':'python'):undefined;
  let href=kind==='topic'?topicHref(item.id,tab):lessonHref(item.id,tab,mode);
  if(params.has('lab'))href+='&lab='+encodeURIComponent(params.get('lab'));
- state.lastRead={href,title:item.title};if(kind==='lesson')state.lastLesson=item.id;save();
+ state.lastRead={href,title:item.title};
+ if(kind==='lesson'){state.lastLesson=item.id;state.viewed[item.id]=true;}
+ save();
 }
 function lastReading(){
  if(state.lastRead){
@@ -176,6 +179,7 @@ function render(){
  else if(path==='/practice'){html=renderPractice();active='practice';title='手撕题库';}
  else if(path==='/guide'){html=renderGuide();active='guide';title='下载与说明';}
  else if(path==='/'){html=renderCatalog();title='具身智能与大模型算法研发';}else html=notFound();
+ renderedRoute=location.pathname+location.search;
  const previousLabs=new Map($$('[data-course-lab]').map(node=>[node.dataset.courseLab,node]));
  $('#main').innerHTML=normalizeInternalLinks(html);
  for(const lab of $$('[data-course-lab]')){
@@ -200,7 +204,7 @@ function render(){
 function notFound(){return '<div class="page narrow"><h1>没有找到这篇内容</h1><a class="button primary" href="#/">返回课程目录</a></div>';}
 function scrollToSection(){
  const {path,params}=parseRoute();let id=params.get('anchor');
- if(path==='/'&&location.hash.startsWith('#chapter-'))id=location.hash.slice(1);
+ if(!id&&location.hash&&!location.hash.startsWith('#/'))id=location.hash.slice(1);
  if(params.get('section')){const item=byId[path.split('/')[2]],section=item?.legacySectionMap?.[params.get('section')]??params.get('section');id=path.startsWith('/learn/')?'section-'+section:params.get('section');}
  if(id?.startsWith('topic-section-'))id='section-'+id.slice(14);
  const lesson=byId[path.split('/')[2]];if(id?.startsWith('section-')&&lesson?.legacySectionMap?.[id.slice(8)])id='section-'+lesson.legacySectionMap[id.slice(8)];
@@ -210,11 +214,13 @@ function scrollToSection(){
 }
 function trackSections(){
  const targets=$$('[data-reading-section]');if(!targets.length||!window.IntersectionObserver)return;
- sectionObserver=new IntersectionObserver(entries=>{for(const e of entries){if(!e.isIntersecting)continue;$$('.reader-sidebar [data-section]').forEach(a=>{const active=a.dataset.section===e.target.id;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});}},{rootMargin:'-110px 0px -65% 0px',threshold:0});
+ sectionObserver=new IntersectionObserver(entries=>{for(const e of entries){if(!e.isIntersecting)continue;$$('.reader-sidebar [data-section], .mobile-toc [data-section]').forEach(a=>{const active=a.dataset.section===e.target.id;a.classList.toggle('active',active);if(active)a.setAttribute('aria-current','location');else a.removeAttribute('aria-current');});}},{rootMargin:'-110px 0px -65% 0px',threshold:0});
  targets.forEach(x=>sectionObserver.observe(x));
 }
 function bindPracticeFilters(){
- const filter=$('#practice-module');if(filter)filter.addEventListener('change',()=>{practiceFilter=filter.value;render();});
+ const filter=$('#practice-module');if(filter)filter.addEventListener('change',()=>{
+  practiceFilter=filter.value;render();$('#practice-module').focus({preventScroll:true});
+ });
 }
 function bindEditor(){
  const editor=$('#code-editor');if(!editor||!currentLesson)return;const id=currentLesson.id,mode=$('.editor-shell').dataset.mode;
@@ -260,45 +266,73 @@ function runStatus(text,cls=''){const el=$('#run-status');if(el){el.textContent=
 function terminateRun(message='运行已停止。可以修改代码后重新运行。'){if(pythonWorker)pythonWorker.terminate();pythonWorker=null;activeJob=null;clearTimeout(runTimer);setRunUI(false);showOutput(message,'');runStatus('已停止');}
 function runCode(withTests){if(!currentLesson||!$('#code-editor')||$('.editor-shell').dataset.mode!=='python')return;if(activeJob){toast('代码正在运行，可先点击停止。');return;}const l=currentLesson,code=$('#code-editor').value;activeJob={id:++jobCounter,lesson:l.id,withTests};setRunUI(true);showOutput('正在准备 Python 环境…','');runStatus('加载 Python');if(!pythonWorker){pythonWorker=new Worker(new URL(sitePath('/python-worker.js'),window.location.origin));pythonWorker.onmessage=e=>{const msg=e.data;if(!activeJob||msg.id!==activeJob.id)return;const visible=currentLesson?.id===activeJob.lesson&&currentTab==='exercise'&&$('.editor-shell')?.dataset.mode==='python';if(msg.type==='loading'){if(visible)runStatus('首次加载约 14 MB');}else if(msg.type==='ready'){clearTimeout(runTimer);runTimer=setTimeout(()=>terminateRun('执行超过 8 秒，已停止。请检查循环终止条件，或下载到本地运行。'),8000);if(visible){showOutput('','');runStatus('运行中');}}else if(msg.type==='stdout'||msg.type==='stderr'){if(visible)showOutput(msg.text,undefined,true);}else if(msg.type==='done'){clearTimeout(runTimer);const finished=activeJob;if(msg.passed){state.passed[finished.lesson]=true;save();}if(visible){showOutput(msg.passed?'✓ 所有提供的断言测试通过。':'✓ 代码与自定义试运行执行结束。此次未运行题目测试。',msg.passed?'pass':'',true);runStatus(msg.passed?'测试通过':'运行结束',msg.passed?'good':'');}activeJob=null;setRunUI(false);}else if(msg.type==='error'){clearTimeout(runTimer);if(visible){showOutput(msg.text,'error',true);runStatus('未通过 / 运行错误','bad');}activeJob=null;setRunUI(false);}};pythonWorker.onerror=e=>{showOutput('Python 环境加载或执行失败：'+e.message+'\n请重新运行，或下载练习到本地 Python 环境执行。','error');runStatus('运行环境错误','bad');if(pythonWorker)pythonWorker.terminate();pythonWorker=null;activeJob=null;clearTimeout(runTimer);setRunUI(false);};}runTimer=setTimeout(()=>terminateRun('Python 环境加载超过 60 秒。请检查网络后再试，或下载练习在本地运行。'),60000);pythonWorker.postMessage({id:activeJob.id,code,tests:withTests?l.exercise.tests:'',scratch:withTests?'':($('#try-code')?.value||'')});}
 function download(content,name,type='text/plain;charset=utf-8'){const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);}
-async function copy(text){try{await navigator.clipboard.writeText(text);toast('代码已复制');}catch{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();toast('代码已复制');}}
+async function copy(text,button){
+ try{await navigator.clipboard.writeText(text);}
+ catch{
+  const fallback=document.createElement('textarea');
+  fallback.value=text;fallback.style.cssText='position:fixed;top:0;opacity:0;pointer-events:none';
+  document.body.append(fallback);
+  try{
+   fallback.select();
+   if(!document.execCommand('copy'))throw new Error('Clipboard unavailable');
+  }catch{toast('无法复制代码，请手动选中复制。');return;}
+  finally{fallback.remove();button.focus({preventScroll:true});}
+ }
+ if(!button.dataset.copyLabel)button.dataset.copyLabel=button.textContent;
+ button.textContent='已复制';
+ clearTimeout(button.copyTimer);
+ button.copyTimer=setTimeout(()=>{button.textContent=button.dataset.copyLabel;},1600);
+ toast('代码已复制');
+}
 function downloadExercise(){if(!currentLesson)return;const l=currentLesson,mode=$('.editor-shell')?.dataset.mode||'python',task=mode==='torch'?l.pytorchTask:l.exercise;const code=$('#code-editor')?.value??task.starter;download('# '+l.title+'\n# '+(mode==='torch'?'运行环境：Python + PyTorch（CPU 即可）':'运行环境：Python 3 标准库')+'\n# '+task.prompt.replace(/\n/g,'\n# ')+'\n# 完成 TODO，然后运行此文件。\n\n'+code+'\n\n# ===== 断言测试 =====\n'+task.tests+'\nprint("所有提供的测试通过。")\n',`${pad(l.number)}_${l.id}_${mode==='torch'?'torch':'practice'}.py`);}
 
 
 function openSearch(query=''){const dialog=$('#search-dialog');$('#search-input').value=query;renderSearch(query);if(!dialog.open)dialog.showModal();$('#search-input').focus();}
 function closeSearch(){if($('#search-dialog').open)$('#search-dialog').close();}
+
 document.addEventListener('click',async event=>{
- if(event.target.closest('[data-search-result]')){closeSearch();requestAnimationFrame(scrollToSection);}
+ if(event.target.closest('[data-search-result]'))closeSearch();
  const tocLink=event.target.closest('.reader-sidebar a[data-section],.mobile-toc a[data-section]');
  if(tocLink){const mobile=tocLink.closest('.mobile-toc');if(mobile)mobile.open=false;if(tocLink.getAttribute('href')===location.hash){event.preventDefault();scrollToSection();}}
  const link=event.target.closest('a[href]');
  if(link&&lessons.length&&!event.defaultPrevented&&event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey&&!link.hasAttribute('download')&&!link.target){
   const url=new URL(link.href,location.origin);
   if(url.origin===location.origin&&(/^\/(learn|topics|practice|guide)(\/|$)/.test(localPath(url.pathname))||localPath(url.pathname)==='/')&&(!url.hash||url.hash.startsWith('#/'))){
-   event.preventDefault();navigate(url.hash.startsWith('#/')?url.hash:url.pathname+url.search);return;
+   event.preventDefault();navigate(url.hash.startsWith('#/')?url.hash:url.pathname+url.search);
+   if(event.detail===0){
+    const focus=link.closest('.reader-tabs')?$('.reader-tabs a[aria-current="page"]'):$('#main');
+    focus?.focus({preventScroll:true});
+   }
+   return;
   }
  }
  const target=event.target.closest('[data-action]');if(!target)return;
  const action=target.dataset.action,l=currentLesson;
  if(action==='search')openSearch();
  else if(action==='close-search')closeSearch();
+ else if(action==='theme')toggleTheme();
  else if(action==='runtime'&&l)navigate(lessonHref(l.id,'exercise',target.dataset.mode));
  else if(action==='copy-demo'||action==='download-demo'){
   const owner=target.dataset.lesson?byId[target.dataset.lesson]:l;
   const d=target.dataset.topic?topicById[target.dataset.topic]?.implementations.find(x=>x.id===target.dataset.demo):target.dataset.demo?owner?.extraImplementations?.find(x=>x.id===target.dataset.demo):owner?.code;
   const filename=target.dataset.topic?target.dataset.topic+'_'+d?.id+'.py':target.dataset.demo?(owner?.theoryTopic||owner?.id)+'_'+d?.id+'.py':owner?pad(owner.number)+'_'+owner.id+'_demo.py':'demo.py';
-  if(d){if(action==='copy-demo')await copy(d.source);else download(d.source+'\n',filename);}
+  if(d){if(action==='copy-demo')await copy(d.source,target);else download(d.source+'\n',filename);}
  }
  else if(action==='annotate'){
   const frame=document.getElementById(target.dataset.frame);if(!frame)return;
   const nums=target.dataset.range.match(/\d+/g)?.map(Number)||[],from=nums[0]||1,to=nums[1]||from;
   frame.querySelectorAll('.code-line').forEach(line=>line.classList.toggle('highlight-line',Number(line.dataset.n)>=from&&Number(line.dataset.n)<=to));
   target.closest('.source-explanations').querySelectorAll('button').forEach(b=>b.classList.toggle('active',b===target));
-  const pre=frame.querySelector('pre'),line=frame.querySelector('[data-n="'+from+'"]');if(line)pre.scrollTop=line.offsetTop-pre.clientHeight/4;frame.scrollIntoView({block:'start',behavior:'smooth'});
+  const pre=frame.querySelector('pre'),line=frame.querySelector('[data-n="'+from+'"]');if(line)pre.scrollTop=line.offsetTop-pre.clientHeight/4;frame.scrollIntoView({block:'start'});
  }
  else if(action==='download-exercise')downloadExercise();
- else if(action==='copy-exercise')await copy($('#code-editor').value);
+ else if(action==='copy-exercise')await copy($('#code-editor').value,target);
+ else if(action==='copy-block'){
+  const lines=target.closest('.code-frame').querySelectorAll('.code-line');
+  await copy(Array.from(lines,line=>line.textContent).join('\n'),target);
+ }
  else if(action==='reset-code'&&l){const mode=$('.editor-shell').dataset.mode,task=mode==='torch'?l.pytorchTask:l.exercise;const editor=$('#code-editor');editor.value=task.starter;editor.dispatchEvent(new Event('input'));toast('已恢复题目代码');}
- else if(action==='fill-solution'&&l){const mode=$('.editor-shell').dataset.mode,task=mode==='torch'?l.pytorchTask:l.exercise;const editor=$('#code-editor');editor.value=task.solution;editor.dispatchEvent(new Event('input'));editor.scrollIntoView({behavior:'smooth',block:'center'});toast('已填入参考实现');}
+ else if(action==='fill-solution'&&l){const mode=$('.editor-shell').dataset.mode,task=mode==='torch'?l.pytorchTask:l.exercise;const editor=$('#code-editor');editor.value=task.solution;editor.dispatchEvent(new Event('input'));editor.scrollIntoView({block:'center'});toast('已填入参考实现');}
  else if(action==='run-tests')runCode(true);
  else if(action==='run-code')runCode(false);
  else if(action==='stop-code')terminateRun();
@@ -308,7 +342,16 @@ document.addEventListener('click',async event=>{
 document.addEventListener('keydown',event=>{
  const editing=['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName);
  if(!event.isComposing&&(((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k')||(event.key==='/'&&!editing))){event.preventDefault();openSearch();}
- if($('#search-dialog').open&&event.target===$('#search-input')&&['Enter','ArrowDown'].includes(event.key)){const result=$('#search-results a');if(result){event.preventDefault();if(event.key==='Enter')result.click();else result.focus();}}
+ if(!$('#search-dialog').open||event.isComposing)return;
+ const input=$('#search-input'),results=$$('[data-search-result]');
+ const index=results.indexOf(event.target);
+ if(!results.length||(index<0&&event.target!==input))return;
+ if(event.key==='Enter'&&event.target===input){
+  event.preventDefault();results[0].click();
+ }else if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+  const next=event.key==='ArrowDown'?results[(index+1)%results.length]:(index===0?input:results[index<0?results.length-1:index-1]);
+  event.preventDefault();next.focus();
+ }
 });
 $('#search-input').addEventListener('input',e=>renderSearch(e.target.value));
 $('#search-dialog').addEventListener('click',e=>{if(e.target===$('#search-dialog'))closeSearch();});
@@ -322,7 +365,11 @@ $('#import-drafts').addEventListener('change',async e=>{
  }catch(error){toast('导入失败：'+error.message);}e.target.value='';
 });
 window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#/'))navigate(location.hash,true);});
-window.addEventListener('popstate',()=>{if(activeJob)terminateRun();render();window.scrollTo({top:0,behavior:'instant'});scrollToSection();});
+window.addEventListener('popstate',()=>{
+ if(location.pathname+location.search===renderedRoute&&!location.hash.startsWith('#/'))return;
+ if(activeJob)terminateRun();
+ render();window.scrollTo({top:0,behavior:'instant'});scrollToSection();
+});
 $('.skip-link').addEventListener('click',e=>{e.preventDefault();$('#main').focus();$('#main').scrollIntoView();});
 async function init(){
  try{
@@ -335,55 +382,29 @@ async function init(){
   byId=Object.fromEntries(lessons.map(l=>[l.id,l]));
   topicById=Object.fromEntries(topics.map(t=>[t.id,t]));
   registerTopicExercises();buildSearchIndex();render();scrollToSection();
+  if($('#search-dialog').open)renderSearch($('#search-input').value);
  }catch(error){if(document.querySelector('[data-prerendered]')){console.error(error);return;}$('#main').innerHTML=`<div class="page narrow"><h1>课程暂时无法加载</h1><p>${esc(error.message)}</p><button class="button primary" onclick="location.reload()">重新加载</button></div>`;}
 }
 init();
 
-
-/* Lightweight pointer interactions. Delegated listeners survive client-side route changes. */
-(()=>{
-  const finePointer=window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
-  const reduceMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  if(!finePointer||reduceMotion)return;
-  const magnetSelector='.button,.search-trigger,.icon-button';
-  let activeMagnet=null,raf=0,lastX=0,lastY=0;
-  const resetMagnet=el=>{
-    if(!el)return;
-    el.style.removeProperty('--mag-x');el.style.removeProperty('--mag-y');
-  };
-  document.addEventListener('pointermove',event=>{
-    if(event.pointerType!=='mouse')return;
-    lastX=event.clientX;lastY=event.clientY;
-    if(!raf)raf=requestAnimationFrame(()=>{
-      raf=0;
-      const target=document.elementFromPoint(lastX,lastY);
-      const magnet=target?.closest(magnetSelector);
-      if(magnet!==activeMagnet){resetMagnet(activeMagnet);activeMagnet=magnet;}
-      if(magnet){
-        const r=magnet.getBoundingClientRect(),dx=lastX-(r.left+r.width/2),dy=lastY-(r.top+r.height/2);
-        magnet.style.setProperty('--mag-x',(dx/r.width*5).toFixed(2)+'px');
-        magnet.style.setProperty('--mag-y',(dy/r.height*5).toFixed(2)+'px');
-      }
-    });
-  },{passive:true});
-  document.addEventListener('pointerout',event=>{
-    if(!event.relatedTarget||event.relatedTarget===document.documentElement){
-      resetMagnet(activeMagnet);activeMagnet=null;
-    }
-  },{passive:true});
-  document.addEventListener('pointerdown',event=>{
-    if(event.pointerType!=='mouse')return;
-    const button=event.target.closest('button,.button,.search-trigger');
-    if(!button||button.disabled)return;
-    const rect=button.getBoundingClientRect(),size=Math.max(rect.width,rect.height)*1.55;
-    const ripple=document.createElement('span');
-    ripple.className='pointer-ripple';ripple.setAttribute('aria-hidden','true');
-    ripple.style.width=ripple.style.height=size+'px';
-    ripple.style.left=(event.clientX-rect.left-size/2)+'px';
-    ripple.style.top=(event.clientY-rect.top-size/2)+'px';
-    button.appendChild(ripple);window.setTimeout(()=>ripple.remove(),650);
-  },{passive:true});
-  window.addEventListener('blur',()=>{
-    resetMagnet(activeMagnet);activeMagnet=null;
-  });
-})();
+const systemTheme=matchMedia('(prefers-color-scheme: dark)');
+let manualTheme=false;
+try{manualTheme=['light','dark'].includes(localStorage.getItem('embodied-ml-theme'));}catch{}
+const themeButton=$('[data-action="theme"]');
+function applyTheme(theme){
+ document.documentElement.dataset.theme=theme;
+ $('meta[name="theme-color"]').content=theme==='dark'?'#0B0F17':'#F8F9FB';
+ const label=theme==='dark'?'切换至亮色模式':'切换至暗色模式';
+ themeButton.setAttribute('aria-label',label);
+ themeButton.title=label;
+}
+function toggleTheme(){
+ const theme=document.documentElement.dataset.theme==='dark'?'light':'dark';
+ manualTheme=true;
+ try{localStorage.setItem('embodied-ml-theme',theme);}catch{}
+ applyTheme(theme);
+}
+applyTheme(document.documentElement.dataset.theme);
+systemTheme.addEventListener('change',event=>{
+ if(!manualTheme)applyTheme(event.matches?'dark':'light');
+});
