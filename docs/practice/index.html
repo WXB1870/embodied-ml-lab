@@ -6,7 +6,7 @@
 <meta name="description" content="结合数学推导、手工计算、反例分析与可运行实现，检验对课程的理解。">
 <link rel="icon" href="/embodied-ml-lab/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/embodied-ml-lab/vendor/katex/katex.min.css"><link rel="stylesheet" href="/embodied-ml-lab/styles.css?v=20261124-pointer-motion">
 <script defer src="/embodied-ml-lab/vendor/katex/katex.min.js"></script><script defer src="/embodied-ml-lab/math.js"></script>
-<script defer src="/embodied-ml-lab/explorers.js"></script><script defer src="/embodied-ml-lab/p0-explorers.js"></script><script defer src="/embodied-ml-lab/deep-explorers.js"></script><script defer src="/embodied-ml-lab/reader.js?v=20261124-curriculum-v2"></script><script defer src="/embodied-ml-lab/app.js?v=20261124-pointer-motion"></script>
+<script defer src="/embodied-ml-lab/explorers.js"></script><script defer src="/embodied-ml-lab/p0-explorers.js"></script><script defer src="/embodied-ml-lab/deep-explorers.js"></script><script defer src="/embodied-ml-lab/reader.js?v=20261124-minimal-ui-2"></script><script defer src="/embodied-ml-lab/app.js?v=20261124-pointer-motion"></script>
 <link rel="canonical" href="https://wxb1870.github.io/embodied-ml-lab/practice/"></head>
 <body>
 <a class="skip-link" href="#main">跳到正文</a>
@@ -15,14 +15,14 @@
 <nav aria-label="主导航"><a href="/embodied-ml-lab/" data-nav="catalog">课程目录</a><a href="/embodied-ml-lab/practice/" data-nav="practice">课程练习</a></nav>
 <button class="search-trigger" data-action="search" aria-label="搜索全文"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span>搜索</span><kbd>⌘ K</kbd></button>
 </div></header>
-<main id="main" tabindex="-1" data-prerendered><div class="page practice-page"><header class="page-heading"><h1>课程练习</h1><p>围绕 22 节核心课程组织练习。每节提供理论推导、Python 手撕与 PyTorch 实现；附录练习用于按需补齐基础和训练工程知识。</p></header><section class="chapter-list">
+<main id="main" tabindex="-1" data-prerendered><div class="page practice-page"><header class="page-heading"><h1>课程练习</h1></header><section class="chapter-list">
   <section class="chapter"><header class="chapter-heading"><h2>网络基础与视觉表征</h2></header><ul><li><a href="/embodied-ml-lab/learn/tensor/?tab=theory">Tensor</a></li><li><a href="/embodied-ml-lab/learn/mlp/?tab=exercise">MLP 练习</a></li><li><a href="/embodied-ml-lab/learn/cnn-receptive-field/?tab=exercise">CNN 练习</a></li></ul></section>
   <section class="chapter"><header class="chapter-heading"><h2>现代 Transformer 与多模态骨干</h2></header><ul><li><a href="/embodied-ml-lab/learn/attention/?tab=exercise">Attention 练习</a></li><li><a href="/embodied-ml-lab/learn/multimodal/?tab=exercise">多模态练习</a></li><li><a href="/embodied-ml-lab/learn/masking-autoregressive/?tab=exercise">Mask 练习</a></li></ul></section>
   <section class="chapter"><header class="chapter-heading"><h2>生成模型与连续时间建模</h2></header><ul><li><a href="/embodied-ml-lab/learn/flow-matching/?tab=exercise">Flow Matching 练习</a></li><li><a href="/embodied-ml-lab/learn/diffusion/?tab=exercise">Diffusion 练习</a></li><li><a href="/embodied-ml-lab/learn/dit-adaln/?tab=exercise">DiT 练习</a></li></ul></section>
   <section class="chapter"><header class="chapter-heading"><h2>具身策略架构与动作建模</h2></header><ul><li><a href="/embodied-ml-lab/learn/behavior-cloning/?tab=exercise">行为克隆练习</a></li><li><a href="/embodied-ml-lab/learn/action-chunking/?tab=exercise">Action Chunking 练习</a></li><li><a href="/embodied-ml-lab/learn/vla-architecture/?tab=exercise">VLA 练习</a></li></ul></section>
   <section class="chapter"><header class="chapter-heading"><h2>高效微调与后训练对齐</h2></header><ul><li><a href="/embodied-ml-lab/learn/lora/?tab=exercise">LoRA 练习</a></li><li><a href="/embodied-ml-lab/learn/ppo/?tab=exercise">PPO 练习</a></li><li><a href="/embodied-ml-lab/learn/dpo-grpo/?tab=exercise">DPO / GRPO 练习</a></li></ul></section>
   </section><p>交互式题目、完整测试与参考实现将在页面脚本加载后显示。</p></div></main>
-<footer class="site-footer"><span>Embodied ML</span><a href="/embodied-ml-lab/guide/">下载与说明</a><a href="https://rl-robotics.github.io/" target="_blank" rel="noopener">界面参考</a></footer>
+<footer class="site-footer"><span>Embodied ML</span><a href="/embodied-ml-lab/guide/">下载</a></footer>
 <dialog id="search-dialog" aria-label="搜索全文"><div class="search-head"><input id="search-input" type="search" maxlength="120" placeholder="搜索概念、推导或代码，例如：LayerNorm 梯度" aria-label="搜索全文" autocomplete="off"><button class="icon-button" data-action="close-search" aria-label="关闭搜索">×</button></div><div id="search-results"></div><div class="search-foot">搜索文章正文与代码 <kbd>Esc 关闭</kbd></div></dialog>
 <div id="toast" role="status" aria-live="polite"></div><input id="import-drafts" type="file" accept="application/json,.json" hidden>
 <noscript><p class="noscript-note">正文、公式和代码可直接阅读；在线练习与搜索需要 JavaScript。</p></noscript>
