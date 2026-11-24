@@ -34,7 +34,7 @@ evolution:{title:'Code Policy Evolution：经验到版本晋升',intro:'改变�
 'meta-policy':{title:'Meta-policy：选择合适的 Skill',intro:'调整成功率、执行成本和风险权重，观察技能选择变化。',steps:['获取可用 Skill','估计成功率与成本','计算风险约束下效用','选择并执行 Skill','根据结果更新技能统计'],pseudo:['for skill in available_skills:','    utility[skill] = success*value - cost - risk_penalty','selected = argmax(utility)','result = runtime.execute(selected)','update_skill_statistics(selected, result)']}
 };
 function lvEsc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-function renderAlgorithmPanel(c){return '<details class="lv-algorithm"><summary>算法伪代码 · '+lvEsc(c.title)+'</summary><div class="lv-algorithm-body"><pre>'+c.pseudo.map(function(line,i){return '<span class="lv-code-line"><i>'+(i+1)+'</i><code>'+lvEsc(line)+'</code></span>';}).join('')+'</pre><p>'+lvEsc(c.intro)+'</p></div></details>';}
+function renderAlgorithmPanel(c){return '<details class="lv-algorithm"><summary>算法伪代码 · '+lvEsc(c.title)+'</summary><div class="lv-algorithm-body"><pre>'+c.pseudo.map(function(line,i){return '<span class="lv-code-line"><i>'+(i+1)+'</i><code>'+lvEsc(line)+'</code><small>'+lvEsc((c.notes||[])[i]||'对应本步骤的核心计算。')+'</small></span>';}).join('')+'</pre><p>'+lvEsc(c.intro)+'</p></div></details>';}
 function renderLVControls(id){
  const specs={
  attention:'<label>Query Token <select data-lv-query>'+[0,1,2,3,4].map(function(i){return '<option value="'+i+'">Token '+(i+1)+'</option>';}).join('')+'</select></label>',
