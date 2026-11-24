@@ -102,3 +102,22 @@ kbd{font-family:inherit;font-size:11px;color:#8d949f}
 @media print{.research-figure>a{overflow:visible}.research-figure img{min-width:0;max-width:100%}.research-figure>.figure-reading-hint{display:none}}
 
 .try-code{display:block;width:100%;min-height:120px;resize:vertical;border:1px solid var(--line);border-radius:4px;padding:12px;font:13px/21px var(--mono);tab-size:4;white-space:pre;overflow:auto;background:#fff;color:#344761}
+
+/* Learning structure: compact cross-course links and method evolution. */
+.learning-connections,.evolution-details{margin:16px 0 20px}
+.learning-connections>summary,.evolution-details>summary{font-size:13px;color:#63748b}
+.learning-connections .detail-body,.evolution-details .detail-body{padding:15px 18px 17px}
+.connection-group+.connection-group{margin-top:13px;padding-top:12px;border-top:1px solid var(--line)}
+.connection-group>span{display:block;font-size:11px;letter-spacing:.04em;color:#8997a9;margin-bottom:7px}
+.connection-links{display:flex;flex-wrap:wrap;gap:7px 16px}
+.connection-links a{font-size:12px;line-height:1.8;color:#52749b}
+.connection-links a:hover{color:var(--blue);text-decoration:underline}
+.evolution-context{font-size:13px!important;color:#68788d;margin:0 0 12px!important}
+.evolution-steps{margin:0;padding-left:21px}
+.evolution-steps li{padding:5px 0 8px 3px;color:#526177}
+.evolution-steps li::marker{font-family:var(--mono);font-size:11px;color:#92a2b7}
+.evolution-steps strong{font-size:13px;font-weight:600;color:#344a67}
+.evolution-steps p{font-size:13px!important;line-height:1.8;margin:3px 0 0!important}
+.evolution-takeaway{font-size:13px!important;line-height:1.8;margin:12px 0 0!important;padding-top:11px;border-top:1px solid var(--line);color:#53657d}
+.evolution-takeaway strong{color:#344a67;font-weight:600}
+@media(max-width:760px){.learning-connections .detail-body,.evolution-details .detail-body{padding:13px 14px}.connection-links{gap:6px 12px}}
