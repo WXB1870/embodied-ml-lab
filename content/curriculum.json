@@ -31,7 +31,7 @@
       "id": "transformers",
       "name": "现代 Transformer 与多模态骨干",
       "short": "Transformer 与多模态骨干",
-      "desc": "张量语义、注意力、位置编码、现代 Transformer 组件、视觉语言对齐与高效推理。",
+      "desc": "注意力、位置编码、现代 Transformer 组件、视觉语言对齐与高效推理。",
       "lessons": [
         "attention",
         "rope",
@@ -45,7 +45,7 @@
       "id": "generative",
       "name": "生成模型与连续时间建模",
       "short": "生成模型与连续时间建模",
-      "desc": "潜变量、扩散概率模型、连续时间随机过程、流匹配与扩散 Transformer。",
+      "desc": "潜变量基础、Flow Matching、扩散概率模型、连续时间动力学与扩散 Transformer。",
       "lessons": [
         "vae",
         "flow-matching",
