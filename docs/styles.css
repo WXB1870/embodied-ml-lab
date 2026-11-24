@@ -324,7 +324,6 @@ kbd {
 .announcement-arrow { flex: none; }
 .catalog-heading h1 { margin: 0 0 1rem; font-size: clamp(2.25rem, 4.5vw, 3.85rem); line-height: 1.16; letter-spacing: -.052em; }
 .catalog-heading h1 span { display: block; color: var(--indigo-text); }
-.hero-copy > p { color: var(--muted); font-size: 1rem; margin-block-end: 1.4rem; }
 .catalog-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
 .catalog-actions .button { min-height: 2.85rem; }
 .catalog-stats {
@@ -1097,7 +1096,6 @@ td code { overflow-wrap: anywhere; }
   .catalog-heading { grid-template-columns: minmax(0, 1fr); gap: 1.4rem; min-height: 0; padding-block: 2rem 1.75rem; }
   .catalog-heading::before { inset: 25% -6px 0; mask-image: radial-gradient(ellipse at 64% 68%, black 24%, transparent 80%); }
   .catalog-heading h1 { font-size: clamp(2.05rem, 7vw, 3.35rem); }
-  .hero-copy > p { font-size: .94rem; }
   .catalog-stats { margin-block-start: 1rem; }
   .roadmap { max-width: 32rem; }
   .chapter-list, .appendix-groups { grid-template-columns: minmax(0, 1fr); }

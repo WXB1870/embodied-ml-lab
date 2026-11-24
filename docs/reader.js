@@ -54,7 +54,6 @@ function renderCatalog(){
    <div class="hero-copy">
     <a class="announcement" href="#chapter-robot-agent"><span>NEW</span> 具身智能体与技能编排 <span class="announcement-arrow" aria-hidden="true">→</span></a>
     <h1>具身智能与<span>大模型算法研发</span></h1>
-    <p>学院派公式推导 · PyTorch 算子手撕 · 机器人 Agent 系统设计</p>
     <div class="catalog-actions">
      <a class="button primary" href="/practice/">进入 PyTorch 手撕题库 <span aria-hidden="true">→</span></a>
      <a class="button" href="#catalog-heading">浏览全部课程目录</a>
