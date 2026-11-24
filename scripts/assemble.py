@@ -115,7 +115,7 @@ topic_report=root/'topics-validation.json'
 downloads=root/'dist'/'downloads';downloads.mkdir(exist_ok=True)
 readme='''# Embodied × ML 学习代码包
 
-课程按四大主干模块组织：现代 Transformer 与多模态骨干、生成模型与连续时间建模、具身策略架构与动作建模、高效微调与后训练对齐；训练工程基础收录于附录。
+课程按网络基础与视觉表征、现代 Transformer 与多模态骨干、生成模型与连续时间建模、具身策略架构与动作建模、高效微调与后训练对齐五个主干模块组织；训练工程基础收录于附录。
 
 ## 使用顺序
 
@@ -149,7 +149,7 @@ GPU/CUDA 版本请按 https://pytorch.org/get-started/locally/ 选择安装命�
 - `exercises/python/`：{lesson_count} 个标准库练习，带 TODO 和测试。
 - `exercises/torch/`：{lesson_count} 个 PyTorch 练习，带 TODO 和测试。
 - `solutions/python/`、`solutions/torch/`：对应参考答案和同一套测试。
-- `curriculum/`：四大模块 20 节核心课程及训练工程附录的中文课程数据。
+- `curriculum/`：五个模块 22 节核心课程及训练工程附录的中文课程数据。
 - `lessons/`：每节完整 Markdown 讲义，可直接阅读或放入 Obsidian；含推导、算例、代码说明、讨论与参考解。
 - `validation.json`：基础课程的实际运行验证结果。
 - `topics/validation.json`：四个详细专题的实际运行验证结果。
