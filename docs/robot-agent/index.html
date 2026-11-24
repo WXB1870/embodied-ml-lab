@@ -460,7 +460,7 @@ else:
 
 <section class="article-section" id="robot-agent-runtime-tools">
 <h2><span class="section-number">07</span>Robot Agent 的工具体系：感知、预测、执行、记忆与验证</h2>
-<p class="section-lead">这里学习的是机器人运行时真正会调用的能力，不是 Coding Agent 的文件编辑、Shell 或 Git 工具。Robot Agent 的工具必须能把物理世界变成可查询状态、把高层意图转成受约束的执行，并把执行结果变成下一轮决策的证据。</p>
+<p class="section-lead">这里仅讨论机器人运行时真正会调用的能力。工具必须能把物理世界变成可查询状态、把高层意图转成受约束的执行，并把执行结果变成下一轮决策的证据。</p>
 <div class="agent-callout"><strong>工具设计原则：</strong>Agent-facing Tool 应描述“机器人能获得什么信息或完成什么物理操作”；具体模型、算法和控制细节可以藏在 Skill 内部，但输入输出、执行状态、物理副作用和成功证据必须明确。</div>
 <h3>7.1 感知与空间 grounding 工具</h3>
 <div class="comparison"><div class="table-wrap"><table><thead><tr><th>工具能力</th><th>代表实现</th><th>给 Agent 的结果</th><th>主要用途</th></tr></thead><tbody>
