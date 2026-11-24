@@ -131,6 +131,7 @@ for asset in ['app.js','reader.js','styles.css','math.js']:
     source=root/'docs'/asset
     if not source.is_file():raise SystemExit(f'Missing browser asset: {source}')
     shutil.copyfile(source,dist/asset)
+shutil.copytree(root/'docs'/'labs', dist/'labs', dirs_exist_ok=True)
 (data/'lessons.json').write_text(json.dumps(lessons,ensure_ascii=False,indent=2)+'\n')
 (data/'curriculum.json').write_text(json.dumps(catalog,ensure_ascii=False,indent=2)+'\n')
 topic_report=root/'topics-validation.json'

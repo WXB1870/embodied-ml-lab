@@ -153,6 +153,19 @@ function canonicalRoute(){
  if(href)history.replaceState(null,'',routeHref(href));
  return pendingQuery;
 }
+async function mountCourseLab(root){
+ if(!document.querySelector('[data-course-lab-style]')){
+  const sheet=document.createElement('link');sheet.rel='stylesheet';sheet.href=sitePath('/labs/labs.css');
+  sheet.setAttribute('data-course-lab-style','');document.head.append(sheet);
+ }
+ try{
+  const module=await import(sitePath('/labs/'+root.dataset.courseLab+'.mjs'));
+  if(root.isConnected){module.mount(root);root.dataset.mounted='true';}
+ }catch(error){
+  if(root.isConnected){const message=document.createElement('p');message.textContent='实验加载失败，请刷新页面重试。';root.append(message);}
+  console.error(error);
+ }
+}
 function render(){
  if(!lessons.length)return;
  if(sectionObserver)sectionObserver.disconnect();
@@ -163,7 +176,17 @@ function render(){
  else if(path==='/practice'){html=renderPractice();active='practice';title='手撕题库';}
  else if(path==='/guide'){html=renderGuide();active='guide';title='下载与说明';}
  else if(path==='/'){html=renderCatalog();title='具身智能与大模型算法研发';}else html=notFound();
+ const previousLab=document.querySelector('[data-course-lab]');
  $('#main').innerHTML=normalizeInternalLinks(html);
+ const lab=document.querySelector('[data-course-lab]');
+ if(lab){
+  if(previousLab?.dataset.courseLab===lab.dataset.courseLab && previousLab.dataset.mounted){
+   lab.replaceWith(previousLab);
+  }else{
+   if(previousLab?.dataset.courseLab===lab.dataset.courseLab)lab.replaceChildren(...previousLab.childNodes);
+   mountCourseLab(lab);
+  }
+ }
  const canonical=$('link[rel=canonical]');if(canonical)canonical.href=location.origin+location.pathname;
  const description=$('meta[name=description]');if(description&&currentLesson)description.content=currentLesson.subtitle||currentLesson.title;
  let robots=$('meta[name=robots]');

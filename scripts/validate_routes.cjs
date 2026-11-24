@@ -14,6 +14,7 @@ const app=fs.readFileSync(path.join(dist,'app.js'),'utf8');
 vm.runInContext(app.slice(0,app.indexOf("document.addEventListener('click'")),context);
 vm.runInContext(`curriculum=${JSON.stringify(curriculum)};MODULES=curriculum.modules;lessons=${JSON.stringify(lessons)};topics=${JSON.stringify(topics)};byId=Object.fromEntries(lessons.map(l=>[l.id,l]));topicById=Object.fromEntries(topics.map(t=>[t.id,t]));registerTopicExercises();markReading=()=>{};`,context);
 const evaluate=expression=>vm.runInContext(expression,context);
+require('node:child_process').execFileSync(process.execPath,[path.join(__dirname,'validate_lab_math.cjs')],{stdio:'inherit'});
 const records=[];
 function test(name,fn){fn();records.push({name,passed:true});}
 
@@ -73,6 +74,18 @@ for(const lesson of lessons){
  test(lesson.id+' theory rendering follows its course type',()=>{
   const html=evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'theory','python',new URLSearchParams())`);
   assert.ok(html.includes('class="article-intro"'));
+  const labName=({'cnn-receptive-field':'cnn',attention:'attention'})[lesson.id];
+  const published=fs.readFileSync(path.join(dist,'learn',lesson.id,'index.html'),'utf8');
+  for(const page of [html,published])assert.equal((page.match(/data-course-lab="/g)||[]).length,labName?1:0);
+  assert.equal(published.includes('data-course-lab-style'),Boolean(labName));
+  if(labName){
+   assert.ok(published.includes('data-course-lab="'+labName+'"'));
+   const lab=published.slice(published.indexOf('data-course-lab="'),published.indexOf('class="chapter-goals"'));
+   assert.ok(lab.includes('<svg') && lab.includes(labName==='cnn'?'data-marker':'data-headmap'));
+   for(const tab of ['code','exercise']){
+    assert.ok(!evaluate(`renderLesson(byId[${JSON.stringify(lesson.id)}],'${tab}','python',new URLSearchParams())`).includes('data-course-lab='));
+   }
+  }
   assert.doesNotMatch(html,/data-learning-visual|data-lv-|class="inline-visual"|data-explorer=/);
   assert.equal((html.match(/class="section-lead"/g)||[]).length,lesson.sections.length+(lesson.advancedSections||[]).length);
   assert.ok(!html.includes('id="discussion"'));
