@@ -17,11 +17,12 @@
 
 ## 技术架构
 
-- 前端：原生 HTML、CSS、JavaScript
-- 课程源数据：`content/*.json`
-- 构建：Python + Node.js 静态预渲染
-- 部署：GitHub Pages
-- 阅读器、公式渲染、代码编辑与练习交互沿用现有实现
+- 课程与知识内容：`content/`（唯一内容源）
+- 页面外壳与浏览器运行时代码：`content/site-shell.html`、`docs/*.js`、`docs/styles.css`、`docs/robot-agent/`
+- 构建输出：`dist/`（唯一发布产物；禁止手工编辑）
+- 构建：Python 组装 + Node.js 静态预渲染
+- 部署：GitHub Actions 将本次校验通过的 `dist/` 直接发布到 GitHub Pages
+- `docs/` 不再作为 Pages 发布目录；其中仅保留构建所需的前端源码和 Robot Agent 页面源码
 
 ## 构建与验证
 
@@ -32,5 +33,9 @@ touch dist/.nojekyll
 node scripts/validate_routes.cjs
 python scripts/validate_site.py
 ```
+
+每次推送 `main` 都会重新构建完整站点、验证全部课程路由及静态资源，并部署同一次构建生成的 `dist/`。不得单独更新主页 HTML 或手工修改 `dist/` 中的页面。
+
+首次切换时，请在仓库 **Settings → Pages → Build and deployment → Source** 中选择 **GitHub Actions**。此后无需再手工选择 `docs/` 或分支目录。
 
 课程旧版源数据保留在原始 `content/*.json` 文件中，迁移关系见 [课程归档说明](content/archive/README.md)。
