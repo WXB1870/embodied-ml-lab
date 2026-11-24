@@ -72,6 +72,9 @@ for file in sorted(dist.rglob('*.html')):
     expected = site_url + route
     if route == '/404.html':
         expected = site_url + '/404/'
+    elif route == '/robot-agent/':
+        # Compatibility route redirects to the canonical Robot Agent course page.
+        expected = site_url + '/learn/robot-agent-loop/'
     if not route.startswith('/topics/') and page.canonical != [expected]:
         errors.append([route, 'canonical mismatch', page.canonical])
     if route.startswith('/learn/'):
