@@ -1,7 +1,7 @@
 [
   {
     "id": "mlp",
-    "number": 22,
+    "number": 2,
     "module": "network-foundations",
     "title": "MLP：结构、前向与反向传播",
     "subtitle": "面向模型阅读与面试手撕的精简参考：从 Linear 和非线性开始，完整推导两层网络前向、损失与参数梯度，并用 PyTorch 验证。",
@@ -786,7 +786,7 @@
   },
   {
     "id": "cnn-receptive-field",
-    "number": 24,
+    "number": 3,
     "module": "network-foundations",
     "level": "P0",
     "title": "CNN：卷积计算与感受野",
@@ -1690,7 +1690,7 @@
   },
   {
     "id": "diffusion",
-    "number": 24,
+    "number": 12,
     "module": "generative",
     "title": "扩散模型基础：DDPM 目标推导与 DDIM 加速采样",
     "subtitle": "围绕扩散模型基础：DDPM 目标推导与 DDIM 加速采样，完成理论推导、PyTorch 实现与面试手撕训练。",
@@ -2174,7 +2174,7 @@
   },
   {
     "id": "dit-adaln",
-    "number": 40,
+    "number": 14,
     "module": "generative",
     "level": "P0",
     "title": "扩散 Transformer：DiT 架构与 FiLM / AdaLN-Zero 条件注入",
@@ -2535,7 +2535,7 @@
   },
   {
     "id": "action-chunking",
-    "number": 23,
+    "number": 16,
     "module": "policies",
     "title": "时序建模：Action Chunking 与 Temporal Ensembling",
     "subtitle": "围绕时序建模：Action Chunking 与 Temporal Ensembling，完成理论推导、PyTorch 实现与面试手撕训练。",
@@ -2824,7 +2824,7 @@
   },
   {
     "id": "vla-architecture",
-    "number": 0,
+    "number": 18,
     "module": "policies",
     "title": "VLA 架构剖析：VLM 骨干与连续/离散动作专家",
     "subtitle": "围绕VLA 架构剖析：VLM 骨干与连续/离散动作专家，完成理论推导、PyTorch 实现与面试手撕训练。",
@@ -3391,7 +3391,7 @@
   },
   {
     "id": "policy-gradient",
-    "number": 44,
+    "number": 20,
     "module": "posttraining",
     "title": "策略梯度基础：REINFORCE、方差缩减与连续动作概率",
     "subtitle": "围绕策略梯度基础：REINFORCE、方差缩减与 GAE，完成理论推导、PyTorch 实现与面试手撕训练。",
@@ -3702,7 +3702,7 @@
   },
   {
     "id": "ppo",
-    "number": 44,
+    "number": 21,
     "module": "posttraining",
     "title": "在线强化学习：PPO 裁剪目标与双网络训练",
     "subtitle": "围绕在线强化学习：PPO 裁剪目标与双网络训练，完成理论推导、PyTorch 实现与面试手撕训练。",
@@ -3985,7 +3985,7 @@
   },
   {
     "id": "dpo-grpo",
-    "number": 44,
+    "number": 22,
     "module": "posttraining",
     "title": "大模型与 VLA 后训练：DPO 与 GRPO 组内相对优势",
     "subtitle": "围绕大模型与 VLA 后训练：DPO 与 GRPO 组内相对优势，完成理论推导、PyTorch 实现与面试手撕训练。",
@@ -4210,7 +4210,7 @@
   },
   {
     "id": "score-sde",
-    "number": 0,
+    "number": 13,
     "module": "generative",
     "title": "连续时间视角：Score Matching、SDE 与概率流 ODE",
     "subtitle": "围绕连续时间视角：Score Matching、SDE 与概率流 ODE，完成理论推导、PyTorch 实现与面试手撕训练。",
@@ -4609,7 +4609,7 @@
   },
   {
     "id": "generative-policy",
-    "number": 0,
+    "number": 17,
     "module": "policies",
     "title": "生成式动作策略演进：ACT、Diffusion Policy 与 Flow Policy",
     "subtitle": "围绕生成式动作策略演进：ACT、Diffusion Policy 与 Flow Policy，完成理论推导、PyTorch 实现与面试手撕训练。",
