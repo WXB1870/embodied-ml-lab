@@ -115,10 +115,19 @@ for asset in ['app.js','reader.js','styles.css','math.js','explorers.js','p0-exp
     source=root/'docs'/asset
     if not source.is_file():raise SystemExit(f'Missing browser asset: {source}')
     shutil.copyfile(source,dist/asset)
-agent_source=root/'docs'/'robot-agent'/'index.html'
-if agent_source.is_file():
-    agent_target=dist/'robot-agent';agent_target.mkdir(parents=True,exist_ok=True)
-    shutil.copyfile(agent_source,agent_target/'index.html')
+# Preserve the old URL as a compatibility redirect; Robot Agent is now a core curriculum module.
+agent_target=dist/'robot-agent';agent_target.mkdir(parents=True,exist_ok=True)
+legacy_target=site_url+'/learn/robot-agent-loop/'
+(agent_target/'index.html').write_text(
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+    '<meta name="robots" content="noindex">'
+    '<link rel="canonical" href="'+legacy_target+'">'
+    '<meta http-equiv="refresh" content="0;url='+legacy_target+'">'
+    '<title>Robot Agent 已并入核心课程</title></head><body>'
+    '<p>Robot Agent 已并入核心课程。<a href="'+legacy_target+'">进入课程</a></p>'
+    '<script>location.replace('+json.dumps(legacy_target)+')</script>'
+    '</body></html>'
+)
 (data/'lessons.json').write_text(json.dumps(lessons,ensure_ascii=False,indent=2)+'\n')
 (data/'curriculum.json').write_text(json.dumps(catalog,ensure_ascii=False,indent=2)+'\n')
 topic_report=root/'topics-validation.json'
