@@ -23,16 +23,6 @@ lora:{section:'1',title:'LoRA：低秩参数更新',intro:'调整 Rank，观察�
 ppo:{section:'ppo-2',title:'PPO：GAE 与 Clipped Objective',intro:'调整概率比和 Advantage，观察裁剪目标如何限制单个样本的更新激励。',steps:['采集 rollout 与 old_log_prob','计算 TD residual','反向递推 GAE','计算新旧策略概率比','裁剪 surrogate 并更新'],pseudo:['delta_t = r_t + gamma*(1-done)*V_next - V_t','A_t = delta_t + gamma*lambda*(1-done)*A_next','ratio = exp(new_logp - old_logp)','objective = min(ratio*A, clip(ratio,1-eps,1+eps)*A)','actor_loss = -mean(objective)']},
 'dpo-grpo':{section:'grpo-group',title:'DPO / GRPO：偏好与组内优势',intro:'调整 β，观察组内奖励中心化和偏好目标的尺度。',steps:['同一任务生成候选','获得偏好或奖励','DPO 比较 chosen/rejected','GRPO 计算组内相对优势','按策略概率目标更新'],pseudo:['DPO: ratio = logp(chosen)-logp(rejected)','loss = -logsigmoid(beta*(ratio-ref_ratio))','mean = group_mean(rewards)','advantage = (rewards-mean)/(group_std+eps)','update_policy_with_valid_log_prob(advantage)']}
 };
-const AGENT = {
-'agent-loop':{title:'Agent Loop：Observe → Decide → Act → Verify',intro:'改变执行结果，观察任务状态如何推进或触发重规划。',steps:['读取任务与 World State','选择一个 Skill','执行并接收事件','验证后置条件','成功结束或恢复重规划'],pseudo:['while not task.completed:','    state = observe_world()','    decision = agent.choose_skill(state, task)','    result = await runtime.execute(decision)','    task_state = verify(result, observe_world())']},
-'skill-runtime':{title:'Skill Contract 与生命周期',intro:'沿状态机观察一个 Skill 从接收到完成的过程。',steps:['Accepted：参数校验通过','Running：正在执行','Yielded：等待外部决策','Succeeded：后置条件满足','Failed / Cancelled：失败或取消'],pseudo:['skill = registry.resolve(name)','validate_schema(inputs)','check_preconditions(world_state)','result = await skill.run(inputs, timeout)','verify_postconditions(result, world_state)']},
-'long-vla':{title:'长时序 VLA Skill 执行',intro:'把 VLA 内部动作 Chunk 执行与 Agent 任务级检查分开。',steps:['Agent 启动子任务','VLA 内部观测与预测','执行动作块前缀','子目标或异常上报','Agent 决定继续或恢复'],pseudo:['handle = vla_skill.start(subgoal)','while handle.status == "running":','    event = handle.poll_event()','    if event.needs_replan: agent.replan()','    result = verify(event.evidence)']},
-'world-model':{title:'World Model：候选动作预测',intro:'比较不同候选动作的预测未来和目标代价。',steps:['读取当前 World State','生成候选动作','预测各候选未来','计算目标与风险代价','选择执行或请求更多观测'],pseudo:['candidates = propose_actions(world_state)','predictions = world_model.predict(world_state, candidates)','scores = evaluate(predictions, goal, constraints)','best = argmin(scores)','execute(best)']},
-geometry:{title:'感知几何：RGB → Mask → Depth → 3D',intro:'输入像素与深度，通过相机内参恢复相机坐标系三维点。',steps:['RGB 与目标检测','SAM 输出 Mask','深度图给出 Z','相机内参反投影','输出相机坐标系 3D 点'],pseudo:['mask = segment(image, prompt)','depth = estimate_depth(image)','u,v = selected_pixel(mask)','X = (u-cx)*Z/fx; Y = (v-cy)*Z/fy','point_camera = [X,Y,Z]']},
-'code-policy':{title:'Code-as-Policy：生成、验证与执行',intro:'沿程序生成流水线推进，区分语法正确、接口正确与任务成功。',steps:['自然语言任务','生成程序 / AST','静态检查与 API 校验','沙箱执行','验证结果并反馈修订'],pseudo:['program = agent.generate(task, skill_api)','ast = parse(program)','validate_syntax(ast); validate_calls(ast, registry)','result = sandbox.execute(ast)','verify_result(result, world_state)']},
-evolution:{title:'Code Policy Evolution：经验到版本晋升',intro:'改变候选策略的评估结果，观察晋升或回滚。',steps:['记录执行经验','检索相似失败案例','生成候选修改','仿真与回归评估','晋升或回滚版本'],pseudo:['experience = record(task, policy_version, outcome)','cases = memory.retrieve(experience)','candidate = revise(current_policy, cases)','metrics = evaluate(candidate, regression_suite)','promote(candidate) if passes(metrics) else rollback()']},
-'meta-policy':{title:'Meta-policy：选择合适的 Skill',intro:'调整成功率、执行成本和风险权重，观察技能选择变化。',steps:['获取可用 Skill','估计成功率与成本','计算风险约束下效用','选择并执行 Skill','根据结果更新技能统计'],pseudo:['for skill in available_skills:','    utility[skill] = success*value - cost - risk_penalty','selected = argmax(utility)','result = runtime.execute(selected)','update_skill_statistics(selected, result)']}
-};
 function lvEsc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function renderAlgorithmPanel(c){return '<details class="lv-algorithm"><summary>算法伪代码 · '+lvEsc(c.title)+'</summary><div class="lv-algorithm-body"><pre>'+c.pseudo.map(function(line,i){return '<span class="lv-code-line"><i>'+(i+1)+'</i><code>'+lvEsc(line)+'</code><small>'+lvEsc((c.notes||[])[i]||'对应本步骤的核心计算。')+'</small></span>';}).join('')+'</pre><p>'+lvEsc(c.intro)+'</p></div></details>';}
 function renderLVControls(id){
@@ -139,13 +129,12 @@ function lvStage(id,step,root){
   const beta=Number(root.querySelector('[data-lv-beta]')?.value||1),z=.4+.55*.8;
   return '<label>KL 权重 β <input type="range" min="0" max="4" step=".1" value="'+beta+'" data-lv-beta><output>'+beta.toFixed(1)+'</output></label><div class="lv-results"><div><span>μ</span><b>0.40</b></div><div><span>σ</span><b>0.55</b></div><div><span>固定 ε 下的 z</span><b>'+z.toFixed(2)+'</b></div><div><span>KL 系数</span><b>'+beta.toFixed(1)+'</b></div></div><p>固定 ε 隔离重参数化计算；β 改变训练目标中的 KL 权重。</p>';
  }
- if(id==='agent-loop'||id==='skill-runtime'||id==='long-vla'||id==='world-model'||id==='geometry'||id==='code-policy'||id==='evolution'||id==='meta-policy'){
-  return '<div class="lv-pipeline">'+c.steps.map(function(s,i){return '<div class="'+(i<=step?'active':'')+'"><b>'+(i+1)+'</b><span>'+lvEsc(s)+'</span></div>';}).join('')+'</div><p>'+lvEsc(c.steps[step])+'</p>';
+ return '<div class="lv-pipeline">'+c.steps.map(function(s,i){return '<div class="'+(i<=step?'active':'')+'"><b>'+(i+1)+'</b><span>'+lvEsc(s)+'</span></div>';}).join('')+'</div><p>'+lvEsc(c.steps[step])+'</p>';
  }
  return '<div class="lv-pipeline">'+c.steps.map(function(s,i){return '<div class="'+(i<=step?'active':'')+'"><b>'+(i+1)+'</b><span>'+lvEsc(s)+'</span></div>';}).join('')+'</div>';
 }
 function updateLearningVisual(root){
- const id=root.dataset.learningVisual,c=LV[id]||AGENT[id];if(!c)return;
+ const id=root.dataset.learningVisual,c=LV[id];if(!c)return;
  const range=root.querySelector('[data-lv-range]'),step=Number(range?.value||0);
  root.querySelectorAll('[data-lv-step]').forEach(function(b,i){b.classList.toggle('active',i===step);b.setAttribute('aria-pressed',String(i===step));});
  const prev=root.querySelector('[data-lv-prev]'),next=root.querySelector('[data-lv-next]');
@@ -177,107 +166,3 @@ document.addEventListener('visibilitychange',function(){if(document.hidden)docum
 if(window.addEventListener)window.addEventListener('beforeunload',function(){document.querySelectorAll('[data-learning-visual]').forEach(function(root){if(root._lvTimer)clearInterval(root._lvTimer);});});
 
 
-function agentLabCard(id){
- const c=AGENT[id]; if(!c)return '';
- const controls={
-  'agent-loop':'<label>执行分支 <select data-agent-mode><option value="normal">正常接近</option><option value="collision">接近时发生碰撞</option><option value="uncertain">把手位置不确定</option></select></label>',
-  'skill-runtime':'<label>触发事件 <select data-agent-event><option value="checkpoint">到达检查点</option><option value="success">后置条件满足</option><option value="failure">接触失败</option><option value="timeout">执行超时</option><option value="cancel">Agent 取消</option></select></label>',
-  'long-vla':'<label>VLA 执行进度 <input type="range" min="0" max="100" step="5" value="40" data-agent-progress><output>40%</output></label><label>执行事件 <select data-agent-incident><option value="none">正常执行</option><option value="slip">物体滑落</option><option value="obstacle">新障碍出现</option></select></label>',
-  'world-model':'<label>风险权重 <input type="range" min="0" max="2" step=".1" value="1" data-agent-risk><output>1.0</output></label><label>预测可信度 <select data-agent-confidence><option value="high">较高</option><option value="low">较低</option></select></label>',
-  'geometry':'<label>像素 u <input type="range" min="180" max="460" step="5" value="380" data-agent-u><output>380 px</output></label><label>深度 Z <input type="range" min=".4" max="1.2" step=".05" value=".8" data-agent-depth><output>0.80 m</output></label>',
-  'code-policy':'<label>每次拉动增量 <input type="range" min=".01" max=".08" step=".01" value=".04" data-agent-pull><output>0.04 rad</output></label><label>接触状态 <select data-agent-contact><option value="stable">稳定接触</option><option value="slip">接触滑脱</option></select></label>',
-  'evolution':'<label>候选版本成功率 <input type="range" min="50" max="100" step="5" value="90" data-agent-success><output>90%</output></label><label>未见场景回归率 <input type="range" min="0" max="30" step="1" value="4" data-agent-regression><output>4%</output></label>'
- };
- return '<section class="agent-lab-card" data-agent-lab="'+id+'"><header><div><span class="agent-lab-kicker">INTERACTIVE EXPERIMENT</span><h3>'+lvEsc(c.title)+'</h3><p>'+lvEsc(c.intro)+'</p></div></header><div class="agent-lab-controls">'+controls[id]+'</div><div class="agent-lab-stage" data-agent-stage></div><details class="lv-algorithm"><summary>查看对应伪代码</summary><div class="lv-algorithm-body"><pre>'+c.pseudo.map(function(line,i){return '<span class="lv-code-line"><i>'+(i+1)+'</i><code>'+lvEsc(line)+'</code></span>';}).join('')+'</pre></div></details></section>';
-}
-function agentLabStage(id,root){
- const val=function(sel,fallback){const el=root.querySelector(sel);return el?el.value:fallback;};
- if(id==='agent-loop'){
-  const mode=val('[data-agent-mode]','normal');
-  const states={
-   normal:{skill:'approach_handle',result:'pregrasp_reached',next:'establish_contact',why:'把手定位可信且路径畅通，调用接近技能。'},
-   collision:{skill:'recover_from_collision',result:'unexpected_contact',next:'reobserve_scene',why:'执行回执显示意外接触，旧场景状态可能失效；先重新观察，不继续拉门。'},
-   uncertain:{skill:'localize_handle_again',result:'low_confidence_pose',next:'active_perception',why:'把手位姿置信度不足，先调用感知技能补充证据。'}
-  }[mode];
-  return '<div class="agent-lab-results"><div><span>当前子目标</span><b>建立把手接触</b></div><div><span>Agent 选择</span><b>'+states.skill+'</b></div><div><span>执行回执</span><b>'+states.result+'</b></div><div><span>下一步决策</span><b>'+states.next+'</b></div></div><p>'+states.why+' 关键点：执行结果改变 World State，下一轮决策读取更新后的状态，而不是继续使用旧计划。</p>';
- }
- if(id==='skill-runtime'){
-  const event=val('[data-agent-event]','checkpoint');
-  const paths={
-   checkpoint:{state:'Yielded',route:'Accepted → Running → Yielded',detail:'技能到达预设检查点，提交进度与证据，把控制权交回 Agent。Agent 可以继续、切换技能或请求观测。',terminal:false},
-   success:{state:'Succeeded',route:'Accepted → Running → Succeeded',detail:'后置条件由验证器确认成立，技能返回成功证据，Agent 更新任务状态。',terminal:true},
-   failure:{state:'Failed',route:'Accepted → Running → Failed',detail:'接触建立失败，返回 failure_code 与 recovery_options；不能只返回一个模糊的 false。',terminal:true},
-   timeout:{state:'Timed out',route:'Accepted → Running → Timeout',detail:'超过运行预算，Runtime 触发取消/停止流程并回传最后检查点，Agent 决定重试还是恢复。',terminal:true},
-   cancel:{state:'Cancelled',route:'Accepted → Running → Cancelled',detail:'Agent 发出取消请求，Runtime 应确认底层执行已停止，再报告取消完成。',terminal:true}
-  }[event];
-  const nodes=['Accepted','Running','Yielded','Succeeded','Failed','Cancelled'];
-  return '<div class="agent-lab-results"><div><span>当前状态</span><b>'+paths.state+'</b></div><div><span>状态路径</span><b>'+paths.route+'</b></div></div><div class="agent-lab-actions">'+nodes.map(function(n){return '<button type="button" '+(paths.state.toLowerCase()===n.toLowerCase()?'aria-pressed="true"':'')+' disabled>'+n+'</button>';}).join('')+'</div><p>'+paths.detail+'</p>';
- }
- if(id==='long-vla'){
-  const p=Number(val('[data-agent-progress]','40')),incident=val('[data-agent-incident]','none');
-  const agentEvent=incident==='none'?(p>=100?'子目标完成':'等待事件/检查点'):incident==='slip'?'物体滑落：上报异常':'新障碍：请求重规划';
-  const vlaState=incident==='none'?(p>=100?'完成':'闭环执行 Chunk'):'暂停当前子任务并上报';
-  return '<div class="agent-lab-results"><div><span>Task Agent</span><b>'+agentEvent+'</b></div><div><span>VLA Skill</span><b>'+vlaState+'</b></div><div><span>底层 MPC</span><b>持续控制 / 安全约束</b></div></div><div style="height:12px;background:#e7edf5;border-radius:8px;overflow:hidden;margin:14px 0 6px"><div style="height:100%;width:'+p+'%;background:#6e91bf;border-radius:8px"></div></div><div class="agent-lab-results"><div><span>已执行子任务</span><b>'+p+'%</b></div><div><span>Agent 介入时机</span><b>'+(incident==='none'?(p>=100?'子目标边界':'事件触发'):'异常事件')+'</b></div></div><p>VLA 在 Skill 内部完成多轮观测与动作 Chunk；Agent 不逐 Chunk 推理，只在子目标、异常或预算边界介入。滑块只改变教学模拟进度。</p>';
- }
- if(id==='world-model'){
-  const w=Number(val('[data-agent-risk]','1')),conf=val('[data-agent-confidence]','high');
-  const candidates=[{name:'法向拉动',goal:12,risk:.2,cost:.3},{name:'切向拉动',goal:4,risk:.9,cost:.2},{name:'先调整底盘',goal:8,risk:.15,cost:.7}];
-  const rows=candidates.map(c=>({...c,score:Math.abs(10-c.goal)*.35+w*c.risk+c.cost}));
-  rows.sort((a,b)=>a.score-b.score);
-  const best=conf==='low'?'调用主动感知':rows[0].name;
-  return '<div class="agent-lab-results">'+rows.map(c=>'<div><span>'+c.name+' · 代价</span><b>'+c.score.toFixed(2)+'</b><small style="display:block;color:#8491a3;font-size:10px">门角预测 '+c.goal+'° · 风险 '+c.risk.toFixed(2)+'</small></div>').join('')+'</div><p><strong>Agent 决策：'+best+'</strong>。'+(conf==='low'?'当前预测可信度低，先获取新观测，避免把不可靠预测直接转成物理动作。':'按目标误差、风险权重与执行成本综合评分。')+' 所有数值均为教学模拟量，不代表真实机器人测量。</p>';
- }
- if(id==='geometry'){
-  const u=Number(val('[data-agent-u]','380')),z=Number(val('[data-agent-depth]','.8'));
-  const fx=600,cx=320,cy=240,v=260,x=(u-cx)*z/fx,y=(v-cy)*z/fx;
-  return '<svg viewBox="0 0 620 150" role="img" aria-label="图像像素反投影到相机坐标系"><rect x="18" y="12" width="250" height="126" rx="5" fill="#e8eef6" stroke="#cbd6e4"/><path d="M35 112 L90 48 L140 112 Z" fill="#b9c9dd"/><rect x="158" y="46" width="70" height="62" rx="4" fill="#c5d4e5"/><circle cx="'+(18+(u-180)/280*250)+'" cy="76" r="6" fill="#c45b4d"/><line x1="'+(18+(u-180)/280*250)+'" y1="76" x2="310" y2="76" stroke="#c45b4d" stroke-dasharray="4 4"/><path d="M310 76 L420 34 L420 118 Z" fill="#eef2f7" stroke="#cbd6e4"/><circle cx="420" cy="76" r="6" fill="#4779ba"/><text x="30" y="28" font-size="11" fill="#53677f">RGB / Mask 像素</text><text x="330" y="24" font-size="11" fill="#53677f">相机坐标系</text><text x="435" y="72" font-size="10" fill="#53677f">P₍camera₎</text><text x="435" y="88" font-size="10" fill="#53677f">('+x.toFixed(3)+', '+y.toFixed(3)+', '+z.toFixed(2)+') m</text></svg><div class="agent-lab-results"><div><span>输入像素</span><b>('+u+', '+v+')</b></div><div><span>深度 Z</span><b>'+z.toFixed(2)+' m</b></div><div><span>相机坐标 X</span><b>'+x.toFixed(3)+' m</b></div><div><span>相机坐标 Y</span><b>'+y.toFixed(3)+' m</b></div></div><p>针孔模型：X=(u−cx)Z/fx，Y=(v−cy)Z/fy。得到的仍是相机坐标；变换到世界坐标还需要外参 T_world_camera。</p>';
- }
- if(id==='code-policy'){
-  const step=Number(val('[data-agent-pull]','.04')),contact=val('[data-agent-contact]','stable');
-  const angle=contact==='stable'?Math.min(90,Math.round(90*step/.08)):Math.min(18,Math.round(18*step/.08));
-  const lines=['handle = localize_handle()','move_to(pregrasp(handle))','if not verify_contact(): return recover()','while door_angle() < target:','    compliant_pull(step=delta)','verify_door_open()'];
-  const active=contact==='slip'?2:angle>=90?5:4;
-  return '<pre class="agent-lab-code">'+lines.map((line,i)=>'<span class="'+(i===active?'active':'')+'">'+(i+1)+'  '+line+'</span>').join('\n')+'</pre><div class="agent-lab-results"><div><span>模拟门角</span><b>'+angle+'°</b></div><div><span>接触状态</span><b>'+(contact==='stable'?'稳定':'滑脱')+'</b></div><div><span>程序结果</span><b>'+(contact==='slip'?'触发恢复':'继续执行')+'</b></div></div><p>改变拉动增量或接触状态，观察程序分支与结果。这里执行的是预设状态模拟，不会运行任意生成代码或控制真实机器人。</p>';
- }
- if(id==='evolution'){
-  const success=Number(val('[data-agent-success]','90')),reg=Number(val('[data-agent-regression]','4'));
-  const pass=success>=85&&reg<=8;
-  return '<div class="agent-lab-results"><div><span>当前版本 v12</span><b>78% 成功率</b></div><div><span>候选版本 v13</span><b>'+success+'% 成功率</b></div><div><span>未见场景回归率</span><b>'+reg+'%</b></div><div><span>晋升判定</span><b style="color:'+(pass?'#2f7059':'#ad7440')+'">'+(pass?'通过，可晋升':'未通过，保留旧版本')+'</b></div></div><div class="agent-lab-actions"><button type="button" data-agent-set="promote" aria-pressed="'+(pass?'true':'false')+'" disabled>候选版本评估</button><button type="button" data-agent-set="rollback" disabled>回滚 v12</button></div><p>示例晋升门槛：成功率至少 85%，未见场景回归率不超过 8%。正式系统还应检查安全违规、完成时间和旧任务回归；评估未通过时不替换当前稳定版本。</p>';
- }
- return '';
-}
-function updateAgentLab(root){
- const id=root.dataset.agentLab,stage=root.querySelector('[data-agent-stage]');if(!stage)return;
- root.querySelectorAll('.agent-lab-controls input[type=range]').forEach(function(input){
-  const out=input.parentElement.querySelector('output');if(!out)return;
-  const suffix=input.dataset.agentProgress!==undefined?'%':input.dataset.agentU!==undefined?' px':input.dataset.agentDepth!==undefined?' m':input.dataset.agentPull!==undefined?' rad':'%';
-  const n=Number(input.value),digits=input.step&&Number(input.step)<1?2:0;
-  out.textContent=n.toFixed(digits)+suffix;
- });
- stage.innerHTML=agentLabStage(id,root);
-}
-function initAgentLearning(){
- // Route-validation runs this bundle in a minimal VM without a browser DOM.
- // Keep the page initializer inert in that environment; the real page has the DOM API.
- if(typeof document==='undefined'||typeof document.getElementById!=='function')return;
- const host=document.getElementById('agent-learning-extras');if(!host)return;
- const ids=['agent-loop','skill-runtime','long-vla','world-model','geometry','code-policy','evolution'];
- host.innerHTML='<div class="agent-learning-grid">'+ids.map(function(id){return '<div class="agent-learning-item">'+agentLabCard(id)+'</div>';}).join('')+'</div>';
- host.querySelectorAll('[data-agent-lab]').forEach(updateAgentLab);
- host.addEventListener('input',function(e){if(e.target.closest('[data-agent-lab]'))updateAgentLab(e.target.closest('[data-agent-lab]'));});
- host.addEventListener('change',function(e){if(e.target.closest('[data-agent-lab]'))updateAgentLab(e.target.closest('[data-agent-lab]'));});
- // 移动端点击目录后自动收起，桌面端保持常开。
- document.querySelectorAll('.agent-toc a[href^="#"]').forEach(function(a){
-  a.addEventListener('click',function(){if(window.matchMedia('(max-width: 1100px)').matches){const toc=a.closest('.agent-toc');if(toc)toc.open=false;}});
- });
- if('IntersectionObserver' in window){
-  const links=Array.from(document.querySelectorAll('.agent-toc a[href^="#"]'));
-  const byId=new Map(links.map(a=>[a.getAttribute('href').slice(1),a]));
-  const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{
-   if(entry.isIntersecting){links.forEach(a=>a.removeAttribute('aria-current'));const link=byId.get(entry.target.id);if(link)link.setAttribute('aria-current','location');}
-  }),{rootMargin:'-18% 0px -72% 0px',threshold:0});
-  document.querySelectorAll('.agent-page .article-section[id]').forEach(section=>observer.observe(section));
- }
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initAgentLearning);
-else initAgentLearning();
