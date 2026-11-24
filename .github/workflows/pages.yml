@@ -1,32 +1,65 @@
-name: Validate Embodied ML Lab
+name: Build and deploy Embodied ML Lab
 
 on:
   push:
-    branches: [main, refactor/four-core-modules-20-lessons]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     env:
       SITE_URL: https://wxb1870.github.io/embodied-ml-lab/
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build website
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build the complete site
         run: |
           python scripts/assemble.py
           node scripts/prerender.cjs
           touch dist/.nojekyll
-      - name: Check deployment paths and pages
+          test -s dist/index.html
+          test -s dist/learn/flow-matching/index.html
+          test -s dist/robot-agent/index.html
+          test -s dist/data/lessons.json
+          test -s dist/data/curriculum.json
+
+      - name: Validate routes and generated pages
         run: |
           node scripts/validate_routes.cjs
           python scripts/validate_site.py
+
+      - name: Upload the validated build
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
