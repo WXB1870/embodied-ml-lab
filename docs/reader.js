@@ -55,7 +55,7 @@ function readerContents(kind,item,tab){
  let entries=[];
  if(theory){
   entries=item.sections.map((section,i)=>({href:sectionHref(kind,item,section,i),id:sectionId(kind,section,i),title:cleanTitle(section.title)}));
-  if(kind==='lesson')entries.push({href:theoryLink(kind,item,'chapter-review'),id:'chapter-review',title:'读后自测'});
+  if(kind==='lesson'&&!item.theoryOnly)entries.push({href:theoryLink(kind,item,'chapter-review'),id:'chapter-review',title:'读后自测'});
   entries.push({href:theoryLink(kind,item,'sources'),id:'sources',title:'参考资料'});
  }else{
   const {params}=parseRoute();let base=kind==='topic'?topicHref(item.id,tab):lessonHref(item.id,tab,tab==='exercise'?(params.get('mode')==='torch'?'torch':'python'):undefined);
