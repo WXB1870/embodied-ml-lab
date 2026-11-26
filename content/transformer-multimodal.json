@@ -289,28 +289,28 @@
       "mlp"
     ],
     "objectives": [
-      "跟踪 [B,T,D] 到 [B,H,T,d] 的多头拆分。",
-      "解释 Self-Attention 与 Cross-Attention 的 Q/K/V 来源。",
-      "手写带掩码的注意力并与 PyTorch SDPA 对照。"
+      "用缩放点积公式从 Q/K/V 算出权重和读出，指出 Softmax 沿哪个轴。",
+      "从单头扩到 [B,H,T,d]，区分 Query 长度、Key 长度与 Value 宽度。",
+      "根据 Q/K/V 的来源和允许读取的位置，区分 Self-Attention、Cross-Attention 与因果掩码。"
     ],
     "why": "VLA 中图像、语言、状态和动作是否真正交换信息，取决于 token 的组织与注意力可见性。读懂一张 Mask 比只知道模型用了 Transformer 更接近实际训练。",
     "sections": [
       {
-        "title": "Q/K/V 与加权读出",
+        "title": "注意力的核心公式：一次查询怎样读出信息",
         "body": [
-          "注意力把一次信息读取拆成匹配和汇总。Query 描述当前位置要找什么，Key 描述每个候选位置怎样被检索，Value 是被读取的内容。对一个 Query，与所有 Key 点积得到一行分数，再归一化为权重，对 Value 加权求和。Key 和 Value 一一对应，但不必数值相同；Value 的通道宽度也可与 Query/Key 不同。输出的位置数量由 Query 决定，而不是由被读取的序列长度决定。",
-          "设查询端输入为 \\(x_i\\in\\mathbb R^{d_x}\\)，候选端输入为 \\(z_j\\in\\mathbb R^{d_z}\\)，为突出匹配结构先省略偏置。学习投影 \\(q_i=W_Qx_i\\)、\\(k_j=W_Kz_j\\)、\\(v_j=W_Vz_j\\)，其中 \\(W_Q\\in\\mathbb R^{d_k\\times d_x}\\)、\\(W_K\\in\\mathbb R^{d_k\\times d_z}\\)、\\(W_V\\in\\mathbb R^{d_v\\times d_z}\\)。点积可展开为 \\(q_i^\\top k_j=x_i^\\top W_Q^\\top W_Kz_j\\)，因此匹配规则本身由数据学习；它是一个双线性打分，并不预设某种物理相似度。分开的 \\(W_V\\) 允许网络用一组特征匹配、读取另一组内容。三种投影是常见设计，并不是所有注意力形式都必须采用的唯一结构。",
-          "Self-Attention 中 Q、K、V 通常来自同一组输入的三种线性投影，并不意味着它们相同；Cross-Attention 中 Query 可来自动作状态，Key/Value 来自视觉语言条件。学到的权重表示该次计算如何组合 Value，不等于可直接解释为物理接触概率或因果重要性。即使某个位置权重大，其 Value 也可能很小，且后续投影、残差和层间传播都会影响最终输出。",
-          "对一个固定查询，令 \\(s_j=q^\\top k_j/\\sqrt{d_k}\\)，再令 \\(a_j=\\exp(s_j)/\\sum_r\\exp(s_r)\\)。权重非负且总和为一，于是 \\(o=\\sum_j a_jv_j\\) 是当前 Value 集合的凸组合。它可看作在候选索引上的离散分布下读取 Value 的期望；概率分布描述这次读取，不代表候选的真实世界概率。Mask 会先限制这个候选集合，输出投影和残差则发生在这一读出之后。"
+          "先看一个样本、一个头：\\(Q:[T_q,d_k]\\)，\\(K:[T_k,d_k]\\)，\\(V:[T_k,d_v]\\)。\\(QK^\\top\\) 得到 \\([T_q,T_k]\\) 的打分矩阵：一行是一个查询，一列是一个候选 Key。沿最后一轴做 Softmax，表示每个查询在自己的候选中分配权重。下例不加掩码，\\(M=0\\)。",
+          "然后用每行权重和对应的 Value 做加权和，得到 \\([T_q,d_v]\\)：输出的行数由 Q 决定，每行内容的宽度由 V 决定。Key 与 Value 在候选轴上一一对应，但数值与特征宽度不必相同。",
+          "如果某个查询不能读取某个候选，可在 Softmax 前向这项分数加 \\(-\\infty\\)；其他可见项加零。这样屏蔽项的权重为零，其余权重重新归一化。这个写法假定每行至少有一个可见 Key；全遮蔽行需另定约定。",
+          "先手算，再试一题：[只补上单查询的加权读出](#/learn/attention?tab=exercise&lab=single-query-readout)。你只写“怎么用权重读 V”，不用搭建投影层或多头模块。"
         ],
         "id": "0",
-        "lead": "Query 是发起读取的查询表示，Key 是候选位置参与匹配的表示，Value 是候选位置提供的内容。一次注意力先匹配 Query 与各 Key，再按权重汇总对应 Value。先把这三个计算角色分清，后面的投影和矩阵形式才有明确含义。",
+        "lead": "Query（Q）负责发起查询，Key（K）负责让候选可被匹配，Value（V）是候选提供的内容。下面先用已投影好的 Q、K、V 计算，不要求知道它们来自哪个网络。",
         "figures": [
           {
             "src": "/assets/figures/attention-vaswani-figure2.png",
             "alt": "Transformer 原论文 Figure 2：左为缩放点积注意力，Q 与 K 打分、缩放、可选掩码、Softmax 后汇总 V；右为多头注意力。",
             "caption": "先自下而上读左图：Q 与 K 先打分，Scale 对应除以匹配维度的平方根，SoftMax 将分数变成权重，最后用权重汇总 V。Mask 是可选步骤。右图把这一过程并行执行多次，再合并各头。原图：[Vaswani et al., 2017, Figure 2](https://arxiv.org/abs/1706.03762)。",
-            "afterParagraph": 1
+            "afterParagraph": 3
           }
         ],
         "example": {
@@ -321,8 +321,13 @@
             "只交换 Value 而不交换 Key，权重不变但输出改变；若 Key 与 Value 一起交换，最终输出保持不变。"
           ],
           "conclusion": "Q/K 决定权重，V 决定被组合的内容，二者职责可以用干预分开验证。",
-          "afterParagraph": 2
-        }
+          "afterParagraph": 1
+        },
+        "formula": "\\operatorname{Attention}(Q,K,V)=\\operatorname{softmax}_{\\text{keys}}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}+M\\right)V",
+        "formulaFirst": true,
+        "code": "import math\nimport torch\n\nq = torch.tensor([[math.sqrt(2.0), 0.0]], dtype=torch.float64)\nk = q.new_tensor([[0.0, 1.0], [math.log(3.0), 0.0]])\nv = q.new_tensor([[2.0, 0.0], [0.0, 4.0]])\nweights = (q @ k.T / math.sqrt(q.shape[-1])).softmax(dim=-1)\nout = weights @ v\ntorch.testing.assert_close(weights, q.new_tensor([[0.25, 0.75]]))\ntorch.testing.assert_close(out, q.new_tensor([[0.5, 3.0]]))\nprint(weights.tolist(), out.tolist())",
+        "codeKind": "runnable",
+        "codeExplanation": "这里用同一组数字复现手算。交换 v 的两行后，weights 不变，但 out 变为 [[1.5, 1.0]]；同时交换 k 和 v 的两行，out 不变。"
       },
       {
         "title": "点积方差与缩放因子",
@@ -343,23 +348,7 @@
         "lead": "缩放点积注意力先用 Query 与 Key 的点积打分，再按每头匹配维度的平方根调整尺度。这个缩放用于避免维度增大时典型分数差异过大；它并不保证任意训练状态下分数方差恒定。下面说明推导需要哪些假设。"
       },
       {
-        "title": "Softmax 的竞争与读出梯度",
-        "body": [
-          "分数张量通常为 [B,H,L,S]。每个 Query 要在 S 个 Key 中分配权重，因此 Softmax 沿最后一轴；沿 L 轴则是在让不同 Query 争夺同一个 Key，形状相同但问题变了。Softmax 对共同平移不敏感，稳定实现因此先减行最大值。无 Dropout 且存在有效 Key 时，一行权重和为 1；对权重施加 Dropout 后，单次前向的行和未必仍为 1。",
-          "把归一化分母记为 \\(Z=\\sum_r e^{s_r}\\)，则 \\(a_i=e^{s_i}/Z\\)。商法则逐项给出 \\[\\frac{\\partial a_i}{\\partial s_j}=\\frac{\\delta_{ij}e^{s_i}Z-e^{s_i}e^{s_j}}{Z^2}=a_i(\\delta_{ij}-a_j).\\]这里 \\(\\delta_{ij}\\) 是相等索引取一、否则取零的 Kronecker 符号。再对 \\(o=\\sum_i a_i v_i\\) 求导：\\(\\partial o/\\partial s_j=\\sum_i v_i a_i(\\delta_{ij}-a_j)=a_jv_j-a_j\\sum_i a_iv_i=a_j(v_j-o)\\)。",
-          "由此可见，Jacobian 的对角项是 \\(a_i(1-a_i)\\)，非对角项是 \\(-a_i a_j\\)：提高一个候选分数，会从其他候选处拿走概率质量。读出的变化方向为 \\(v_j-o\\)，即从当前均值朝该候选内容移动。若上游列梯度为 \\(g=\\nabla_oL\\)，分数梯度就是 \\(\\partial L/\\partial s_j=a_jg^\\top(v_j-o)\\)，而 Value 路径为 \\(\\nabla_{v_j}L=a_jg\\)。两种梯度来自不同路径，不应只观察其中一种。",
-          "权重大不等于影响大。所有 Value 相同时，任意 logits 都读出同一个向量，Q/K 路径的梯度为零；V 路径仍能得到梯度。分布接近单点时，未选位置的 \\(a_j\\)很小，选中位置的 \\(v_j-o\\) 也很小，分数梯度因而容易变小。若直接把注意力热图当作解释，这两种反例都会被漏掉。",
-          "代码使用 \\(\\mathrm{logits}=[0,\\ln3]\\)、\\(V=[0,2]\\)，得到权重 [1/4,3/4]、输出 1.5，以及对两个 logits 的梯度 [−0.375,0.375]。梯度和为零对应共同平移不变性。然后把 Value 改成相同数，观察权重仍不均匀，但分数梯度消失。"
-        ],
-        "formula": "\\frac{\\partial a_i}{\\partial s_j}=a_i(\\delta_{ij}-a_j),\\qquad \\frac{\\partial o}{\\partial s_j}=a_j(v_j-o)",
-        "code": "import math\nimport torch\n\ns = torch.tensor([0., math.log(3.)], dtype=torch.float64, requires_grad=True)\nv = torch.tensor([0., 2.], dtype=torch.float64)\na = s.softmax(-1)\nout = a @ v\ngrad, = torch.autograd.grad(out, s, retain_graph=True)\nmanual = a * (v - out)\ntorch.testing.assert_close(grad, manual)\ntorch.testing.assert_close(grad, torch.tensor([-.375, .375], dtype=s.dtype))\nsame_values = torch.full_like(v, 2.)\nzero_grad, = torch.autograd.grad(a @ same_values, s)\ntorch.testing.assert_close(zero_grad, torch.zeros_like(s))\nprint(\"读出 / 分数梯度:\", out.item(), grad.tolist())\nprint(\"相同 Value 的分数梯度:\", zero_grad.tolist())\n",
-        "codeExplanation": "autograd 求的是输出对 logits 的导数，manual 按 \\(a_j(v_j-o)\\) 独立计算。保留第一次图只是为了在同一 Softmax 上更换 Value；实际训练不会为了这个实验而反复 retain_graph。",
-        "id": "2",
-        "lead": "Softmax 将一组分数转换为非负、和为一的权重；一项分数变化会通过共同分母影响整组权重。注意力读出再用它们汇总 Value。下面先明确归一化集合，再追踪这种竞争怎样影响梯度。",
-        "codeKind": "runnable"
-      },
-      {
-        "title": "多头拆分与轴顺序",
+        "title": "从一个头到多头：为什么要交换 Token 轴和头轴",
         "body": [
           "每个头 \\(h\\) 使用自己的 \\(W_Q^{(h)},W_K^{(h)},W_V^{(h)}\\)，得到 \\(O^{(h)}=A^{(h)}V^{(h)}\\)。不同头可以对同一组候选形成不同的权重矩阵，再将读出沿通道拼接并通过 \\(W_O\\) 混合。单头让所有 Value 通道共享同一行位置权重，多头允许不同内容子空间采用不同权重；这解释了结构增加的选择空间，但不保证训练后每个头都具有不同功能。",
           "令模型宽度 \\(D=H d_h\\)，将 [B,T,D] 投影为 [B,T,H,dₕ] 后，需要 transpose 成 [B,H,T,dₕ] 才能逐头计算。直接 reshape 到 [B,H,T,dₕ] 会改变元素被分配到的位置与头，虽然总元素数相同，却不保留原来的轴语义。输出恢复时先从 [B,H,L,dᵥ] 换回 [B,L,H,dᵥ]，再合并最后两轴，最后执行输出投影。",
@@ -408,10 +397,12 @@
         "lead": "Padding 是为组成统一形状而加入的占位，既可能出现在被读取的 Key，也可能出现在发起读取的 Query。禁止读取占位 Key 不会自动规定占位 Query 的输出；全无可见 Key 的行还需要显式定义。"
       },
       {
-        "title": "Cross-Attention 与因果可见性",
+        "title": "Self 与 Cross：Q、K、V 从哪里来",
         "body": [
           "Cross-Attention 描述 Q 与 K/V 的来源；causal 描述可见性规则。一个 Cross-Attention 可以读取全部条件，也可以有时间或结构限制；一个 Self-Attention 可以是双向、因果或前缀式。不要因为模块名称含 decoder 就推断所有区域都只能向左读。在动作块的去噪或流匹配网络中，所有带噪动作位置可能同时可用，动作区双向交互也可以成立，但真实未来标签不能以其他路径泄漏。",
-          "对于自回归位置 i，允许读取不晚于自己的 Key，可写 \\(j\\le i\\)。存在历史缓存 P、当前块长 L 时，当前第 i 个 Query 的全局位置是 P+i，因此应允许 \\(j\\le P+i\\)。直接构造 \\(L\\times(P+L)\\) 的普通左上角下三角矩阵，可能把历史缓存遮掉。信息规则应在全局位置上定义，再转换成当前矩阵；小尺寸手画比盲信 is_causal 标志更可靠。"
+          "设查询端输入为 \\(x_i\\in\\mathbb R^{d_x}\\)，候选端输入为 \\(z_j\\in\\mathbb R^{d_z}\\)，为突出匹配结构先省略偏置。学习投影 \\(q_i=W_Qx_i\\)、\\(k_j=W_Kz_j\\)、\\(v_j=W_Vz_j\\)，其中 \\(W_Q\\in\\mathbb R^{d_k\\times d_x}\\)、\\(W_K\\in\\mathbb R^{d_k\\times d_z}\\)、\\(W_V\\in\\mathbb R^{d_v\\times d_z}\\)。点积可展开为 \\(q_i^\\top k_j=x_i^\\top W_Q^\\top W_Kz_j\\)，因此匹配规则本身由数据学习；它是一个双线性打分，并不预设某种物理相似度。分开的 \\(W_V\\) 允许网络用一组特征匹配、读取另一组内容。三种投影是常见设计，并不是所有注意力形式都必须采用的唯一结构。",
+          "对于自回归位置 i，允许读取不晚于自己的 Key，可写 \\(j\\le i\\)。存在历史缓存 P、当前块长 L 时，当前第 i 个 Query 的全局位置是 P+i，因此应允许 \\(j\\le P+i\\)。直接构造 \\(L\\times(P+L)\\) 的普通左上角下三角矩阵，可能把历史缓存遮掉。信息规则应在全局位置上定义，再转换成当前矩阵；小尺寸手画比盲信 is_causal 标志更可靠。",
+          "Self-Attention 中 Q、K、V 通常来自同一组输入的三种线性投影，并不意味着它们相同；Cross-Attention 中 Query 可来自动作状态，Key/Value 来自视觉语言条件。学到的权重表示该次计算如何组合 Value，不等于可直接解释为物理接触概率或因果重要性。即使某个位置权重大，其 Value 也可能很小，且后续投影、残差和层间传播都会影响最终输出。"
         ],
         "id": "6",
         "lead": "Self-Attention 使用同一组位置产生 Q、K、V，Cross-Attention 则让一组位置的 Q 读取另一组位置的 K/V。因果性描述允许读取的时间范围，与这两种来源关系不同。先分清来源与可见性，再组合具体结构。",
@@ -440,27 +431,6 @@
             ]
           ]
         }
-      },
-      {
-        "title": "高效实现与数值等价",
-        "body": [
-          "标准稠密注意力的分数矩阵大小随 \\(L S\\) 增长，多头和 Batch 进一步放大显存。融合实现可以避免保存完整中间矩阵或改进访存，却不代表注意力在数学上变成线性复杂度。是否返回权重、输入布局、精度、Mask 形状都会影响可用内核。先用小张量验证正确性，再用真实长度做性能剖析，不要把小例子的运行快慢外推到长序列。",
-          "对照时关闭 Dropout、对齐参数与 Mask，并分别比较输出和随机上游梯度。SDPA 函数按传入 dropout_p 执行，即使外层模块已 eval，也要显式传 0。然后做三类干预：改未来 token 检验因果性，改单个样本检验 Batch 隔离，改 Padding 检验有效位。等价断言通过只说明该约定下实现一致；注意力图、训练损失下降或低精度小数差异都不能单独证明模型是否学到了正确任务。",
-          "注意力的完整定义包含匹配表示、候选内容、归一化集合与读出方式。明确这四项以后，多头、Mask 和融合实现都可以被理解为对同一次内容读取的组织，而不再是互不相干的接口选项。"
-        ],
-        "id": "7",
-        "lead": "融合注意力实现是将若干计算步骤合并或分块组织，以减少中间存储与数据搬运的实现方式。它可以计算同一个稠密注意力函数，却不因此自动消除成对匹配的工作量。比较时应先固定函数与 Mask 语义。"
-      },
-      {
-        "id": "mqa-gqa-kv-sharing",
-        "title": "MQA 与 GQA：Query 头和 KV 头分离",
-        "lead": "MHA 为每个 Query 头配置独立 Key/Value 头；MQA 让所有 Query 头共享一组 KV；GQA 则将 Query 头分成若干组，每组共享一个 KV 头。",
-        "body": [
-          "设 Query 头数为 Hq，KV 头数为 Hkv，要求 Hq 能被 Hkv 整除。每个 Query 头映射到一个 KV 头组，注意力计算的 Query 维度仍是 Hq，而 K/V 缓存只需存储 Hkv 份。",
-          "MHA 对应 Hkv=Hq，MQA 对应 Hkv=1，GQA 位于二者之间。减少 KV 头数主要降低 K/V 投影参数、缓存容量与 decode 时的访存压力；它不会自动减少 Query 头的数量。",
-          "实现时可将 K/V 沿头维按组广播或显式 repeat_interleave。显式复制便于教学但可能增加临时显存；高效内核会尽量避免物理复制。必须检查 head_dim、头数整除关系与输出投影的布局。"
-        ],
-        "formula": "H_{KV}\\le H_Q,\\qquad g=H_Q/H_{KV},\\qquad K_i=K_{\\lfloor i/g\\rfloor}^{KV}"
       }
     ],
     "shapes": [
@@ -611,7 +581,7 @@
       "多头拆分需要换轴；Key Padding Mask 不会自动清零无效 Query。",
       "全遮蔽行、缓存偏移和 Dropout 是必须显式测试的边界。"
     ],
-    "lead": "注意力（Attention）是一种按当前内容分配权重、再汇总候选信息的计算机制。它用 Query 与 Key 计算匹配程度，把分数归一化后读取对应的 Value，因此同一组候选可以对不同查询产生不同结果。它是可组合的算子，Transformer 则是包含它的完整网络架构。本章先完成一次读取，再解释缩放、梯度、多头与可见性，最后核对实现。",
+    "lead": "注意力回答一个具体问题：给定当前查询，怎样从多个候选位置读出一条向量？先用一行公式算出一次读取，再追踪多头张量、掩码和 Q/K/V 的来源。权重怎么算，与候选来自哪里，是两个不同的问题。",
     "extraImplementations": [
       {
         "id": "gqa-reference",
@@ -655,7 +625,46 @@
         }
       ],
       "takeaway": "区分注意力的数学定义、Transformer Block 的架构，以及 MQA/GQA 对推理资源的优化。"
-    }
+    },
+    "advancedSections": [
+      {
+        "title": "Softmax 的竞争与读出梯度",
+        "body": [
+          "分数张量通常为 [B,H,L,S]。每个 Query 要在 S 个 Key 中分配权重，因此 Softmax 沿最后一轴；沿 L 轴则是在让不同 Query 争夺同一个 Key，形状相同但问题变了。Softmax 对共同平移不敏感，稳定实现因此先减行最大值。无 Dropout 且存在有效 Key 时，一行权重和为 1；对权重施加 Dropout 后，单次前向的行和未必仍为 1。",
+          "把归一化分母记为 \\(Z=\\sum_r e^{s_r}\\)，则 \\(a_i=e^{s_i}/Z\\)。商法则逐项给出 \\[\\frac{\\partial a_i}{\\partial s_j}=\\frac{\\delta_{ij}e^{s_i}Z-e^{s_i}e^{s_j}}{Z^2}=a_i(\\delta_{ij}-a_j).\\]这里 \\(\\delta_{ij}\\) 是相等索引取一、否则取零的 Kronecker 符号。再对 \\(o=\\sum_i a_i v_i\\) 求导：\\(\\partial o/\\partial s_j=\\sum_i v_i a_i(\\delta_{ij}-a_j)=a_jv_j-a_j\\sum_i a_iv_i=a_j(v_j-o)\\)。",
+          "由此可见，Jacobian 的对角项是 \\(a_i(1-a_i)\\)，非对角项是 \\(-a_i a_j\\)：提高一个候选分数，会从其他候选处拿走概率质量。读出的变化方向为 \\(v_j-o\\)，即从当前均值朝该候选内容移动。若上游列梯度为 \\(g=\\nabla_oL\\)，分数梯度就是 \\(\\partial L/\\partial s_j=a_jg^\\top(v_j-o)\\)，而 Value 路径为 \\(\\nabla_{v_j}L=a_jg\\)。两种梯度来自不同路径，不应只观察其中一种。",
+          "权重大不等于影响大。所有 Value 相同时，任意 logits 都读出同一个向量，Q/K 路径的梯度为零；V 路径仍能得到梯度。分布接近单点时，未选位置的 \\(a_j\\)很小，选中位置的 \\(v_j-o\\) 也很小，分数梯度因而容易变小。若直接把注意力热图当作解释，这两种反例都会被漏掉。",
+          "代码使用 \\(\\mathrm{logits}=[0,\\ln3]\\)、\\(V=[0,2]\\)，得到权重 [1/4,3/4]、输出 1.5，以及对两个 logits 的梯度 [−0.375,0.375]。梯度和为零对应共同平移不变性。然后把 Value 改成相同数，观察权重仍不均匀，但分数梯度消失。"
+        ],
+        "formula": "\\frac{\\partial a_i}{\\partial s_j}=a_i(\\delta_{ij}-a_j),\\qquad \\frac{\\partial o}{\\partial s_j}=a_j(v_j-o)",
+        "code": "import math\nimport torch\n\ns = torch.tensor([0., math.log(3.)], dtype=torch.float64, requires_grad=True)\nv = torch.tensor([0., 2.], dtype=torch.float64)\na = s.softmax(-1)\nout = a @ v\ngrad, = torch.autograd.grad(out, s, retain_graph=True)\nmanual = a * (v - out)\ntorch.testing.assert_close(grad, manual)\ntorch.testing.assert_close(grad, torch.tensor([-.375, .375], dtype=s.dtype))\nsame_values = torch.full_like(v, 2.)\nzero_grad, = torch.autograd.grad(a @ same_values, s)\ntorch.testing.assert_close(zero_grad, torch.zeros_like(s))\nprint(\"读出 / 分数梯度:\", out.item(), grad.tolist())\nprint(\"相同 Value 的分数梯度:\", zero_grad.tolist())\n",
+        "codeExplanation": "autograd 求的是输出对 logits 的导数，manual 按 \\(a_j(v_j-o)\\) 独立计算。保留第一次图只是为了在同一 Softmax 上更换 Value；实际训练不会为了这个实验而反复 retain_graph。",
+        "id": "2",
+        "lead": "Softmax 将一组分数转换为非负、和为一的权重；一项分数变化会通过共同分母影响整组权重。注意力读出再用它们汇总 Value。下面先明确归一化集合，再追踪这种竞争怎样影响梯度。",
+        "codeKind": "runnable"
+      },
+      {
+        "title": "高效实现与数值等价",
+        "body": [
+          "标准稠密注意力的分数矩阵大小随 \\(L S\\) 增长，多头和 Batch 进一步放大显存。融合实现可以避免保存完整中间矩阵或改进访存，却不代表注意力在数学上变成线性复杂度。是否返回权重、输入布局、精度、Mask 形状都会影响可用内核。先用小张量验证正确性，再用真实长度做性能剖析，不要把小例子的运行快慢外推到长序列。",
+          "对照时关闭 Dropout、对齐参数与 Mask，并分别比较输出和随机上游梯度。SDPA 函数按传入 dropout_p 执行，即使外层模块已 eval，也要显式传 0。然后做三类干预：改未来 token 检验因果性，改单个样本检验 Batch 隔离，改 Padding 检验有效位。等价断言通过只说明该约定下实现一致；注意力图、训练损失下降或低精度小数差异都不能单独证明模型是否学到了正确任务。",
+          "注意力的完整定义包含匹配表示、候选内容、归一化集合与读出方式。明确这四项以后，多头、Mask 和融合实现都可以被理解为对同一次内容读取的组织，而不再是互不相干的接口选项。"
+        ],
+        "id": "7",
+        "lead": "融合注意力实现是将若干计算步骤合并或分块组织，以减少中间存储与数据搬运的实现方式。它可以计算同一个稠密注意力函数，却不因此自动消除成对匹配的工作量。比较时应先固定函数与 Mask 语义。"
+      },
+      {
+        "id": "mqa-gqa-kv-sharing",
+        "title": "MQA 与 GQA：Query 头和 KV 头分离",
+        "lead": "MHA 为每个 Query 头配置独立 Key/Value 头；MQA 让所有 Query 头共享一组 KV；GQA 则将 Query 头分成若干组，每组共享一个 KV 头。",
+        "body": [
+          "设 Query 头数为 Hq，KV 头数为 Hkv，要求 Hq 能被 Hkv 整除。每个 Query 头映射到一个 KV 头组，注意力计算的 Query 维度仍是 Hq，而 K/V 缓存只需存储 Hkv 份。",
+          "MHA 对应 Hkv=Hq，MQA 对应 Hkv=1，GQA 位于二者之间。减少 KV 头数主要降低 K/V 投影参数、缓存容量与 decode 时的访存压力；它不会自动减少 Query 头的数量。",
+          "实现时可将 K/V 沿头维按组广播或显式 repeat_interleave。显式复制便于教学但可能增加临时显存；高效内核会尽量避免物理复制。必须检查 head_dim、头数整除关系与输出投影的布局。"
+        ],
+        "formula": "H_{KV}\\le H_Q,\\qquad g=H_Q/H_{KV},\\qquad K_i=K_{\\lfloor i/g\\rfloor}^{KV}"
+      }
+    ]
   },
   {
     "id": "rope",

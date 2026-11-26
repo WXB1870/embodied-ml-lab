@@ -58,7 +58,15 @@ for number,l in enumerate(lessons,1):
         if t.get('mainImplementation'):
             l['mainImplementation']=t['mainImplementation']
             assert any(d['id']==l['mainImplementation'] for d in l['extraImplementations'])
+    # A lesson can reuse topic labs without replacing its authored theory (Attention).
+    lab_topic=l.get('theoryTopic') or catalog.get('canonicalTopics', {}).get(l['id'])
+    if lab_topic:
+        t=topic_lookup[lab_topic]
+        l['labTopic']=lab_topic
+        if t.get('introLabId'):l['introLabId']=t['introLabId']
         advanced_labs=set(t.get('advancedLabIds', []))
+        if not l.get('theoryTopic'):
+            advanced_labs.update(d['id'] for d in t['labs'] if d['id']!=t.get('introLabId'))
         l['extraLabs']=copy.deepcopy([d for d in t['labs'] if d['id'] not in advanced_labs])
         l['advancedLabs']=copy.deepcopy([d for d in t['labs'] if d['id'] in advanced_labs])
 required=['id','number','module','title','subtitle','minutes','tags','prerequisites','objectives','why','lead','sections','sources']
@@ -195,13 +203,29 @@ for l in lessons:readme+=f"- {l['number']:02d} {l['title']} (`{l['id']}`)\n"
 def lesson_markdown(l):
     text=f"# {l['title']}\n\n{l['subtitle']}\n\n"
     if l.get('lead'):text+=l['lead']+'\n\n'
-    for section in l['sections']:
-        text+='## '+section['title']+'\n\n'+section.get('lead','')+'\n\n'
+    def append_section(section, heading='##'):
+        nonlocal text
+        text+=heading+' '+section['title']+'\n\n'+section.get('lead','')+'\n\n'
+        formula='$$\n'+section['formula']+'\n$$\n\n' if section.get('formula') else ''
+        if section.get('formulaFirst'):text+=formula
         if section.get('quote'):
             text+='\n>\n'.join('> '+paragraph for paragraph in section['quote'])+'\n\n'
-        for paragraph in section['body']:text+=paragraph+'\n\n'
+        for entry in (section_figures_markdown(section, '../', 0), section_example_markdown(section, 0)):
+            if entry:text+=entry+'\n\n'
+        for i, paragraph in enumerate(section['body'],1):
+            text+=paragraph+'\n\n'
+            for entry in (section_figures_markdown(section, '../', i), section_example_markdown(section, i)):
+                if entry:text+=entry+'\n\n'
+        if not section.get('formulaFirst'):text+=formula
         if section.get('bullets'):text+='\n'.join('- '+item for item in section['bullets'])+'\n\n'
+        if section.get('code'):
+            text+='```python\n'+section['code']+'\n```\n\n'
+            if section.get('codeExplanation'):text+=section['codeExplanation']+'\n\n'
         text+=section_learning_markdown(section, '../')+'\n\n'
+    for section in l['sections']:append_section(section)
+    if l.get('advancedSections'):
+        text+='## 可选拓展：深入理论与进阶分析\n\n'
+        for section in l['advancedSections']:append_section(section,'###')
     text+='## 参考资料\n\n'
     for item in l['sources']:
         note = '。'+item['note'] if item.get('note') else ''

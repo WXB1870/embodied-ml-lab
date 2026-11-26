@@ -1,8 +1,8 @@
 {
-  "checked_at": "2026-11-06T19:39:06Z",
-  "environment": "CPU; new runs for the two narrative cases, unchanged other sources retain their recorded results",
-  "total": 29,
-  "passed": 29,
+  "checked_at": "2026-11-26T09:16:20Z",
+  "environment": "CPU, one isolated process and temporary directory per executed case",
+  "total": 35,
+  "passed": 35,
   "failed": 0,
   "results": [
     {
@@ -31,6 +31,14 @@
       "seconds": 1.606,
       "output": "width=4, max_error=0.01562500, verified slopes\nwidth=8, max_error=0.00390625, verified slopes\nwidth=16, max_error=0.00097656, verified slopes\n这是构造性表示实验，没有执行优化；它不保证训练能找到这组参数，也不刻画区间外误差。\n",
       "reused_unchanged_result": true
+    },
+    {
+      "topic": "mlp",
+      "case": "lab:forward-one-row",
+      "passed": true,
+      "source_sha256": "dbbbf46180c9286bdb70ce829e7bb1e85ba9de661ae568c7c56fb061715be349",
+      "seconds": 0.007,
+      "output": "通过：隐藏层 ReLU、非方形权重、线性输出与单个隐藏单元的干预。\n"
     },
     {
       "topic": "mlp",
@@ -70,12 +78,11 @@
     },
     {
       "topic": "cnn",
-      "case": "demo:unfold-convolution",
+      "case": "demo:corr2d-window-demo",
       "passed": true,
-      "source_sha256": "c60f8514222c5588253fd4baa14e7fb9f424afbad5ce7814e8da4872023765c6",
-      "seconds": 1.497,
-      "output": "groups = 1 shape = (2, 5, 3, 8) forward and gradients agree\ngroups = 2 shape = (2, 6, 3, 8) forward and gradients agree\ngroups = 4 shape = (2, 8, 3, 8) forward and gradients agree\nunfold/input element ratio = 9.0\n通过：互相关、通道分组、非方形几何、输入/权重/偏置梯度。\n",
-      "reused_unchanged_result": true
+      "source_sha256": "94b57ea714951bfe9dbf94411474257a7c27b3cc4ac56b8a808b95b5631528f6",
+      "seconds": 0.614,
+      "output": "原输出： [[-4.0, -4.0], [-4.0, -4.0]] 只改中心后： [[-8.0, -4.0], [-4.0, 0.0]]\n"
     },
     {
       "topic": "cnn",
@@ -88,12 +95,29 @@
     },
     {
       "topic": "cnn",
+      "case": "demo:unfold-convolution",
+      "passed": true,
+      "source_sha256": "c60f8514222c5588253fd4baa14e7fb9f424afbad5ce7814e8da4872023765c6",
+      "seconds": 1.497,
+      "output": "groups = 1 shape = (2, 5, 3, 8) forward and gradients agree\ngroups = 2 shape = (2, 6, 3, 8) forward and gradients agree\ngroups = 4 shape = (2, 8, 3, 8) forward and gradients agree\nunfold/input element ratio = 9.0\n通过：互相关、通道分组、非方形几何、输入/权重/偏置梯度。\n",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
       "case": "demo:activation-pooling-gradients",
       "passed": true,
       "source_sha256": "6e7c9cfb8ead6d65640868ee9b04dd55f25e094b099ba5fb0b4f0401b5439827",
       "seconds": 1.691,
       "output": "通过：ReLU、BN 前向/反向/运行统计、池化梯度、GAP、采样相位与边界约定。\nBN 输入梯度最大绝对误差： 4.440892098500626e-16\n",
       "reused_unchanged_result": true
+    },
+    {
+      "topic": "cnn",
+      "case": "lab:corr2d-window",
+      "passed": true,
+      "source_sha256": "718e43a3a4f81ae5856fc3fa7af7ad7a3e7c896fd13eb0f1c65ed5266aa63eae",
+      "seconds": 0.006,
+      "output": "通过：单格内积、改变中心像素和非方形核。\n"
     },
     {
       "topic": "cnn",
@@ -124,6 +148,16 @@
     },
     {
       "topic": "transformer",
+      "case": "demo:tiny-causal-lm",
+      "passed": true,
+      "source_sha256": "0da3dcab68271f8533b41f2e94c9f0ca03b5644044e5d93a1c8a4ca99ed5f4d6",
+      "seconds": 1.107,
+      "output": "TINY_LM_VALIDATION {\"block0_shapes\": {\"allowed\": [2, 1, 4, 4], \"attention_output\": [2, 4, 8], \"ffn_hidden\": [2, 4, 32], \"k\": [2, 2, 4, 4], \"merged\": [2, 4, 8], \"norm1\": [2, 4, 8], \"norm2\": [2, 4, 8], \"output\": [2, 4, 8], \"packed\": [2, 4, 24], \"per_head\": [2, 2, 4, 4], \"q\": [2, 2, 4, 4], \"residual1\": [2, 4, 8], \"scores\": [2, 2, 4, 4], \"v\": [2, 2, 4, 4], \"weights\": [2, 2, 4, 4]}, \"cache_errors\": {\"(1, 1, 1, 1)\": 4.996003610813204e-16, \"(1, 3)\": 4.996003610813204e-16, \"(2, 2)\": 4.996003610813204e-16}, \"dimensions\": {\"B\": 2, \"D\": 8, \"H\": 2, \"T\": 4, \"layers\": 2}, \"future_input_gradient_max\": 0.0, \"greedy_sequences\": [[0, 1, 2, 3, 4], [3, 4, 5, 6, 0]], \"max_parameter_gradient_error\": 2.3869795029440866e-15, \"parameter_gradient_groups\": 28, \"seed\": 19, \"synthetic_ce_after\": 0.007492299328941923, \"synthetic_ce_before\": 2.2914663177287378}\n/Users/xavier/Documents/Codex/2026-11-07/new-chat/work/venv/lib/python3.14/site-packages/torch/_subclasses/functional_tensor.py:377: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:82.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n",
+      "checked_at": "2026-11-06T19:39:03Z",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
       "case": "demo:manual-mha",
       "passed": true,
       "source_sha256": "3df66264bd55d13dabef6108751cc81c58a0b61972c272203f4d499cea26a8e3",
@@ -133,21 +167,20 @@
     },
     {
       "topic": "transformer",
-      "case": "demo:tiny-causal-lm",
-      "passed": true,
-      "source_sha256": "0da3dcab68271f8533b41f2e94c9f0ca03b5644044e5d93a1c8a4ca99ed5f4d6",
-      "seconds": 1.107,
-      "output": "TINY_LM_VALIDATION {\"block0_shapes\": {\"allowed\": [2, 1, 4, 4], \"attention_output\": [2, 4, 8], \"ffn_hidden\": [2, 4, 32], \"k\": [2, 2, 4, 4], \"merged\": [2, 4, 8], \"norm1\": [2, 4, 8], \"norm2\": [2, 4, 8], \"output\": [2, 4, 8], \"packed\": [2, 4, 24], \"per_head\": [2, 2, 4, 4], \"q\": [2, 2, 4, 4], \"residual1\": [2, 4, 8], \"scores\": [2, 2, 4, 4], \"v\": [2, 2, 4, 4], \"weights\": [2, 2, 4, 4]}, \"cache_errors\": {\"(1, 1, 1, 1)\": 4.996003610813204e-16, \"(1, 3)\": 4.996003610813204e-16, \"(2, 2)\": 4.996003610813204e-16}, \"dimensions\": {\"B\": 2, \"D\": 8, \"H\": 2, \"T\": 4, \"layers\": 2}, \"future_input_gradient_max\": 0.0, \"greedy_sequences\": [[0, 1, 2, 3, 4], [3, 4, 5, 6, 0]], \"max_parameter_gradient_error\": 2.3869795029440866e-15, \"parameter_gradient_groups\": 28, \"seed\": 19, \"synthetic_ce_after\": 0.007492299328941923, \"synthetic_ce_before\": 2.2914663177287378}\n/Users/xavier/Documents/Codex/2026-11-07/new-chat/work/venv/lib/python3.14/site-packages/torch/_subclasses/functional_tensor.py:377: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:82.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n",
-      "checked_at": "2026-11-06T19:39:03Z"
-    },
-    {
-      "topic": "transformer",
       "case": "demo:layerwise-information-flow",
       "passed": true,
       "source_sha256": "ea1e80a9a9b3aefdd0936a803f2399ba24bacd50b494cfcada7baf1e75c109f2",
       "seconds": 1.554,
       "output": "causal future derivative: 0.0\nindirect future derivative: 0.02335226556510318\nfinite-difference error: 1.890090514655718e-12\npassed: reachability, Jacobian support, perturbation, prefix KV invariance\n",
       "reused_unchanged_result": true
+    },
+    {
+      "topic": "transformer",
+      "case": "lab:single-query-readout",
+      "passed": true,
+      "source_sha256": "cfd1276e03cf320ff4b886992ccb095ad464d87d46ce9c3e998876337ef2d11a",
+      "seconds": 0.006,
+      "output": "通过：权重对应 Key–Value 配对，输出宽度由 Value 决定。\n"
     },
     {
       "topic": "transformer",
@@ -205,6 +238,24 @@
     },
     {
       "topic": "flow-matching",
+      "case": "demo:scalar-path-euler",
+      "passed": true,
+      "source_sha256": "2000eca9ea763f548eae17dd5739493af1022b62e8adcbeca5ac9a6f1541b9bd",
+      "seconds": 0.005,
+      "output": "训练：状态和速度标签 0.0 4.0\n采样：一步后的状态 1.5\n"
+    },
+    {
+      "topic": "flow-matching",
+      "case": "demo:conditional-mixture",
+      "passed": true,
+      "source_sha256": "d073e24ff939b10d2c708a9c83611a3079831be7f10421f7559e85d1a36a0800",
+      "seconds": 2.592,
+      "output": "{\n  \"probe\": {\n    \"before_mse\": 2.4930944442749023,\n    \"after_mse\": 1.2641465663909912,\n    \"oracle_target_mse\": 1.2173534631729126,\n    \"learned_to_oracle_field_mse\": 0.039038412272930145\n  },\n  \"reference_check\": {\n    \"learned_512_to_1024_rms\": 5.028650321037276e-06,\n    \"oracle_1024_to_2048_rms\": 2.540807827244862e-06\n  },\n  \"model_flow_rms\": 0.14688727259635925,\n  \"metrics\": [\n    {\n      \"method\": \"euler\",\n      \"steps\": 4,\n      \"nfe\": 4,\n      \"solver_rms\": 0.3175126910209656,\n      \"oracle_rms\": 0.3351382911205292,\n      \"conditional_sliced_w2\": [\n        0.2138613760471344,\n        0.5913625955581665\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 8,\n      \"nfe\": 8,\n      \"solver_rms\": 0.17310842871665955,\n      \"oracle_rms\": 0.21706558763980865,\n      \"conditional_sliced_w2\": [\n        0.171519935131073,\n        0.517177164554596\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 16,\n      \"nfe\": 16,\n      \"solver_rms\": 0.09023939818143845,\n      \"oracle_rms\": 0.16710352897644043,\n      \"conditional_sliced_w2\": [\n        0.21423323452472687,\n        0.4807516038417816\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 32,\n      \"nfe\": 32,\n      \"solver_rms\": 0.04652944952249527,\n      \"oracle_rms\": 0.15191200375556946,\n      \"conditional_sliced_w2\": [\n        0.24017582833766937,\n        0.46628615260124207\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 64,\n      \"nfe\": 64,\n      \"solver_rms\": 0.024432238191366196,\n      \"oracle_rms\": 0.1484357863664627,\n      \"conditional_sliced_w2\": [\n        0.2532864809036255,\n        0.46027490496635437\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 4,\n      \"nfe\": 8,\n      \"solver_rms\": 0.10401329398155212,\n      \"oracle_rms\": 0.1788283884525299,\n      \"conditional_sliced_w2\": [\n        0.21159197390079498,\n        0.4918566942214966\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 8,\n      \"nfe\": 16,\n      \"solver_rms\": 0.024358171969652176,\n      \"oracle_rms\": 0.1491500586271286,\n      \"conditional_sliced_w2\": [\n        0.25339189171791077,\n        0.45970916748046875\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 16,\n      \"nfe\": 32,\n      \"solver_rms\": 0.0064104474149644375,\n      \"oracle_rms\": 0.1472008377313614,\n      \"conditional_sliced_w2\": [\n        0.2635079622268677,\n        0.4549083113670349\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 32,\n      \"nfe\": 64,\n      \"solver_rms\": 0.001611005631275475,\n      \"oracle_rms\": 0.14693328738212585,\n      \"conditional_sliced_w2\": [\n        0.26615506410598755,\n        0.45380881428718567\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 64,\n      \"nfe\": 128,\n      \"solver_rms\": 0.000395716167986393,\n      \"oracle_rms\": 0.14689412713050842,\n      \"conditional_sliced_w2\": [\n        0.26682981848716736,\n        0.4535616934299469\n      ]\n    }\n  ],\n  \"seconds\": 2.0313375419937074\n}\n/Users/xavier/Documents/Codex/2026-11-07/new-chat/work/venv/lib/python3.14/site-packages/torch/_subclasses/functional_tensor.py:377: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:82.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n",
+      "checked_at": "2026-11-06T19:39:06Z",
+      "reused_unchanged_result": true
+    },
+    {
+      "topic": "flow-matching",
       "case": "demo:conditional-gaussian",
       "passed": true,
       "source_sha256": "fc40b1bab387396fb38514de249aaea00e5043ff18622dfb84cf4cc58597f786",
@@ -223,12 +274,11 @@
     },
     {
       "topic": "flow-matching",
-      "case": "demo:conditional-mixture",
+      "case": "lab:linear-path-first",
       "passed": true,
-      "source_sha256": "d073e24ff939b10d2c708a9c83611a3079831be7f10421f7559e85d1a36a0800",
-      "seconds": 2.592,
-      "output": "{\n  \"probe\": {\n    \"before_mse\": 2.4930944442749023,\n    \"after_mse\": 1.2641465663909912,\n    \"oracle_target_mse\": 1.2173534631729126,\n    \"learned_to_oracle_field_mse\": 0.039038412272930145\n  },\n  \"reference_check\": {\n    \"learned_512_to_1024_rms\": 5.028650321037276e-06,\n    \"oracle_1024_to_2048_rms\": 2.540807827244862e-06\n  },\n  \"model_flow_rms\": 0.14688727259635925,\n  \"metrics\": [\n    {\n      \"method\": \"euler\",\n      \"steps\": 4,\n      \"nfe\": 4,\n      \"solver_rms\": 0.3175126910209656,\n      \"oracle_rms\": 0.3351382911205292,\n      \"conditional_sliced_w2\": [\n        0.2138613760471344,\n        0.5913625955581665\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 8,\n      \"nfe\": 8,\n      \"solver_rms\": 0.17310842871665955,\n      \"oracle_rms\": 0.21706558763980865,\n      \"conditional_sliced_w2\": [\n        0.171519935131073,\n        0.517177164554596\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 16,\n      \"nfe\": 16,\n      \"solver_rms\": 0.09023939818143845,\n      \"oracle_rms\": 0.16710352897644043,\n      \"conditional_sliced_w2\": [\n        0.21423323452472687,\n        0.4807516038417816\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 32,\n      \"nfe\": 32,\n      \"solver_rms\": 0.04652944952249527,\n      \"oracle_rms\": 0.15191200375556946,\n      \"conditional_sliced_w2\": [\n        0.24017582833766937,\n        0.46628615260124207\n      ]\n    },\n    {\n      \"method\": \"euler\",\n      \"steps\": 64,\n      \"nfe\": 64,\n      \"solver_rms\": 0.024432238191366196,\n      \"oracle_rms\": 0.1484357863664627,\n      \"conditional_sliced_w2\": [\n        0.2532864809036255,\n        0.46027490496635437\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 4,\n      \"nfe\": 8,\n      \"solver_rms\": 0.10401329398155212,\n      \"oracle_rms\": 0.1788283884525299,\n      \"conditional_sliced_w2\": [\n        0.21159197390079498,\n        0.4918566942214966\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 8,\n      \"nfe\": 16,\n      \"solver_rms\": 0.024358171969652176,\n      \"oracle_rms\": 0.1491500586271286,\n      \"conditional_sliced_w2\": [\n        0.25339189171791077,\n        0.45970916748046875\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 16,\n      \"nfe\": 32,\n      \"solver_rms\": 0.0064104474149644375,\n      \"oracle_rms\": 0.1472008377313614,\n      \"conditional_sliced_w2\": [\n        0.2635079622268677,\n        0.4549083113670349\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 32,\n      \"nfe\": 64,\n      \"solver_rms\": 0.001611005631275475,\n      \"oracle_rms\": 0.14693328738212585,\n      \"conditional_sliced_w2\": [\n        0.26615506410598755,\n        0.45380881428718567\n      ]\n    },\n    {\n      \"method\": \"heun\",\n      \"steps\": 64,\n      \"nfe\": 128,\n      \"solver_rms\": 0.000395716167986393,\n      \"oracle_rms\": 0.14689412713050842,\n      \"conditional_sliced_w2\": [\n        0.26682981848716736,\n        0.4535616934299469\n      ]\n    }\n  ],\n  \"seconds\": 2.0313375419937074\n}\n/Users/xavier/Documents/Codex/2026-11-07/new-chat/work/venv/lib/python3.14/site-packages/torch/_subclasses/functional_tensor.py:377: UserWarning: Failed to initialize NumPy: No module named 'numpy' (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:82.)\n  cpu = _conversion_method_template(device=torch.device(\"cpu\"))\n",
-      "checked_at": "2026-11-06T19:39:06Z"
+      "source_sha256": "c426bbb833f6f4ad3cf7cfc2315c4ce98fe92ea057bbe285780d51f73a8c8b00",
+      "seconds": 0.005,
+      "output": "通过：中间状态随时间变，速度由端点方向决定。\n"
     },
     {
       "topic": "flow-matching",

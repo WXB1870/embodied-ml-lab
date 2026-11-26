@@ -105,7 +105,7 @@ function renderReader(kind,item,tab,body){
  const contents=readerContents(kind,item,tab),module=kind==='lesson'?moduleFor(item):null;
  const context=module?`<a href="#/?chapter=${module.id}">${esc(module.name)}</a>`:'<a href="#/">核心专题</a>';
  const mobileToc=`<details class="mobile-toc"><summary>目录</summary><nav aria-label="本页目录">${contents}</nav></details>`;
- const tabBar=tabs.length?`<div class="reader-bar"><nav class="reader-tabs" aria-label="文章内容">${tabs.map(([id,label])=>`<a href="${kind==='topic'?topicHref(item.id,id):lessonHref(item.id,id)}" class="${id===tab?'active':''}" ${id===tab?'aria-current="page"':''}>${label}</a>`).join('')}</nav>${mobileToc}</div>`:'';
+ const tabBar=tabs.length?`<div class="reader-bar"><nav class="reader-tabs" aria-label="文章内容">${tabs.map(([id,label])=>`<a href="${kind==='topic'?topicHref(item.id,id):id==='exercise'?lessonPracticeHref(item):lessonHref(item.id,id)}" class="${id===tab?'active':''}" ${id===tab?'aria-current="page"':''}>${label}</a>`).join('')}</nav>${mobileToc}</div>`:'';
  markReading(kind,item,tab);
  return `<div class="reader-shell">
   <aside class="reader-sidebar"><a class="back-link" href="#/">← 课程目录</a><nav aria-label="本页目录">${contents}</nav></aside>
@@ -116,6 +116,8 @@ function renderReader(kind,item,tab,body){
  </div>`;
 }
 
+function lessonLabHref(l,labId){return lessonHref(l.id,'exercise')+'&lab='+encodeURIComponent(labId);}
+function lessonPracticeHref(l){return l.introLabId?lessonLabHref(l,l.introLabId):lessonHref(l.id,'exercise');}
 function renderLesson(l,tab,mode,params){
  if(l.theoryOnly)tab='theory';
  currentLesson=l;currentTab=tab;
@@ -124,9 +126,9 @@ function renderLesson(l,tab,mode,params){
 }
 function renderLessonExercises(l,mode,labId){
  const extra=l.extraLabs||[],advanced=l.advancedLabs||[],allLabs=[...extra,...advanced],lab=allLabs.find(x=>x.id===labId);
- const choices=extra.length?`<nav class="exercise-choices" aria-label="核心练习"><a href="${lessonHref(l.id,'exercise')}" ${!lab?'aria-current="page"':''}>推导与基础实现</a>${extra.map(x=>`<a href="${lessonHref(l.id,'exercise')+'&lab='+x.id}" ${lab?.id===x.id?'aria-current="page"':''}>${esc(x.title)}</a>`).join('')}</nav>`:'';
- const advancedChoices=advanced.length?`<details class="detail-box advanced-material"><summary>可选拓展练习（${advanced.length}）</summary><div class="detail-body"><nav class="exercise-choices" aria-label="可选拓展练习">${advanced.map(x=>`<a href="${lessonHref(l.id,'exercise')+'&lab='+x.id}" ${lab?.id===x.id?'aria-current="page"':''}>${esc(x.title)}</a>`).join('')}</nav></div></details>`:'';
- if(lab){currentLesson=byId['topic-'+l.theoryTopic+'-'+lab.id];return choices+advancedChoices+renderExercise(currentLesson,lab.runtime==='python'?'python':'torch',true);}
+ const choices=extra.length?`<nav class="exercise-choices" aria-label="核心练习">${extra.map(x=>`<a href="${lessonLabHref(l,x.id)}" ${lab?.id===x.id?'aria-current="page"':''}>${esc(x.title)}</a>`).join('')}<a href="${lessonHref(l.id,'exercise')}" ${!lab?'aria-current="page"':''}>推导与基础实现</a></nav>`:'';
+ const advancedChoices=advanced.length?`<details class="detail-box advanced-material"${lab&&advanced.includes(lab)?' open':''}><summary>可选拓展练习（${advanced.length}）</summary><div class="detail-body"><nav class="exercise-choices" aria-label="可选拓展练习">${advanced.map(x=>`<a href="${lessonLabHref(l,x.id)}" ${lab?.id===x.id?'aria-current="page"':''}>${esc(x.title)}</a>`).join('')}</nav></div></details>`:'';
+ if(lab){currentLesson=byId['topic-'+l.labTopic+'-'+lab.id];return choices+advancedChoices+renderExercise(currentLesson,lab.runtime==='python'?'python':'torch',true);}
  const advancedChecks=l.advancedKnowledgeChecks||[],advancedPitfalls=l.advancedPitfalls||[];
  return choices+advancedChoices+renderDiscussion(l.knowledgeChecks,'lesson',l)+(advancedChecks.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入推导题（${advancedChecks.length}）</summary><div class="detail-body">${renderDiscussion(advancedChecks,'lesson',l)}</div></details>`:'')+renderExercise(l,mode)+renderPitfalls(l.pitfalls)+(advancedPitfalls.length?`<details class="detail-box advanced-material"><summary>可选拓展：更多辨析与纠错（${advancedPitfalls.length}）</summary><div class="detail-body">${renderPitfalls(advancedPitfalls)}</div></details>`:'');
 }
@@ -163,7 +165,8 @@ function renderComparison(c){
 }
 function renderSection(s,index,kind,item){
  const scene=s.quote?.length?`<blockquote>${s.quote.map(p=>`<p>${inline(p)}</p>`).join('')}</blockquote>`:'';
- return `<section class="article-section" id="${sectionId(kind,s,index)}" data-reading-section><h2>${item.theoryOnly?'':`<span class="section-number">${pad(index+1)}</span>`}${inline(cleanTitle(s.title))}</h2>${s.lead?`<p class="section-lead">${inline(s.lead)}</p>`:''}${scene}${renderFigures(s,0)}${renderWorkedExample(s.example,0)}${s.body.map((p,i)=>`<p>${inline(p)}</p>${renderFigures(s,i+1)}${renderWorkedExample(s.example,i+1)}`).join('')}${s.formula?`<div class="formula">${mathMarkup(s.formula,true)}</div>`:''}${kind==='lesson'?renderCourseLab(item.id,s.id):''}${s.bullets?.length?`<ul${item.theoryOnly?' class="diagnostic-list"':''}>${s.bullets.map(b=>`<li>${inline(b)}</li>`).join('')}</ul>`:''}${s.code?codeBlock(s.code,s.codeKind==='fragment'?'Python · 实现片段':'Python')+(s.codeExplanation?`<p class="code-note">${inline(s.codeExplanation)}</p>`:''):''}${renderFigures(s)}${renderComparison(s.comparison)}${renderWorkedExample(s.example)}${renderFocus(s.focus)}${kind==='lesson'&&!item.theoryOnly?renderPseudocode(item.id,s.id):''}</section>`;
+ const formula=s.formula?`<div class="formula">${mathMarkup(s.formula,true)}</div>`:'';
+ return `<section class="article-section" id="${sectionId(kind,s,index)}" data-reading-section><h2>${item.theoryOnly?'':`<span class="section-number">${pad(index+1)}</span>`}${inline(cleanTitle(s.title))}</h2>${s.lead?`<p class="section-lead">${inline(s.lead)}</p>`:''}${s.formulaFirst?formula:''}${scene}${renderFigures(s,0)}${renderWorkedExample(s.example,0)}${s.body.map((p,i)=>`<p>${inline(p)}</p>${renderFigures(s,i+1)}${renderWorkedExample(s.example,i+1)}`).join('')}${s.formulaFirst?'':formula}${kind==='lesson'?renderCourseLab(item.id,s.id):''}${s.bullets?.length?`<ul${item.theoryOnly?' class="diagnostic-list"':''}>${s.bullets.map(b=>`<li>${inline(b)}</li>`).join('')}</ul>`:''}${s.code?codeBlock(s.code,s.codeKind==='fragment'?'Python · 实现片段':'Python')+(s.codeExplanation?`<p class="code-note">${inline(s.codeExplanation)}</p>`:''):''}${renderFigures(s)}${renderComparison(s.comparison)}${renderWorkedExample(s.example)}${renderFocus(s.focus)}${kind==='lesson'&&!item.theoryOnly?renderPseudocode(item.id,s.id):''}</section>`;
 }
 function renderFigures(section,afterParagraph){
  const figures=section.figures||(section.figure?[section.figure]:[]);
@@ -178,18 +181,16 @@ const LESSON_PSEUDOCODE={
   "loss = sum(error*mask) / sum(mask)"
  ]},
  "mlp": {section: "affine-nonlinearity", lines: [
-  "z1 = x @ W1 + b1",
-  "h1 = activation(z1)",
-  "y = h1 @ W2 + b2",
-  "loss = criterion(y, target)",
-  "loss.backward(); optimizer.step()"
+  "# PyTorch Linear 的权重布局：[out_features, in_features]",
+  "z1 = x @ W1.T + b1",
+  "h1 = relu(z1)",
+  "y = h1 @ W2.T + b2"
  ]},
  "cnn-receptive-field": {section: "local-correlation", lines: [
-  "for each output (i,j):",
-  "    patch = X[..., i*s-p:i*s-p+k, j*s-p:j*s-p+k]",
-  "    Y[...,i,j] = sum(patch * W)",
-  "rf += (kernel-1) * jump",
-  "jump *= stride"
+  "# groups=1, stride=1, padding=0, dilation=1；核不翻转",
+  "for each valid output index (b, o, i, j):",
+  "    patch = X[b, :, i:i+Kh, j:j+Kw]",
+  "    Y[b, o, i, j] = sum(patch * W[o]) + bias[o]"
  ]},
  "attention": {section: "0", lines: [
   "Q = X @ Wq; K = X @ Wk; V = X @ Wv",
@@ -355,7 +356,7 @@ function renderLessonTheory(l){
   return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${renderSources(l.sources,l.id)}`;
  }
  const notation=`<details class="detail-box shape-details"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>变量</th><th>形状</th><th>含义</th></tr></thead><tbody>${l.shapes.map(s=>`<tr><td>${inline(s.name)}</td><td>${shapeMarkup(s.shape)}</td><td>${inline(s.meaning)}</td></tr>`).join('')}</tbody></table></div></details>`;
- return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonHref(l.id,'exercise')}">开始练习 →</a></p>`;
+ return `${l.lead?`<p class="article-intro">${inline(l.lead)}</p>`:''}${renderEvolution(l.evolution)}${renderChapterGoals(l)}${notation}${l.sections.map((s,i)=>renderSection(s,i,'lesson',l)).join('')}${l.advancedSections?.length?`<details class="detail-box advanced-material"><summary>可选拓展：深入理论与进阶分析（${l.advancedSections.length} 节）</summary><div class="detail-body">${l.advancedSections.map((s,i)=>renderSection(s,l.sections.length+i,'lesson',l)).join('')}</div></details>`:''}${renderChapterReview(l)}${renderSources(l.sources,l.id)}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'code')}">阅读代码实现 →</a><a href="${lessonPracticeHref(l)}">${l.introLabId?'先做小题':'开始练习'} →</a></p>`;
 }
 function renderTopicTheory(t){
  return `<p class="article-intro">${inline(t.lead)}</p><details class="detail-box notation"><summary>符号与张量约定</summary><div class="detail-body table-wrap"><table><thead><tr><th>符号</th><th>形状</th><th>含义</th></tr></thead><tbody>${t.notation.map(n=>`<tr><td>${inline(n.symbol)}</td><td>${shapeMarkup(n.shape)}</td><td>${inline(n.meaning)}</td></tr>`).join('')}</tbody></table></div></details>${t.sections.map((s,i)=>renderSection(s,i,'topic',t)).join('')}${renderSources(t.sources,null,t.relatedLessons)}<p class="article-action"><a class="button primary" href="${topicHref(t.id,'code')}">阅读代码实现 →</a><a href="${topicHref(t.id,'labs')}">开始练习 →</a></p>`;
@@ -378,7 +379,7 @@ function sourceExplanations(explanations,frame){
 function mainImplementation(l){return (l.extraImplementations||[]).find(d=>d.id===l.mainImplementation);}
 function renderLessonCode(l){
  const primary=mainImplementation(l),others=(l.extraImplementations||[]).filter(d=>d!==primary),advanced=l.advancedImplementations||[];
- return `<p class="code-reading-guide">运行前先预测关键输出，再对照断言和下方代码说明。核对通过后，尝试只改变一个输入或配置，解释输出为什么变化。</p>${primary?renderAdditionalCode(l,[primary]):''}${l.code.runtimeNote?`<p class="runtime-validation-note">${esc(l.code.runtimeNote)}</p>`:''}<section id="code-result" data-reading-section><h2 class="content-title">${primary?'补充演示的观察目标':'运行前的观察目标'}</h2><p>${inline(l.code.expected)}</p><p class="run-command"><code>python ${pad(l.number)}_${l.id}_demo.py</code><a href="#/guide">环境配置</a></p></section><section id="code-implementation" data-reading-section><h2 class="content-title">${primary?'补充演示：':''}${esc(l.code.title)}</h2>${codeBlock(l.code.source,pad(l.number)+'_'+l.id+'_demo.py','<button data-action="copy-demo">复制</button><button data-action="download-demo">下载 .py</button>','lesson-code')}</section><section id="code-explanations" data-reading-section><h3>代码说明</h3><p class="quiet">点击行号说明，高亮对应实现。</p>${sourceExplanations(l.code.explanations,'lesson-code')}</section>${renderAdditionalCode(l,others)}${advanced.length?`<details class="detail-box advanced-material"><summary>可选拓展实现（${advanced.length}）</summary><div class="detail-body">${renderAdditionalCode(l,advanced)}</div></details>`:''}<p class="article-action"><a class="button primary" href="${lessonHref(l.id,'exercise')}">开始练习 →</a></p>`;
+ return `<p class="code-reading-guide">运行前先预测关键输出，再对照断言和下方代码说明。核对通过后，尝试只改变一个输入或配置，解释输出为什么变化。</p>${primary?renderAdditionalCode(l,[primary]):''}${l.code.runtimeNote?`<p class="runtime-validation-note">${esc(l.code.runtimeNote)}</p>`:''}<section id="code-result" data-reading-section><h2 class="content-title">${primary?'补充演示的观察目标':'运行前的观察目标'}</h2><p>${inline(l.code.expected)}</p><p class="run-command"><code>python ${pad(l.number)}_${l.id}_demo.py</code><a href="#/guide">环境配置</a></p></section><section id="code-implementation" data-reading-section><h2 class="content-title">${primary?'补充演示：':''}${esc(l.code.title)}</h2>${codeBlock(l.code.source,pad(l.number)+'_'+l.id+'_demo.py','<button data-action="copy-demo">复制</button><button data-action="download-demo">下载 .py</button>','lesson-code')}</section><section id="code-explanations" data-reading-section><h3>代码说明</h3><p class="quiet">点击行号说明，高亮对应实现。</p>${sourceExplanations(l.code.explanations,'lesson-code')}</section>${renderAdditionalCode(l,others)}${advanced.length?`<details class="detail-box advanced-material"><summary>可选拓展实现（${advanced.length}）</summary><div class="detail-body">${renderAdditionalCode(l,advanced)}</div></details>`:''}<p class="article-action"><a class="button primary" href="${lessonPracticeHref(l)}">${l.introLabId?'先做小题':'开始练习'} →</a></p>`;
 }
 
 function renderAdditionalCode(l,demos=l.extraImplementations||[]){return demos.map(d=>`<section class="implementation" id="demo-${d.id}" data-reading-section>${d.id===l.mainImplementation?'<p class="case-label">本章贯穿案例</p>':''}<h2>${inline(d.title)}</h2><p>${inline(d.description)}</p><div class="code-observation"><h3>运行时应核对</h3><p>${inline(d.expected)}</p></div>${codeBlock(d.source,(l.theoryTopic||l.id)+'_'+d.id+'.py',`<button data-action="copy-demo" data-lesson="${l.id}" data-demo="${d.id}">复制</button><button data-action="download-demo" data-lesson="${l.id}" data-demo="${d.id}">下载 .py</button>`,'code-'+d.id)}<h3>代码说明</h3>${sourceExplanations(d.explanations,'code-'+d.id)}</section>`).join('');}
@@ -411,14 +412,14 @@ function renderPractice(){
    <header class="practice-section-heading"><h2>${esc(m.name)}</h2><span class="badge badge-practice">基础实现</span></header>
    <ul class="practice-rows">${entries.map(l=>`<li class="practice-row">
     <a class="practice-course" href="${lessonHref(l.id)}"><span>${esc(l.title)}</span>${l.tags[0]?`<small class="badge badge-neutral">${esc(l.tags[0])}</small>`:''}</a>
-    <a class="practice-option" href="${lessonHref(l.id,'exercise')}">Python <span aria-hidden="true">→</span></a>
+    <a class="practice-option" href="${lessonPracticeHref(l)}">${l.introLabId?'Python 小题':'Python'} <span aria-hidden="true">→</span></a>
     <a class="practice-option" href="${lessonHref(l.id,'exercise','torch')}">PyTorch <span aria-hidden="true">→</span></a>
    </li>`).join('')}</ul>
   </section>`).join('')}
   ${topicGroups.length?`<section class="practice-advanced">
    <header class="practice-section-heading"><h2>专题进阶练习</h2><span class="badge badge-practice">进阶</span></header>
    <div class="practice-topic-grid">${topicGroups.map(t=>`<section class="practice-topic">
-    <h3>${esc(TOPIC_META[t.id].name)}</h3><ul>${t.labs.map(l=>`<li><a href="${topicHref(t.id,'labs','&lab='+l.id)}"><span>${esc(l.title)}</span><small>${l.runtime==='python'?'Python':'PyTorch'} →</small></a></li>`).join('')}</ul>
+    <h3>${esc(TOPIC_META[t.id].name)}</h3><ul>${t.labs.filter(l=>l.id!==t.introLabId).map(l=>`<li><a href="${topicHref(t.id,'labs','&lab='+l.id)}"><span>${esc(l.title)}</span><small>${l.runtime==='python'?'Python':'PyTorch'} →</small></a></li>`).join('')}</ul>
    </section>`).join('')}</div>
   </section>`:''}
  </div>`;

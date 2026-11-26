@@ -158,11 +158,11 @@ for(const lesson of lessons){
    assert.equal(evaluate('parseRoute().params.get("tab")')||'theory',tab);
   }
  });
- if(!lesson.theoryTopic)continue;
- const topic=topics.find(t=>t.id===lesson.theoryTopic),ids=new Set([...topic.sections,...(topic.advancedSections||[])].map(s=>s.id));
+ if(!lesson.labTopic)continue;
+ const topic=topics.find(t=>t.id===lesson.labTopic),ids=new Set([...topic.sections,...(topic.advancedSections||[])].map(s=>s.id));
  const topicCanonicalId=({mlp:'mlp',cnn:'cnn-receptive-field',transformer:'attention','flow-matching':'flow-matching'})[topic.id]||canonicalId;
- for(const [old,target] of Object.entries(lesson.legacySectionMap))test(lesson.id+' old section '+old,()=>assert.ok(ids.has(target)));
- for(const [old,target] of Object.entries(lesson.legacyAnchorMap)){
+ for(const [old,target] of Object.entries(lesson.legacySectionMap||{}))test(lesson.id+' old section '+old,()=>assert.ok(ids.has(target)));
+ for(const [old,target] of Object.entries(lesson.legacyAnchorMap||{})){
   test(lesson.id+' old discussion link '+old,()=>{
    const raw='#/learn/'+lesson.id+'?tab=theory&anchor='+old;
    const converted=evaluate(`routeHref(${JSON.stringify(raw)})`);
@@ -193,6 +193,28 @@ for(const lesson of lessons){
   assert.equal(url.searchParams.get('lab'),lab.id);
  });
 }
+test('Revised chapters surface the opening formula and link to a small runnable exercise',()=>{
+ const intro={'cnn-receptive-field':'corr2d-window',mlp:'forward-one-row',attention:'single-query-readout','flow-matching':'linear-path-first'};
+ const practice=fs.readFileSync(path.join(dist,'practice/index.html'),'utf8').replaceAll('&amp;','&');
+ for(const [id,lab] of Object.entries(intro)){
+  const lesson=lessons.find(l=>l.id===id),first=lesson.sections[0];
+  assert.equal(lesson.introLabId,lab);
+  assert.equal(first.formulaFirst,true);
+  assert.ok(lesson.extraLabs.some(x=>x.id===lab&&x.runtime==='python'));
+  const theory=fs.readFileSync(path.join(dist,'learn',id,'index.html'),'utf8').replaceAll('&amp;','&');
+  const start=theory.indexOf('id="section-'+first.id+'"'),end=theory.indexOf('<section class="article-section"',start+1);
+  assert.ok(start>=0&&end>start,id+' missing opening section');
+  const opening=theory.slice(start,end),formula=opening.indexOf('class="formula"');
+  assert.ok(formula>=0&&opening.indexOf('<p>')>formula,id+' formula must precede first prose paragraph');
+  const href=basePath+'/learn/'+id+'/?tab=exercise&lab='+lab;
+  const mainTheory=theory.split('<details class="detail-box advanced-material"',1)[0];
+  assert.ok(mainTheory.includes(href)&&practice.includes(href),id+' missing practice entry');
+  const html=evaluate(`renderLesson(byId[${JSON.stringify(id)}],'exercise','python',new URLSearchParams(${JSON.stringify('lab='+lab)}))`);
+  assert.equal(evaluate('currentLesson.id'),'topic-'+lesson.labTopic+'-'+lab);
+  assert.ok(html.includes('id="run-tests"')&&html.includes('id="exercise-solution"'));
+ }
+});
+
 test('Core code pages start with the running example and retain unique code frames',()=>{
  for(const id of ['mlp','cnn-receptive-field','flow-matching']){
   const lesson=lessons.find(l=>l.id===id);

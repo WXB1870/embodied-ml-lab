@@ -1,8 +1,9 @@
 {
   "id": "cnn",
+  "introLabId": "corr2d-window",
   "title": "CNN：卷积计算与感受野",
   "subtitle": "面向视觉编码器阅读的精简参考：掌握 Conv2d 张量语义、输出尺寸、参数量与感受野，并用 unfold 对照 PyTorch。",
-  "lead": "卷积神经网络（CNN）通过局部连接和参数共享处理空间特征。本速查聚焦 Conv2d 的通道计算、步幅/填充/空洞率、参数与计算量，以及多层感受野递推；通过一个小型 CNN 和 unfold 参考实现核对公式。平移等变、架构演进和空间读出等深入内容放入可选拓展。",
+  "lead": "把卷积看成同一套权重在图像上反复做局部内积。先用固定小图算出一格，再推导空间尺寸、参数量与多层感受野，最后用 SmallCNN 区分分类和定位分别保留什么。分组卷积的表达限制、路径数、动手推梯度与现代架构做法在拓展阅读。",
   "minutes": 200,
   "prerequisites": [
     "tensor",
@@ -20,8 +21,8 @@
   "goals": [
     "从索引公式推导非方形卷积输出，并解释 stride、padding、dilation 和 groups。",
     "统计参数与乘加次数，逐层追踪感受野和累计步长。",
-    "手写支持分组的 unfold 卷积，核对前向及输入/参数梯度。",
-    "理解池化、patch 投影和坐标读出的信息取舍，验证预处理几何约定。",
+    "用一格手算和 PyTorch 核对同一张图；只修改一个像素，解释哪些输出变化。",
+    "读出特征图的理论跨度、累计步幅、首个中心，区分空间读出与全局汇聚。",
     "从参数、采样几何与梯度路径解释小核堆叠、瓶颈、深度可分离卷积和现代 CNN 模块。"
   ],
   "quickFacts": [
@@ -81,15 +82,15 @@
   "sections": [
     {
       "id": "local-correlation",
-      "title": "先看完整网络，再理解局部卷积",
+      "title": "卷积的一格怎么算？",
       "body": [
-        "沿图从左向右看：卷积在局部窗口中提取特征，激活引入非线性，池化缩小空间网格；随后将特征展平，用全连接层输出各类别的分数。图中每叠小方片是一组特征通道。本章贯穿的 SmallCNN 将这条主线具体化为两次“卷积＋ReLU”，再通过全局平均池化与线性层完成分类。",
-        "二维卷积网络把图像表示为 [B,C,H,W]：B 是样本，C 是通道，H/W 是两个空间轴。一个普通卷积的输出通道，拥有覆盖所有输入通道的一组小核。例如 RGB 输入使用 3×3 核时，每个输出通道实际有 3×3×3 个权重。它在一个位置取出各通道的局部窗口，逐元素相乘后跨空间和通道求和，再加该输出通道的偏置。",
-        "PyTorch Conv2d 实际计算的是互相关：窗口与权重按对应位置相乘，不把核在空间上翻转。数学教材中的卷积常包含核翻转，使用固定边缘检测核对照时必须明确约定。对于学习到的核，这种命名差异不限制一般的可学习滤波器族，但实现核对时会影响具体数值。一个卷积核不是每次滑动时重新生成的；同一输出通道在所有位置复用相同权重。",
-        "输出通道不是简单等于输入颜色通道。一个输出通道可能混合多个输入通道中的局部模式，多个输出通道又使用不同参数寻找不同响应。没有非线性时，卷积对输入是仿射映射；ReLU 等激活放在哪里，会改变整段网络的函数。读取代码时应分别标记权重张量、输入特征图和输出特征图，避免把滤波器数量与每个滤波器内部的输入通道轴混淆。"
+        "输入 `X` 的布局是 `[B,Cin,H,W]`，核 `W[o]` 与当前位置的窗口都是 `[Cin,Kh,Kw]`。尖括号表示逐元素相乘后，将输入通道和两个窗口轴全部求和。对应代码是 `(patch * weight[o]).sum() + bias[o]`。",
+        "换输出位置 `(i,j)` 时只换窗口，不换权重；换输出通道 `o` 时才换一套核与偏置。与 Linear 一样，这是内积加偏置。卷积额外规定了两件事：只连接局部区域，并在不同空间位置复用参数。",
+        "上面的单通道算例只有一组通道乘积，但 RGB 输入上的每个普通 3×3 输出核有 `3×3×3` 个权重，三个输入通道的乘积会在内积里相加，不是各自输出一张图。PyTorch 按窗口与核的位置直接相乘，不翻转核，因此严格来说算的是互相关。用固定核做数值对照时，翻不翻转可以给出不同结果。",
+        "先猜把中心像素从 5 改为 9 后哪几格会变，再运行下方代码。用一次局部算式解释变化，比只看输出尺寸更能暴露索引错误。[用同一组数字做 Python 小题](#/learn/cnn-receptive-field?tab=exercise&lab=corr2d-window)。"
       ],
-      "formula": "Y_{b,o,i,j}=b_o+\\sum_{c=0}^{C_{\\rm in}-1}\\sum_{u=0}^{K_h-1}\\sum_{v=0}^{K_w-1}W_{o,c,u,v}X_{b,c,\\,i s_h-p_h+u d_h,\\,j s_w-p_w+v d_w}",
-      "takeaway": "普通卷积对整个局部窗口求和，其中包括输入通道轴；PyTorch 不翻转核。",
+      "formula": "Y_{b,o,i,j}=\\left\\langle W_o,\\ X_{b,:,\\,i:i+K_h,\\,j:j+K_w}\\right\\rangle+\\beta_o",
+      "takeaway": "同一个核跨位置共享；一个位置的输出是整个局部窗口（包括输入通道）的内积加偏置。",
       "example": {
         "title": "用一个 2×2 核算出四个输出",
         "steps": [
@@ -97,25 +98,21 @@
           "左上输出使用窗口 [[1,2],[4,5]]，逐项相乘再求和：\\(1\\times1+2\\times0+4\\times0+5\\times(-1)=-4\\)。右上窗口得到 \\(2-6=-4\\)。",
           "下方两个窗口分别得到\\(4-8=-4\\)、\\(5-9=-4\\)，因此输出为2×2且全部为-4。这里没有翻转核，是深度学习库常用的互相关约定。"
         ],
-        "conclusion": "卷积的可学习之处是核里的数；相同核在各空间位置重复使用，多个输入通道的结果还要相加。"
+        "conclusion": "四格计算复用同一个核；左上角取窗口并求内积，对应代码中的左上输出。",
+        "afterParagraph": 1
       },
-      "lead": "一个典型 CNN 先读取图像，通过若干组“卷积、激活、下采样”形成特征图，再将这些特征读成类别或空间预测。下图先用 LeNet 展示整条流程，随后再拆开其中的一个卷积窗口。",
+      "lead": "先固定普通 Conv2d：stride=1、padding=0、dilation=1、groups=1。固定样本 b、输出通道 o 和位置 (i,j)，卷积只做一件事：取一块输入，与第 o 个核做内积，再加该通道的偏置。",
       "figures": [
-        {
-          "src": "/assets/figures/lenet-overview-d2l.svg",
-          "alt": "LeNet 的完整图像分类流程：二十八乘二十八图像经过两组卷积与池化，展平后通过多个全连接层，得到十类输出。",
-          "caption": "从左向右读：图像 → 卷积与池化 → 展平 → 全连接层 → 10 类输出。叠放的方片表示同一层的多个特征通道。图源：[《动手学深度学习》LeNet](https://d2l.ai/chapter_convolutional-neural-networks/lenet.html)。",
-          "afterParagraph": 0,
-          "width": 1416,
-          "height": 535
-        },
         {
           "src": "/assets/figures/conv-arithmetic-window.gif",
           "alt": "一个 3×3 卷积核在 4×4 单通道输入上以步幅 1、无填充滑动，生成 2×2 输出。",
-          "caption": "观察下方蓝色输入上的深色 3×3 窗口：它每移动一格，就计算上方一个输出位置。这是单通道、无 Padding、Stride=1 的 4×4 → 2×2 例子；多输入通道时还要汇总各通道的乘积。原动图：Dumoulin & Visin，[Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)、[论文](https://arxiv.org/abs/1603.07285)。",
-          "afterParagraph": 2
+          "caption": "观察下方蓝色输入上的深色 3×3 窗口：它每移动一格，就计算上方一个输出位置。这是单通道、无 Padding、Stride=1 的 4×4 → 2×2 例子；多输入通道时还要汇总各通道的乘积。原动图：Dumoulin & Visin，[Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)、[论文](https://arxiv.org/abs/1603.07285)。"
         }
-      ]
+      ],
+      "formulaFirst": true,
+      "code": "import torch\nfrom torch.nn import functional as F\n\nx = torch.arange(1., 10.).reshape(1, 1, 3, 3)\nw = torch.tensor([[[[1., 0.], [0., -1.]]]])\nbias = torch.zeros(1)\npatch = x[0, :, :2, :2]                              # 左上角的 [C, Kh, Kw] 窗口\nvalue = (patch * w[0]).sum() + bias[0]\nbase = F.conv2d(x, w, bias)\ntorch.testing.assert_close(value, base[0, 0, 0, 0])\ntorch.testing.assert_close(base, torch.full((1, 1, 2, 2), -4.))\nx_changed = x.clone()\nx_changed[0, 0, 1, 1] = 9.\nchanged = F.conv2d(x_changed, w, bias)\ntorch.testing.assert_close(changed, torch.tensor([[[[-8., -4.], [-4., 0.]]]]))\nprint(\"原输出：\", base[0, 0].tolist(), \"只改中心后：\", changed[0, 0].tolist())",
+      "codeKind": "runnable",
+      "codeExplanation": "先让一个窗口的手算值与 F.conv2d 的左上输出相等，再只改中心像素。中心在四个窗口里都出现，但它在两个窗口中乘到零权重，所以只有左上与右下输出变化。"
     },
     {
       "id": "spatial-shape",
@@ -124,9 +121,10 @@
         "卷积窗口能放多少次，决定输出尺寸。dilation=d 会把大小 k 的核采样点拉开，使覆盖跨度变为 \\(d(k-1)+1\\)，但权重个数仍为 k。padding=p 在两边各提供 p 个填充值，使边界也可产生输出。stride=s 表示相邻输出窗口在输入上移动 s 个位置。三者一个改变窗口内部采样，一个改变边界，一个改变窗口之间的间距，不能相互替代。",
         "把单个轴的输入长度记作 H，左、右填充分别为 \\(p_L\\)、\\(p_R\\)。补边后的合法索引为 \\(0,\\ldots,H+p_L+p_R-1\\)。第 q 个输出窗口的最左采样位置为 \\(qs\\)，最右为 \\(qs+d(k-1)\\)，其中 q 从 0 开始、s,d,k 为正整数。窗口存在必须满足 \\(qs+d(k-1)\\le H+p_L+p_R-1\\)；解出 q 的最大整数值，再将从 0 起计数的个数加 1，就得到输出公式。这个推导同时解释了 floor 的位置，以及为何有效核跨度为 \\(d(k-1)+1\\)。",
         "对单个空间轴，先从输入加两侧填充的总长度中减去有效核跨度，再除以步长、向下取整，最后加 1。输入高 7、宽 9，核 3×2，stride=(2,1)、padding=(1,0)、dilation=(2,1) 时，有效核为 5×2，输出高为 \\(\\left\\lfloor\\frac{7+2-5}{2}\\right\\rfloor+1=3\\)，输出宽为 \\(9-2+1=8\\)。非方形例子可以暴露把 H/W 参数写反的错误。",
+        "把一格公式推广到步幅、补零和空洞率：先按输出坐标乘步幅找到窗口，减去顶部或左侧补量，再按核内索引乘空洞率采样。下式中 \\(p_h,p_w\\) 分别是顶部、左侧补量；访问原输入边界之外时按零处理。普通卷积取所有输入通道，分组卷积只取该输出通道所属的一组。",
         "输出公式要求存在至少一个合法位置；核跨度超过可用输入时应拒绝，而不是得到零或负维度。对称零填充只是常见设置，反射、复制和不对称填充改变边界语义。PyTorch 的 padding=\"same\" 有具体 API 限制，不能把它理解为任意步长下无条件保持原尺寸。图像预处理的 resize 与模型内部 stride 也不同：前者改变实际输入采样，后者改变特征采样，两处坐标变换要分开记录。"
       ],
-      "formula": "\\begin{aligned}0\\le q&\\le\\frac{H+p_L+p_R-d(k-1)-1}{s},\\\\ H_{\\rm out}&=\\left\\lfloor\\frac{H+p_L+p_R-d(k-1)-1}{s}\\right\\rfloor+1;\\qquad p_L=p_R=p\\ \\text{时为对称填充}.\\end{aligned}",
+      "formula": "\\begin{aligned}Y_{b,o,i,j}&=\\beta_o+\\sum_{c=0}^{C_{\\rm in}-1}\\sum_{u=0}^{K_h-1}\\sum_{v=0}^{K_w-1}W_{o,c,u,v}X_{b,c,\\,i s_h-p_h+u d_h,\\,j s_w-p_w+v d_w},\\\\ 0\\le q&\\le\\frac{H+p_L+p_R-d(k-1)-1}{s},\\\\ H_{\\rm out}&=\\left\\lfloor\\frac{H+p_L+p_R-d(k-1)-1}{s}\\right\\rfloor+1;\\qquad p_L=p_R=p\\ \\text{时为对称填充}.\\end{aligned}",
       "code": "import torch\n\nconv = torch.nn.Conv2d(4, 6, (3, 2), stride=(2, 1),\n                       padding=(1, 0), dilation=(2, 1), groups=2)\nassert conv(torch.randn(2, 4, 7, 9)).shape == (2, 6, 3, 8)",
       "codeExplanation": "高度与宽度分别计算；groups 改变通道连接方式，不进入空间输出公式。",
       "example": {
@@ -136,7 +134,8 @@
           "输出高为 \\(\\left\\lfloor\\frac{15+2\\times1-5}{2}\\right\\rfloor+1=7\\)；输出宽为 \\(\\left\\lfloor\\frac{20+2\\times2-5}{3}\\right\\rfloor+1=7\\)。结果碰巧为7×7，但两个轴的计算过程并不相同。",
           "若只把宽方向 stride 改成2，则输出宽变为 \\(\\left\\lfloor\\frac{19}{2}\\right\\rfloor+1=10\\)，高仍为7。不能把一个轴的参数直接套到另一轴。"
         ],
-        "conclusion": "输出尺寸由窗口是否完全落入补边后的网格决定；向下取整会产生离散跳变。"
+        "conclusion": "输出尺寸由窗口是否完全落入补边后的网格决定；向下取整会产生离散跳变。",
+        "afterParagraph": 3
       },
       "focus": {
         "kind": "易错",
@@ -207,11 +206,39 @@
         "普通卷积的权重形状是 [Cout,Cin,Kh,Kw]，每个输出通道再有一个偏置。32 个输入通道、64 个输出通道、3×3 核，有 \\(64\\times32\\times3\\times3+64=18496\\) 个参数。输入从 64×64 换成 128×128 不会增加这组参数，但会产生更多输出位置。卷积的参数共享把“同一局部模式可出现在不同位置”写进结构，而全连接层通常为不同空间位置使用不同连接。",
         "参数少不自动等于计算便宜。每个输出位置都要执行一次相应的局部内积，普通卷积乘加次数约为 \\(B H_{\\mathrm{out}}W_{\\mathrm{out}}C_{\\mathrm{out}}C_{\\mathrm{in}}K_hK_w\\)；分组卷积再除以组数。这个表达式把一次乘加视为一个 MAC，若用 FLOPs 报告，是否把乘法和加法分别计数必须说明。分辨率翻倍常使二维空间位置数约增为四倍，因此视觉骨干的激活与计算都可能显著增大。",
         "卷积也可以写成一个稀疏且共享参数的矩阵映射。unfold 将窗口排成 [B,Cin×Kh×Kw,Hout×Wout]，每列对应一个输出位置的输入；展平的卷积核从左侧乘这组列，得到各位置的输出通道。重叠区域会出现在多列中，因此显式 unfold 可能增加内存开销。这种写法适合对照数学定义，实际卷积内核无需照搬它的中间存储方式。",
-        "把上面的估计用于后续同一个 SmallCNN：输入固定为 `[B,3,12,12]`，两层卷积依次为 3→8 与 8→12，均用 3×3、stride=1、padding=1，每层后接 ReLU，再做 GAP 与 Linear(12,2)。下表按单张输入计卷积/线性 MAC，忽略偏置加法、激活、池化求和与反向成本；它不是硬件延迟。参数包含偏置。两层 feature map 仍有 12×12 个位置，GAP 才消去空间轴。表中 \\(r\\) 是单个特征位置在输入上的理论覆盖跨度，\\(j\\) 是相邻特征位置在输入上的间隔；两者将在[感受野](#/learn/cnn-receptive-field?section=receptive-field)一节推导。"
+        "`groups=G` 会删去不同组之间的通道连接：每个输出只连接 \\(C_{\\mathrm{in}}/G\\) 个输入通道，输入和输出通道数都必须能被 G 整除。这个配置改变权重数量，不改变空间输出公式。核为 1×1 时不跨位置混合；用普通 1×1、stride=1、padding=0 卷积，就等于在每个位置对通道向量应用同一个 Linear。更详细的分组结构与表达限制见[拓展](#/learn/cnn-receptive-field?section=groups-depthwise)。"
       ],
       "formula": "P=C_{\\rm out}\\frac{C_{\\rm in}}{G}K_hK_w+C_{\\rm out},\\qquad \\operatorname{MACs}\\approx BH_{\\rm out}W_{\\rm out}C_{\\rm out}\\frac{C_{\\rm in}}G K_hK_w",
       "takeaway": "参数由通道和核决定，计算还取决于输出空间位置；二者必须分开估算。",
-      "lead": "参数共享指不同空间位置使用同一组卷积核权重。参数量计数这组可学习数值，计算量还要计入它们被重复使用多少次。区分二者后，才能解释分辨率增加为何主要增加执行工作量而非核参数。",
+      "lead": "参数共享指不同空间位置使用同一组卷积核权重。参数量计数这组可学习数值，计算量还要计入它们被重复使用多少次。区分二者后，才能解释分辨率增加为何主要增加执行工作量而非核参数。"
+    },
+    {
+      "id": "receptive-field",
+      "title": "多层感受野：看多大、隔多远、对到哪",
+      "body": [
+        "先用一维、无补边、无空洞的两层三点卷积。若第一层 stride=2，那么它的前三个输出分别读取输入索引 `0–2`、`2–4`、`4–6`。第二层第一个输出把这三个特征合在一起，因此输入跨度是 **7**；若第一层 stride=1，三个窗口改为 `0–2`、`1–3`、`2–4`，跨度才是 5。",
+        "对一条轴，\\(r\\) 是理论覆盖跨度，\\(j\\) 是相邻输出在原图上相隔多少像素。从 \\(r_0=j_0=1\\) 起步。本层的核在上一层网格上选点，首末选点相距 \\((k-1)d\\) 个上层格子，所以跨度增加 \\((k-1)d\\,j_{\\rm old}\\)；再把旧间距乘本层 stride，得到新网格的间距。高宽分别递推，局部池化也会改变这两个量。",
+        "对定位还要跟踪 \\(a\\)：第一个输出对应的理论窗口中心。以图像边界为坐标原点，首个像素中心是 \\(a_0=\\tfrac12\\)。首窗从上一层索引 \\(-p_L\\) 开始，末点是 \\(-p_L+(k-1)d\\)，取中点再按旧间距换算到原图。与[视觉预处理](#/learn/vision-preprocessing?section=3)首像素中心为 0 的坐标约定相差半个像素。理论中心包含虚拟补边，不等于真实像素贡献的质心。",
+        "同形反例：输入长度 6、k=3、stride=2、dilation=1。左补 1 或右补 1 都产生 3 个输出，均有 \\(r=3,j=2\\)，但首个中心一个在 0.5、一个在 1.5。做多路特征融合或坐标回映射时，shape 相同并不代表逐位置对齐。",
+        "理论跨度只是一个包围范围；空洞采样会留下空格，边界会落在补值上，权重为零或路径相消也会使实际贡献为零。想区分边界、可达位置与梯度强度，见[支持集与路径数](#/learn/cnn-receptive-field?section=receptive-field-support)。"
+      ],
+      "formula": "\\begin{aligned}r_\\ell&=r_{\\ell-1}+(k_\\ell-1)d_\\ell j_{\\ell-1},\\\\ j_\\ell&=j_{\\ell-1}s_\\ell,\\\\ a_\\ell&=a_{\\ell-1}+\\left(\\frac{(k_\\ell-1)d_\\ell}{2}-p_{L,\\ell}\\right)j_{\\ell-1},\\qquad(r_0,j_0,a_0)=(1,1,\\tfrac12).\\end{aligned}",
+      "takeaway": "用上一层 j 扩大覆盖跨度、用本层步长更新 j；做空间对齐时，额外检查第一个中心 a。",
+      "code": "import torch\nimport torch.nn.functional as F\n\npositions = torch.arange(6, dtype=torch.float64)[None, None, :] + 0.5\nkernel = torch.ones(1, 1, 3, dtype=positions.dtype) / 3\nleft_pad = F.conv1d(F.pad(positions, (1, 0)), kernel, stride=2)\nright_pad = F.conv1d(F.pad(positions, (0, 1)), kernel, stride=2)\nassert left_pad.shape == right_pad.shape == (1, 1, 3)\n# 只比较中间窗口，避开人工补零边界；线性坐标的窗口均值恰好等于中心。\ntorch.testing.assert_close(left_pad[0, 0, 1], torch.tensor(2.5, dtype=positions.dtype))\ntorch.testing.assert_close(right_pad[0, 0, 1], torch.tensor(3.5, dtype=positions.dtype))\nprint(\"同形输出的中间采样中心:\", left_pad[0, 0, 1].item(), right_pad[0, 0, 1].item())\n",
+      "codeExplanation": "用一条取值等于像素中心坐标的输入和均匀的三点核，直接读出中间窗口中心。两种配置的输出都是 `[1,1,3]`，中间窗口却分别对到 2.5 和 3.5；这里避开补零边缘，因此窗口均值就是几何中心。",
+      "lead": "为什么两层 3×3 卷积有时看见 5×5，有时却看见 7×7？先沿一条轴追踪同一个输出，再检查两个大小完全相同的特征图为什么可能错位。",
+      "codeKind": "runnable"
+    },
+    {
+      "id": "feature-readout",
+      "title": "从特征图到任务输出：分类和定位保留什么",
+      "lead": "现在把单层计算接回 SmallCNN。两层卷积和 ReLU 提取空间特征；分类还是定位，要看特征图之后怎样读出。",
+      "body": [
+        "SmallCNN 读入 `[B,3,12,12]`。两层 3×3、stride=1、padding=1 卷积分别输出 `[B,8,12,12]` 和 `[B,12,12,12]`，各接一次 ReLU。卷积改变通道和每格的输入依赖，ReLU 改变响应但不移动网格。第二层内部一格在原图上有 5×5 理论感受野，并不意味着整个网络只能看到这块区域。",
+        "分类路线上，全局平均池化（GAP）把每个通道的全部位置汇成一个均值，得到 `[B,12]`，再用 Linear 输出 `[B,2]` 的 logits。因此分类器可以从整张特征图汇集证据。定位路线可以保留 `[B,C,H,W]` 网格，使用热图或带位置的空间 token；回到原图时仍需知道这些格子中心落在哪里。",
+        "举个信息丢失的反例：设某个通道只有一个强响应，放在左上角得到 \\(\\begin{bmatrix}4&0\\\\0&0\\end{bmatrix}\\)，放在右下角得到 \\(\\begin{bmatrix}0&0\\\\0&4\\end{bmatrix}\\)。两张特征图的空间平均相同，都是 1；任何只读这个均值的后续函数都无法区分这两个输入。这个结论只针对这里给定的特征图与读出：若上游把位置写进其他通道，分类网络仍可能保留任务所需的信息。",
+        "下表把空间几何和存算开销放回同一模型核对；MAC 按单张输入计，只含卷积和线性层的乘加，不是硬件延迟。想看训练与 Patch 投影的完整验证，读[SmallCNN 完整演示](#/learn/cnn-receptive-field?tab=code&anchor=demo-cnn-training-and-patches)；需要从热图输出坐标，可继续读[空间期望](#/learn/cnn-receptive-field?section=spatial-readout)。"
+      ],
       "comparison": {
         "title": "贯穿案例 SmallCNN：逐层形状与成本",
         "columns": [
@@ -286,74 +313,35 @@
           "alt": "SmallCNN 两层卷积保持空间网格，GAP 汇聚所有位置，再产生两类 logits 的结构图",
           "caption": "两层 3×3 卷积的局部覆盖跨度依次为 3 和 5；GAP 再汇聚整幅特征图，形成分类输出。",
           "width": 1120,
-          "height": 650
+          "height": 650,
+          "afterParagraph": 1
         }
-      ]
-    },
-    {
-      "id": "groups-depthwise",
-      "title": "分组与深度可分离卷积的秩限制",
-      "body": [
-        "groups=G 把输入通道和输出通道分别分成 G 组，每组输出只连接对应组的输入。因此 Cin 和 Cout 都需要被 G 整除，权重第二维为 Cin/G。它不是把同一普通卷积计算 G 遍，而是删去了组间连接。实现时应将窗口和权重都按相同组顺序重排；若只有权重分组而输入通道顺序未对齐，形状可能正确，计算仍会错误。",
-        "当 \\(G=C_{\\mathrm{in}}\\)，且 \\(C_{\\mathrm{out}}=KC_{\\mathrm{in}}\\) 时，每个输入通道对应 K 个独立空间滤波器，这叫 depthwise convolution，K 是通道倍增系数。这个操作本身不在不同输入通道之间混合信息。后接 groups=1 的 1×1 pointwise 卷积，才可在每个空间位置混合通道。深度可分离卷积因此由不同作用的两个步骤构成，不能直接声称等价于任意同尺寸普通卷积。",
-        "为什么要分成这两步？对通道倍增系数为一、忽略偏置的 \\(k\\times k\\) 核，普通卷积有 \\(k^2C_{\\rm in}C_{\\rm out}\\) 个权重，depthwise 加 pointwise 则为 \\(k^2C_{\\rm in}+C_{\\rm in}C_{\\rm out}\\)。前一项只在各通道内提取空间响应，后一项在每个位置重新组合这些响应。成本降低来自空间与通道作用的分解，接下来要检验这种分解能否覆盖原来的全部卷积核。",
-        "Depthwise+pointwise 的限制可以精确写出。先假设倍增系数 \\(K=1\\)，两层之间没有激活或其他输入相关变换，并忽略偏置。等效核为 \\(W_{ocuv}=P_{oc}D_{cuv}\\)。固定输入通道 c，所有输出空间核都是同一个 D[c] 的倍数，所以将这一切片排成 \\(C_{\\mathrm{out}}\\times(K_hK_w)\\) 矩阵，其秩最多为 1。一个普通卷积若要从同一输入通道提取两种线性独立的空间模板，就无法由这种组合精确表示。",
-        "例如一个输出需要水平差分核，另一个输出需要垂直差分核，两者不成比例；\\(K=1\\) 无法同时表达，\\(K\\ge2\\) 才可能提供两个独立空间方向。一般 K 个 depthwise 核给出至多 K 个外积之和，秩上限变为 K。两层间加入非线性后，不能再合并成一个固定卷积核，但通道连接仍受结构限制。参数节省来自受限的因子分解，不是无代价地保留任意卷积。",
-        "1×1 卷积的空间窗口只有一个位置，但仍能执行 \\(C_{\\mathrm{in}}\\to C_{\\mathrm{out}}\\) 的线性特征变换。它与对每个像素向量应用共享 Linear 等价，前提是布局和权重朝向一致。若设置 stride>1，它还会对子采样位置进行读出。分组、深度与逐点卷积常用于控制成本；决定是否适用时，应同时考虑表达限制、后续通道混合和实际硬件实现，而不只看参数量。"
       ],
-      "formula": "W_{o,c,u,v}=\\sum_{a=1}^{K}P_{o,c,a}D_{c,a,u,v},\\qquad \\operatorname{rank}\\!\\left(W_{:,c,:}\\right)\\le K",
-      "takeaway": "Depthwise 负责逐通道空间滤波，普通 1×1 卷积负责位置内的通道混合。",
-      "example": {
-        "title": "分组卷积省掉的是哪些连接",
-        "steps": [
-          "普通卷积 Cin=8、Cout=16、kernel=3×3且有bias，参数数为\\(16\\times8\\times9+16=1168\\)。",
-          "groups=4时，每组仅连接2个输入通道，每个输出核权重形状为[2,3,3]；总参数为\\(16\\times2\\times9+16=304\\)。",
-          "若先使用8通道depthwise，再用1×1投影到16通道，两层均有bias，则参数为\\((8\\times9+8)+(16\\times8+16)=224\\)。它属于不同结构，不能仅凭输出形状就认为与任意普通卷积等价。"
-        ],
-        "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。",
-        "afterParagraph": 3
-      },
-      "lead": "分组卷积只允许对应的通道组相互连接；深度可分离卷积则通常先逐通道做空间滤波，再用逐点卷积混合通道。这些结构通过限制连接降低成本，也限制了可表示的变换。下面先看连接，再分析秩。"
-    },
-    {
-      "id": "receptive-field",
-      "title": "感受野跨度、支持集与路径数",
-      "body": [
-        "先取一维、无填充且步幅为一的两层三点卷积。第一层的第 \\(i\\) 个输出可能依赖 \\(x_i,x_{i+1},x_{i+2}\\)；第二层的第 \\(i\\) 个输出读取第一层的第 \\(i,i+1,i+2\\) 项。把这些项的输入范围取并集，得到 \\(x_i,\\ldots,x_{i+4}\\)，跨度为五。扩大感受野来自间接组合已有窗口，而不是某一层的核突然变大。",
-        "感受野回答某个输出可能依赖输入中的哪些位置。对一条空间轴，令 j 表示相邻特征位置在原输入上的间隔，r 表示理论覆盖跨度，初始 \\(j_0=r_0=1\\)。经过核 k、dilation d、stride s 的一层后，r 增加 \\((k-1)d\\) 乘以上一层的 \\(j\\)，而 j 再乘当前 s。顺序很重要：新核在上一层特征图上滑动，上一层相邻格子本来就可能隔着多个原始像素。",
-        "递推也可由极端位置推出。上一层每个单元对应原输入中宽为 \\(r_{\\ell-1}\\) 的潜在覆盖区间，相邻单元的区间平移 \\(j_{\\ell-1}\\)。本层选中的第一个和最后一个上层单元相距 \\((k_\\ell-1)d_\\ell\\) 个上层格点，因此两个覆盖区间的最外端总跨度是 \\(r_{\\ell-1}+(k_\\ell-1)d_\\ell j_{\\ell-1}\\)。而本层窗口索引每加 1，会在上一层移动 \\(s_\\ell\\) 个格点，因此新间距为 \\(j_\\ell=s_\\ell j_{\\ell-1}\\)。即使区间内有空洞，这个包围跨度仍成立。",
-        "二维的高宽轴可以分别重复上述推理。若第一层 stride=2、第二层 stride=1，第一层后 \\(j=2\\)，第二层新增跨度为 \\(2\\times2=4\\)，所以总跨度为 7，最终相邻输出仍相隔 2 个原始像素。这不是把两个核边长简单相加。核非方形或高宽步长不同时，应分别沿两个轴递推。池化等局部操作也会改变这些量。",
-        "理论跨度不等于实际参与的不同像素数量，更不等于实际贡献强度。dilation 可能在跨度内部留下空洞，边界填充不是来自真实图像；特定权重为零、非线性关闭或路径相消，也会让某些输入的实际导数为零。可用输出对输入的梯度观察一个具体输入下的有效依赖，但它只是该输入与当前参数的局部证据。涉及坐标定位时还需记录采样原点与 padding 引起的偏移，仅有 stride 无法完整描述几何关系。",
-        "稀疏支持集可以直接按偏移集合相加。两层 k=3、dilation=2、stride=1 的一维卷积，每层偏移为 \\(\\{0,2,4\\}\\)，两层合成偏移为 \\(\\{0,2,4,6,8\\}\\)：跨度是 9，但只有 5 个位置可达。所有权重为 1 时，通往这些位置的路径数分别为 1、2、3、2、1。二维同样设置得到 25 个可达像素，并非 9×9 的每个位置都参与；这正是仅记录感受野尺寸无法反映的结构。",
-        "还需跟踪第一个输出的理论感受野中心 \\(a_\\ell\\)。这里以图像左边界为坐标原点，规定第一个像素中心 \\(a_0=\\frac12\\)；与[视觉预处理](#/learn/vision-preprocessing?section=3)中首像素中心为 0 的 \\(u\\) 坐标相差半个像素，即 \\(a=u+\\frac12\\)。原点平移不改变覆盖跨度 \\(r\\) 和间隔 \\(j\\)。初始 \\(r_0=j_0=1\\)；对左侧填充 \\(p_{L,\\ell}\\)，本层第一个核从上层位置 \\(-p_{L,\\ell}\\) 开始，末端在 \\(-p_{L,\\ell}+(k_\\ell-1)d_\\ell\\)，二者中点给出 \\(a_\\ell=a_{\\ell-1}+\\left[\\frac{(k_\\ell-1)d_\\ell}{2}-p_{L,\\ell}\\right]j_{\\ell-1}\\)。它是理想支持区间的中心，边界上的虚拟填充值也被计入，不能直接当作真实图像贡献的质心。",
-        "例如长度 6、k=3、s=2、d=1，总 padding=1 时，左补 1 右补 0 与左补 0 右补 1 都输出 3 个位置，\\(r=3\\)、\\(j=2\\) 也完全相同；但第一个理论中心分别是 0.5 与 1.5。两条特征分支即使尺寸一致，也可能错开一个输入像素。多尺度融合、空间 token 与标注坐标对齐时，需要同时检查 r、j、a，不能只用 tensor.shape 判断几何一致。",
-        "回到贯穿网络，第二层内部位置 `(6,6)` 的潜在输入支持落在行列索引 4…8 的 5×5 窗口。代码对该位置求输入梯度，断言窗外导数为零；窗口内的导数仍由权重、第一层 ReLU 和路径相消决定，不承诺全部非零。分类 loss 则先经 GAP 汇总所有 feature map 位置，因此最终任务损失可以影响整个 12×12 输入。把这两种梯度对象分开，才不会把“局部特征感受野”误认成“整个分类器只能看见 5×5”。"
-      ],
-      "formula": "\\begin{aligned}r_\\ell&=r_{\\ell-1}+(k_\\ell-1)d_\\ell j_{\\ell-1},\\\\ j_\\ell&=j_{\\ell-1}s_\\ell,\\\\ a_\\ell&=a_{\\ell-1}+\\left(\\frac{(k_\\ell-1)d_\\ell}{2}-p_{L,\\ell}\\right)j_{\\ell-1},\\qquad(r_0,j_0,a_0)=(1,1,\\tfrac12).\\end{aligned}",
-      "takeaway": "递推时先用上一层的间隔计算新增跨度，再更新本层累计步长。",
-      "example": {
-        "title": "stride 与 dilation 如何共同扩大感受野",
-        "steps": [
-          "起点的感受野 R=1、相邻位置间距 J=1。第一层k=3、s=2、d=1，更新后 \\(R=1+(3-1)\\times1\\times1=3\\)，\\(J=2\\)。",
-          "第二层k=3、s=1、d=2，它在上一层上跨2个格点取样，因此 \\(R=3+(3-1)\\times2\\times2=11\\)，J仍为2。",
-          "若第二层dilation改回1，\\(R=3+2\\times1\\times2=7\\)。常说“两层3×3得到5×5”只适用于两层stride与dilation均为1的对应设置。"
-        ],
-        "conclusion": "递推时先用上一层J增加感受野，再更新J；把顺序颠倒会得到错误范围。",
-        "afterParagraph": 2
-      },
-      "focus": {
-        "kind": "易错",
-        "title": "理论覆盖范围不等于每个像素实际贡献相同",
-        "explanation": "感受野递推描述可能影响输出的输入范围，无法直接说明每个位置的梯度强度。激活、权重、边界补零以及稀疏采样都可能让实际影响很不均匀。",
-        "check": "一方面用几何递推核对范围，另一方面对一个指定输出反向求输入梯度；两种检查回答不同层次的问题。"
-      },
-      "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.zeros(1, 1, 9, dtype=torch.float64, requires_grad=True)\nw = torch.ones(1, 1, 3, dtype=x.dtype)\nfirst = F.conv1d(x, w, dilation=2)\nout = F.conv1d(first, w, dilation=2)\nout.sum().backward()\nexpected = torch.tensor([1., 0., 2., 0., 3., 0., 2., 0., 1.], dtype=x.dtype)\ntorch.testing.assert_close(x.grad.flatten(), expected)\nprint(\"输入导数:\", x.grad.flatten().tolist())\nprint(\"可达偏移:\", x.grad.flatten().nonzero().flatten().tolist())\n\n# 输出形状相同，并不保证采样中心一致。\npositions = torch.arange(6, dtype=torch.float64)[None, None, :] + 0.5\nkernel = torch.ones(1, 1, 3, dtype=positions.dtype) / 3\nleft_pad = F.conv1d(F.pad(positions, (1, 0)), kernel, stride=2)\nright_pad = F.conv1d(F.pad(positions, (0, 1)), kernel, stride=2)\nassert left_pad.shape == right_pad.shape == (1, 1, 3)\n# 只比较中间窗口，避开人工补零边界；线性坐标的窗口均值恰好等于中心。\ntorch.testing.assert_close(left_pad[0, 0, 1], torch.tensor(2.5, dtype=positions.dtype))\ntorch.testing.assert_close(right_pad[0, 0, 1], torch.tensor(3.5, dtype=positions.dtype))\nprint(\"同形输出的中间采样中心:\", left_pad[0, 0, 1].item(), right_pad[0, 0, 1].item())\n",
-      "codeExplanation": "输入全零仍有非零导数，因为这里是无激活的线性卷积。全一卷积核让导数直接等于路径数；用非零梯度找支持集，而不是从输出值是否为零推断连接。两层输出只有一个位置，避免混合多个输出的感受野。 后半段用线性坐标输入验证左、右不对称填充导致的采样中心偏移，选择不含补零的窗口，使均值与几何中心可直接对应。",
-      "lead": "感受野是一个输出位置可能依赖的原始输入区域。覆盖跨度、实际有路径相连的支持集、以及当前输入下梯度显著的区域是不同对象。先将两层局部窗口的依赖合并，再区分这三种范围。",
-      "codeKind": "runnable"
+      "takeaway": "先明确任务读出的是整图向量还是一张有坐标的特征图，再判断局部特征与下采样是否合适。"
     }
   ],
   "implementations": [
+    {
+      "id": "corr2d-window-demo",
+      "title": "一个窗口，从手算到 Conv2d",
+      "description": "用理论页同一张 3×3 图和固定的 2×2 核核对一次局部内积，再单独改中心像素。",
+      "source": "import torch\nfrom torch.nn import functional as F\n\nx = torch.arange(1., 10.).reshape(1, 1, 3, 3)\nw = torch.tensor([[[[1., 0.], [0., -1.]]]])\nbias = torch.zeros(1)\npatch = x[0, :, :2, :2]                              # 左上角的 [C, Kh, Kw] 窗口\nvalue = (patch * w[0]).sum() + bias[0]\nbase = F.conv2d(x, w, bias)\ntorch.testing.assert_close(value, base[0, 0, 0, 0])\ntorch.testing.assert_close(base, torch.full((1, 1, 2, 2), -4.))\nx_changed = x.clone()\nx_changed[0, 0, 1, 1] = 9.\nchanged = F.conv2d(x_changed, w, bias)\ntorch.testing.assert_close(changed, torch.tensor([[[[-8., -4.], [-4., 0.]]]]))\nprint(\"原输出：\", base[0, 0].tolist(), \"只改中心后：\", changed[0, 0].tolist())",
+      "explanations": [
+        {
+          "lines": "4–8",
+          "text": "构造与手算一致的输入、核和偏置，直接对左上窗口取内积。"
+        },
+        {
+          "lines": "9–11",
+          "text": "以 Conv2d 的整图输出核对一个手算值和完整 2×2 特征图。"
+        },
+        {
+          "lines": "12–16",
+          "text": "只改变中心像素，对比两张同形输出；改变的位置由这个像素在各窗口里对应的权重决定。"
+        }
+      ],
+      "expected": "原输出为 `[[-4,-4],[-4,-4]]`。中心从 5 改为 9 后，输出为 `[[-8,-4],[-4,0]]`。只有左上和右下变化。"
+    },
     {
       "id": "cnn-training-and-patches",
       "title": "完整小 CNN 训练与 Patch 投影等价验证",
@@ -454,6 +442,21 @@
     }
   ],
   "labs": [
+    {
+      "id": "corr2d-window",
+      "level": "入门",
+      "title": "只写卷积的一格：改一个像素，哪些输出会变？",
+      "runtime": "python",
+      "prompt": "补完 `corr2d_valid(image, kernel)` 的一格计算。循环和输出形状已给定；只处理单通道、stride=1、padding=0、dilation=1、无偏置的互相关，不翻转核。输入、核都是非空矩形数值列表，保证核放得进输入，无需验证。\n\n先猜：沿用讲义 3×3 输入和 2×2 核，只把中心从 5 改成 9，哪两格会保持为 −4？预测后再运行。",
+      "starter": "def corr2d_valid(image, kernel):\n    kh, kw = len(kernel), len(kernel[0])\n    oh, ow = len(image) - kh + 1, len(image[0]) - kw + 1\n    out = [[0] * ow for _ in range(oh)]\n    for i in range(oh):\n        for j in range(ow):\n            # TODO: 用 (i, j) 开始的窗口与核算出这一格。\n            out[i][j] = 0\n    return out\n",
+      "solution": "def corr2d_valid(image, kernel):\n    kh, kw = len(kernel), len(kernel[0])\n    oh, ow = len(image) - kh + 1, len(image[0]) - kw + 1\n    out = [[0] * ow for _ in range(oh)]\n    for i in range(oh):\n        for j in range(ow):\n            out[i][j] = sum(\n                image[i + u][j + v] * kernel[u][v]\n                for u in range(kh) for v in range(kw)\n            )\n    return out\n",
+      "tests": "image = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]\nkernel = [[1, 0], [0, -1]]\nbase = corr2d_valid(image, kernel)\nassert len(base) == 2 and all(len(row) == 2 for row in base), \"3×3 输入与 2×2 核应给出 2×2 输出\"\nassert base == [[-4, -4], [-4, -4]], \"检查是否把核翻转或弄反了窗口索引\"\nimage[1][1] = 9\nchanged = corr2d_valid(image, kernel)\nassert changed == [[-8, -4], [-4, 0]], \"改变中心时，应按它在各窗口里对应的核权重改变输出\"\nassert corr2d_valid([[1, 2, 3], [4, 5, 6]], [[-1, 2, 3]]) == [[12], [24]], \"高宽应独立处理\"\nprint(\"通过：单格内积、改变中心像素和非方形核。\")\n",
+      "hints": [
+        "核下标 `(u,v)` 对应原输入下标 `(i+u,j+v)`。对核的高和宽分别循环，或用生成器求和。",
+        "同一个输入像素在不同窗口内可能与不同核权重相乘。在左上窗口里中心像素乘的是核的右下角 −1。"
+      ],
+      "explanation": "初始输出四格都是 −4。像素增加 4 后，在左上窗口中乘 −1，所以输出减 4；在右下窗口中乘 +1，所以输出加 4。它在另外两个窗口里也处于覆盖范围内，但对应权重为零，所以数值不变。"
+    },
     {
       "id": "geometry-and-receptive-field",
       "level": "入门",
@@ -620,8 +623,62 @@
       "url": "https://docs.pytorch.org/docs/stable/generated/torch.nn.MaxPool2d.html"
     }
   ],
-  "mainImplementation": "cnn-training-and-patches",
+  "mainImplementation": "corr2d-window-demo",
   "advancedSections": [
+    {
+      "id": "groups-depthwise",
+      "title": "分组与深度可分离卷积的秩限制",
+      "body": [
+        "groups=G 把输入通道和输出通道分别分成 G 组，每组输出只连接对应组的输入。因此 Cin 和 Cout 都需要被 G 整除，权重第二维为 Cin/G。它不是把同一普通卷积计算 G 遍，而是删去了组间连接。实现时应将窗口和权重都按相同组顺序重排；若只有权重分组而输入通道顺序未对齐，形状可能正确，计算仍会错误。",
+        "当 \\(G=C_{\\mathrm{in}}\\)，且 \\(C_{\\mathrm{out}}=KC_{\\mathrm{in}}\\) 时，每个输入通道对应 K 个独立空间滤波器，这叫 depthwise convolution，K 是通道倍增系数。这个操作本身不在不同输入通道之间混合信息。后接 groups=1 的 1×1 pointwise 卷积，才可在每个空间位置混合通道。深度可分离卷积因此由不同作用的两个步骤构成，不能直接声称等价于任意同尺寸普通卷积。",
+        "为什么要分成这两步？对通道倍增系数为一、忽略偏置的 \\(k\\times k\\) 核，普通卷积有 \\(k^2C_{\\rm in}C_{\\rm out}\\) 个权重，depthwise 加 pointwise 则为 \\(k^2C_{\\rm in}+C_{\\rm in}C_{\\rm out}\\)。前一项只在各通道内提取空间响应，后一项在每个位置重新组合这些响应。成本降低来自空间与通道作用的分解，接下来要检验这种分解能否覆盖原来的全部卷积核。",
+        "Depthwise+pointwise 的限制可以精确写出。先假设倍增系数 \\(K=1\\)，两层之间没有激活或其他输入相关变换，并忽略偏置。等效核为 \\(W_{ocuv}=P_{oc}D_{cuv}\\)。固定输入通道 c，所有输出空间核都是同一个 D[c] 的倍数，所以将这一切片排成 \\(C_{\\mathrm{out}}\\times(K_hK_w)\\) 矩阵，其秩最多为 1。一个普通卷积若要从同一输入通道提取两种线性独立的空间模板，就无法由这种组合精确表示。",
+        "例如一个输出需要水平差分核，另一个输出需要垂直差分核，两者不成比例；\\(K=1\\) 无法同时表达，\\(K\\ge2\\) 才可能提供两个独立空间方向。一般 K 个 depthwise 核给出至多 K 个外积之和，秩上限变为 K。两层间加入非线性后，不能再合并成一个固定卷积核，但通道连接仍受结构限制。参数节省来自受限的因子分解，不是无代价地保留任意卷积。",
+        "1×1 卷积的空间窗口只有一个位置，但仍能执行 \\(C_{\\mathrm{in}}\\to C_{\\mathrm{out}}\\) 的线性特征变换。它与对每个像素向量应用共享 Linear 等价，前提是布局和权重朝向一致。若设置 stride>1，它还会对子采样位置进行读出。分组、深度与逐点卷积常用于控制成本；决定是否适用时，应同时考虑表达限制、后续通道混合和实际硬件实现，而不只看参数量。"
+      ],
+      "formula": "W_{o,c,u,v}=\\sum_{a=1}^{K}P_{o,c,a}D_{c,a,u,v},\\qquad \\operatorname{rank}\\!\\left(W_{:,c,:}\\right)\\le K",
+      "takeaway": "Depthwise 负责逐通道空间滤波，普通 1×1 卷积负责位置内的通道混合。",
+      "example": {
+        "title": "分组卷积省掉的是哪些连接",
+        "steps": [
+          "普通卷积 Cin=8、Cout=16、kernel=3×3且有bias，参数数为\\(16\\times8\\times9+16=1168\\)。",
+          "groups=4时，每组仅连接2个输入通道，每个输出核权重形状为[2,3,3]；总参数为\\(16\\times2\\times9+16=304\\)。",
+          "若先使用8通道depthwise，再用1×1投影到16通道，两层均有bias，则参数为\\((8\\times9+8)+(16\\times8+16)=224\\)。它属于不同结构，不能仅凭输出形状就认为与任意普通卷积等价。"
+        ],
+        "conclusion": "分组减少通道连接，pointwise负责混合通道。参数节省通常伴随着结构约束。",
+        "afterParagraph": 3
+      },
+      "lead": "分组卷积只允许对应的通道组相互连接；深度可分离卷积则通常先逐通道做空间滤波，再用逐点卷积混合通道。这些结构通过限制连接降低成本，也限制了可表示的变换。下面先看连接，再分析秩。"
+    },
+    {
+      "id": "receptive-field-support",
+      "title": "感受野拓展：跨度、支持集与路径数",
+      "lead": "一个位置落进感受野的边界框，不代表有采样路径，更不代表对当前输出有显著贡献。这里分别验证这三种范围。",
+      "body": [
+        "理论跨度不等于实际参与的不同像素数量，更不等于实际贡献强度。dilation 可能在跨度内部留下空洞，边界填充不是来自真实图像；特定权重为零、非线性关闭或路径相消，也会让某些输入的实际导数为零。可用输出对输入的梯度观察一个具体输入下的有效依赖，但它只是该输入与当前参数的局部证据。涉及坐标定位时还需记录采样原点与 padding 引起的偏移，仅有 stride 无法完整描述几何关系。",
+        "稀疏支持集可以直接按偏移集合相加。两层 k=3、dilation=2、stride=1 的一维卷积，每层偏移为 \\(\\{0,2,4\\}\\)，两层合成偏移为 \\(\\{0,2,4,6,8\\}\\)：跨度是 9，但只有 5 个位置可达。所有权重为 1 时，通往这些位置的路径数分别为 1、2、3、2、1。二维同样设置得到 25 个可达像素，并非 9×9 的每个位置都参与；这正是仅记录感受野尺寸无法反映的结构。",
+        "回到贯穿网络，第二层内部位置 `(6,6)` 的潜在输入支持落在行列索引 4…8 的 5×5 窗口。代码对该位置求输入梯度，断言窗外导数为零；窗口内的导数仍由权重、第一层 ReLU 和路径相消决定，不承诺全部非零。分类 loss 则先经 GAP 汇总所有 feature map 位置，因此最终任务损失可以影响整个 12×12 输入。把这两种梯度对象分开，才不会把“局部特征感受野”误认成“整个分类器只能看见 5×5”。"
+      ],
+      "example": {
+        "title": "stride 与 dilation 如何共同扩大感受野",
+        "steps": [
+          "起点的感受野 R=1、相邻位置间距 J=1。第一层k=3、s=2、d=1，更新后 \\(R=1+(3-1)\\times1\\times1=3\\)，\\(J=2\\)。",
+          "第二层k=3、s=1、d=2，它在上一层上跨2个格点取样，因此 \\(R=3+(3-1)\\times2\\times2=11\\)，J仍为2。",
+          "若第二层dilation改回1，\\(R=3+2\\times1\\times2=7\\)。常说“两层3×3得到5×5”只适用于两层stride与dilation均为1的对应设置。"
+        ],
+        "conclusion": "递推时先用上一层J增加感受野，再更新J；把顺序颠倒会得到错误范围。",
+        "afterParagraph": 1
+      },
+      "focus": {
+        "kind": "易错",
+        "title": "理论覆盖范围不等于每个像素实际贡献相同",
+        "explanation": "感受野递推描述可能影响输出的输入范围，无法直接说明每个位置的梯度强度。激活、权重、边界补零以及稀疏采样都可能让实际影响很不均匀。",
+        "check": "一方面用几何递推核对范围，另一方面对一个指定输出反向求输入梯度；两种检查回答不同层次的问题。"
+      },
+      "code": "import torch\nimport torch.nn.functional as F\n\nx = torch.zeros(1, 1, 9, dtype=torch.float64, requires_grad=True)\nw = torch.ones(1, 1, 3, dtype=x.dtype)\nfirst = F.conv1d(x, w, dilation=2)\nout = F.conv1d(first, w, dilation=2)\nout.sum().backward()\nexpected = torch.tensor([1., 0., 2., 0., 3., 0., 2., 0., 1.], dtype=x.dtype)\ntorch.testing.assert_close(x.grad.flatten(), expected)\nprint(\"输入导数:\", x.grad.flatten().tolist())\nprint(\"可达偏移:\", x.grad.flatten().nonzero().flatten().tolist())",
+      "codeKind": "runnable",
+      "codeExplanation": "两层均为线性卷积、所有核权重为 1，因此单格输出对原输入的梯度等于通向该原输入位置的路径数。奇数偏移没有路径；非零路径数不同，说明同一理论范围中的位置也不一定贡献相等。一般训练后的网络不能把梯度直接解释为路径数。"
+    },
     {
       "id": "activation-pooling",
       "title": "激活与池化：先看主模型，再比较归一化",
@@ -690,6 +747,7 @@
       "id": "architecture-design",
       "title": "CNN 架构演进：如何分配空间混合、通道混合与梯度路径",
       "body": [
+        "LeNet 是理解完整图像分类器的另一种经典例子。它交替使用卷积与池化，随后展平空间网格并用全连接层产生类别输出。它与主线 SmallCNN 的 GAP 读出不同；共享的思路是先做局部特征提取，再为分类任务汇集空间证据。",
         "VGG 用连续小核增加深度。假设各层通道数均为 C、stride=dilation=1，两层 3×3 的理论感受野为 5×5，权重数为 \\(18C^2\\)；一层 5×5 为 \\(25C^2\\)。三层 3×3 的感受野为 7×7、参数为 \\(27C^2\\)，而一层 7×7 为 \\(49C^2\\)。中间非线性让堆叠能够按输入改变局部计算区域，因此“同样的感受野”不等于“同一个线性算子”；删掉非线性后也仍存在多层核因式分解的约束，不能仅凭覆盖范围声称任意大核都能等价替换。",
         "ResNet 同时改变了深层网络的参数化：\\(y=x+F(x)\\) 让块学习增量，并引入恒等梯度项，具体条件与反例见 [残差连接](#/learn/residual)。对于通道 \\(C\\to b\\to b\\to C\\) 的 1×1、3×3、1×1 瓶颈分支，权重数为 \\(2Cb+9b^2\\)。先用 1×1 压缩通道，使空间卷积在较小的 b 上计算，再投影回 C；这会限制分支的中间表示，却不能把整个残差块误认为只剩 b 个通道，因为旁路仍保留原来的 C 维表示。降采样或改通道数时，旁路投影与主分支的几何必须一致。",
         "MobileNet 的 depthwise 与 pointwise 分工进一步拆开空间和通道计算：一个 k×k depthwise 核先独立处理每个输入通道，再用 1×1 将 \\(C_{\\mathrm{in}}\\) 个通道混合成 \\(C_{\\mathrm{out}}\\) 个通道。权重数从普通卷积的 \\(k^2C_{\\mathrm{in}}C_{\\mathrm{out}}\\) 降为 \\(k^2C_{\\mathrm{in}}+C_{\\mathrm{in}}C_{\\mathrm{out}}\\)，但这个算子族包含怎样的限制，必须结合前面的分组卷积秩推导理解。参数数或乘加次数下降也不保证相同比例的实际延迟下降；内存访问、算子融合、硬件内核和特征图尺寸都会影响执行时间。",
@@ -731,7 +789,17 @@
             "适合比较卷积空间混合与 ViT 的 token 交互；预训练目标与保留的特征层仍决定具体接口。"
           ]
         ]
-      }
+      },
+      "figures": [
+        {
+          "src": "/assets/figures/lenet-overview-d2l.svg",
+          "alt": "LeNet 的完整图像分类流程：二十八乘二十八图像经过两组卷积与池化，展平后通过多个全连接层，得到十类输出。",
+          "caption": "从左向右读：图像 → 卷积与池化 → 展平 → 全连接层 → 10 类输出。叠放的方片表示同一层的多个特征通道。图源：[《动手学深度学习》LeNet](https://d2l.ai/chapter_convolutional-neural-networks/lenet.html)。",
+          "afterParagraph": 1,
+          "width": 1416,
+          "height": 535
+        }
+      ]
     },
     {
       "id": "patch-embedding",
@@ -806,6 +874,7 @@
     "activation-pooling-gradients"
   ],
   "advancedLabIds": [
+    "grouped-convolution",
     "spatial-expectation"
   ],
   "advancedQuestions": [
@@ -859,13 +928,15 @@
   ],
   "quickReference": {
     "coreSections": [
-      "先看完整网络，再理解局部卷积",
+      "卷积的一格怎么算？",
       "步幅、填充、空洞率与输出尺寸",
       "参数共享、参数量与计算量",
-      "分组与深度可分离卷积的秩限制",
-      "感受野跨度、支持集与路径数"
+      "多层感受野：看多大、隔多远、对到哪",
+      "从特征图到任务输出：分类和定位保留什么"
     ],
     "advancedSections": [
+      "分组与深度可分离卷积的秩限制",
+      "感受野拓展：跨度、支持集与路径数",
       "激活与池化：先看主模型，再比较归一化",
       "平移等变、采样相位与混叠",
       "CNN 架构演进：如何分配空间混合、通道混合与梯度路径",
@@ -874,6 +945,7 @@
       "卷积转置、重叠累加与梯度对照"
     ],
     "coreImplementations": [
+      "corr2d-window-demo",
       "cnn-training-and-patches"
     ],
     "advancedImplementations": [
@@ -881,10 +953,11 @@
       "activation-pooling-gradients"
     ],
     "coreLabs": [
-      "geometry-and-receptive-field",
-      "grouped-convolution"
+      "corr2d-window",
+      "geometry-and-receptive-field"
     ],
     "advancedLabs": [
+      "grouped-convolution",
       "spatial-expectation"
     ]
   }

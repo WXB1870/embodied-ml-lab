@@ -41,12 +41,17 @@ def section_learning_markdown(section, asset_prefix='../../'):
 def topic_markdown(topic):
     lines = ['# ' + topic['title'], topic['lead'], '## 符号约定', '| 符号 | 形状 | 含义 |', '|---|---|---|']
     lines += ['| ' + ' | '.join(str(n[k]).replace('|', '\\|') for k in ['symbol', 'shape', 'meaning']) + ' |' for n in topic['notation']]
-    for section in topic['sections'] + topic.get('advancedSections', []):
-        lines += ['## ' + section['title'], section.get('lead', ''), section_figures_markdown(section, after_paragraph=0), section_example_markdown(section, 0)]
+    core = topic['sections']
+    for index, section in enumerate(core + topic.get('advancedSections', [])):
+        if index == len(core):lines.append('## 可选拓展：深入理论与进阶分析')
+        heading = '## ' if index < len(core) else '### '
+        lines += [heading + section['title'], section.get('lead', '')]
+        formula = '$$\n' + section['formula'] + '\n$$' if section.get('formula') else ''
+        if section.get('formulaFirst'):lines.append(formula)
+        lines += [section_figures_markdown(section, after_paragraph=0), section_example_markdown(section, 0)]
         for i,paragraph in enumerate(section['body'],1):
             lines += [paragraph,section_figures_markdown(section,after_paragraph=i),section_example_markdown(section,i)]
-        if section.get('formula'):
-            lines += ['$$\n' + section['formula'] + '\n$$']
+        if not section.get('formulaFirst'):lines.append(formula)
         lines += ['- ' + item for item in section.get('bullets', [])]
         if section.get('code'):
             if section.get('codeKind')=='fragment':lines += ['实现片段（所需上下文见代码说明）：']
@@ -100,6 +105,9 @@ def build_knowledge(root):
         for field, collection in [('advancedImplementationIds','implementations'),('advancedLabIds','labs')]:
             valid = {entry['id'] for entry in topic[collection]}
             assert set(topic.get(field, [])) <= valid, (topic_id, field, 'unknown item')
+        if topic.get('introLabId'):
+            assert any(lab['id']==topic['introLabId'] and lab['runtime']=='python' for lab in topic['labs']), (topic_id, 'intro lab must be a Python topic lab')
+            assert topic['introLabId'] not in topic.get('advancedLabIds', []), (topic_id, 'intro lab must be visible')
         for question in topic.get('questions', []) + topic.get('advancedQuestions', []):
             assert question.get('question') and question.get('answer'), (topic_id, 'invalid question')
         for pitfall in topic.get('pitfalls', []) + topic.get('advancedPitfalls', []):

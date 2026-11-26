@@ -1,5 +1,6 @@
 {
   "id": "transformer",
+  "introLabId": "single-query-readout",
   "title": "Transformer：注意力、残差与序列建模",
   "subtitle": "从注意力梯度与信息路径，理解表示变换、因果训练和缓存。",
   "lead": "Transformer 是一种以注意力进行位置间信息交换、以逐位置前馈网络处理特征，并用残差和归一化组合多层计算的神经网络架构。Attention 是其中的读取机制，不等于整个 Transformer；自回归也只是其中一种任务组织方式。本章用两层因果小模型，将四个输入位置映射为下一符号预测，先认识整网与各模块，再追踪前向、损失、梯度和缓存。",
@@ -709,6 +710,21 @@
     }
   ],
   "labs": [
+    {
+      "id": "single-query-readout",
+      "level": "入门",
+      "title": "一个 Query 怎样从两个 Value 读出向量？",
+      "prompt": "补全 single_query_readout(query, keys, values) 的最后一步，返回一条输出向量。打分、缩放和沿 Key 的稳定 Softmax 都已提供。可以假设至少有一个 Key；所有 Key 与 Query 等宽，Key 和 Value 一一对应，同一批 Value 等宽。不需要实现掩码、多头或输入检查。\n\n先预测：权重为 [0.25, 0.75]，两个 Value 为 [2, 0]、[0, 4] 时，输出的两维分别是多少？然后保持 Query/Key 固定，只交换 Value 两行。",
+      "starter": "import math\n\n\ndef single_query_readout(query, keys, values):\n    d = len(query)\n    scores = [sum(q * k for q, k in zip(query, key)) / math.sqrt(d)\n              for key in keys]\n    peak = max(scores)\n    exps = [math.exp(score - peak) for score in scores]\n    weights = [weight / sum(exps) for weight in exps]\n    # TODO：输出的每一维是该维在所有 Value 之间的加权和。\n    raise NotImplementedError(\"实现 Value 的加权读出\")\n",
+      "solution": "import math\n\n\ndef single_query_readout(query, keys, values):\n    d = len(query)\n    scores = [sum(q * k for q, k in zip(query, key)) / math.sqrt(d)\n              for key in keys]\n    peak = max(scores)\n    exps = [math.exp(score - peak) for score in scores]\n    weights = [weight / sum(exps) for weight in exps]\n    return [sum(weight * component for weight, component in zip(weights, column))\n            for column in zip(*values)]\n",
+      "tests": "def check_vector(actual, expected):\n    assert len(actual) == len(expected), (actual, expected)\n    assert all(math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12)\n               for a, b in zip(actual, expected)), (actual, expected)\n\n\nq = [math.sqrt(2), 0]\nk = [[0, 1], [math.log(3), 0]]\nv = [[2, 0], [0, 4]]\ncheck_vector(single_query_readout(q, k, v), [0.5, 3.0])\ncheck_vector(single_query_readout(q, k, v[::-1]), [1.5, 1.0])\ncheck_vector(single_query_readout(q, k[::-1], v[::-1]), [0.5, 3.0])\ncheck_vector(single_query_readout(q, k, [[2, 0, -2], [0, 4, 2]]), [0.5, 3.0, 1.0])\ncheck_vector(single_query_readout([0, 0], k, v), [1.0, 2.0])\nprint(\"通过：权重对应 Key–Value 配对，输出宽度由 Value 决定。\")",
+      "runtime": "python",
+      "hints": [
+        "先写出输出第 0 维：0.25×2 + 0.75×0。再按相同方式写出第 1 维。",
+        "zip(*values) 把“每行一个 Value”换成“每列一个特征”。每列按 Key 顺序与 weights 配对求和。"
+      ],
+      "explanation": "权重来自 Query 与 Key，输出宽度来自 Value。只交换 Value 会改变候选的内容，不会改变权重；同时交换 Key 和 Value 的同一对位置，只重排相加顺序，读出不变。最后一个断言让两个分数相同，核对输出此时是两个 Value 的普通平均。"
+    },
     {
       "id": "visibility-mask",
       "level": "入门",

@@ -1,8 +1,9 @@
 {
   "id": "mlp",
+  "introLabId": "forward-one-row",
   "title": "MLP：结构、前向与反向传播",
-  "subtitle": "面向模型阅读与面试手撕的精简参考：从 Linear 和非线性开始，完整推导两层网络前向、损失与参数梯度，并用 PyTorch 验证。",
-  "lead": "多层感知机（MLP）由全连接仿射层与非线性激活交替组成。本速查沿一个 2→3→2 网络建立统一符号，重点完成张量形状、前向计算、损失归约和五组梯度推导；随后用 PyTorch 与有限差分交叉验证。初始化、泛化和更复杂的函数逼近证明放入可选拓展，不作为必读主线。",
+  "subtitle": "沿同一个 2→3→2 网络，先算一条预测，再理解参数共享、损失和反向传播。",
+  "lead": "先顺着两行公式算出一条预测，再把同一组权重复用到三条样本。得到标量损失后，只追一条梯度路径，最后推广到完整矩阵反传和一次 SGD 更新。初始化、函数逼近和池化读出留作深入阅读。",
   "minutes": 180,
   "prerequisites": [
     "tensor",
@@ -18,11 +19,9 @@
     "multimodal"
   ],
   "goals": [
-    "能够按 [B,T,D] 追踪 MLP 每层形状并统计参数。",
-    "构造有限宽 ReLU 插值网络并证明误差界，区分可表达性、优化和区间外泛化。",
-    "独立推导两层网络的输入、权重与偏置梯度。",
-    "为回归、单标签和多标签任务选择正确的输出与损失约定。",
-    "实现带 Mask 的读出头，并用反例检查 Padding、数值尺度和训练更新。"
+    "用 [out,in] 权重布局追踪 x、z、a、prediction，解释为什么 ReLU 只放在隐藏层。",
+    "数出同一 2→3→2 网络的 17 个参数，区分样本共享与时间位置混合。",
+    "从损失追踪一条参数梯度，再用 autograd 核对批量梯度和真实参数更新。"
   ],
   "quickFacts": [
     {
@@ -76,29 +75,29 @@
   "sections": [
     {
       "id": "affine-nonlinearity",
-      "title": "从仿射变换到非线性函数",
+      "title": "先算一条预测：两次仿射，一次 ReLU",
       "body": [
-        "一个全连接层为每个输出特征学习一组输入权重，再加一个偏置。输入不是必须为图像或文本；关节状态、图像 token、融合后的场景表示都可以作为向量。权重决定输入方向如何混合，偏置让输出在输入为零时也能有非零值。带偏置的操作严格说是仿射变换。PyTorch 的 Linear 沿最后一个维度计算，其余维度作为批量位置保留。 下图用 4→5→3 示意输入、隐藏与输出层的全连接关系；后面的完整手算统一固定为 2→3→2 网络。",
-        "如果把多个 Linear 直接串联，中间没有非线性，它们仍能合并成一个仿射变换。两层的合并权重是两个权重矩阵的乘积，偏置也能相应合并。深度此时改变了参数化和可能的秩约束，却没有得到任意弯曲的函数。激活函数让不同输入进入不同的计算区域。例如 ReLU 对负预激活输出零，整个网络成为连续的分段仿射函数。",
-        "以标量输入为例，两个带偏置线性层满足 \\(w_2(w_1x+b_1)+b_2=(w_2w_1)x+(w_2b_1+b_2)\\)，斜率在整个输入轴上相同。若中间插入 ReLU，\\(w_2\\max(0,w_1x+b_1)+b_2\\) 会在预激活过零处改变斜率。多个隐藏单元可以在不同位置改变斜率，非线性表达由此逐步形成；后面的显式插值构造将把这一观察变成可检验的函数表示。",
-        "首先需要把这个函数写成形状明确的批量运算，并完整计算一次前向与反向。掌握这些机制以后，再分析局部 Jacobian、有限宽度的表示能力，以及相同函数为什么仍可能具有不同优化轨迹。初始化的统计假设见[激活与初始化](#/learn/activation-init)，深层传播的旁路机制见[残差连接](#/learn/residual)。"
+        "PyTorch 的权重按 `[out,in]` 排列；每一行是一组输出权重。输入以行表示时，代码先做 `x @ w1.T + b1`，在最后一维逐元素做 ReLU，再做 `a @ w2.T + b2`。这个例子的输出是连续量，第二层后不再加 ReLU。",
+        "插入 ReLU 的作用不只是截掉负值。如果把 ReLU 拿掉，两个仿射层的权重和偏置可以合并成一个仿射层。插入后，以单个隐藏单元为例，\\(z\\) 跨过 0 时，\\(\\operatorname{ReLU}(z)\\) 的斜率从 0 变成 1；同一组参数对不同输入就可以有不同的局部斜率。",
+        "下面用同一组参数运行前向。先猜：拿掉隐藏层 ReLU，左边输出仍会是 1.2 吗？想自己填这三步，可以直接做[一条样本的前向练习](#/learn/mlp?tab=exercise&lab=forward-one-row)。"
       ],
-      "formula": "h=\\phi(XW_1^\\top+b_1),\\qquad \\hat Y=hW_2^\\top+b_2",
-      "takeaway": "函数相同不保证参数梯度或训练轨迹相同；非线性、秩与参数化要分别分析。",
-      "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
-      "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。",
-      "lead": "仿射层用权重混合输入并加偏置，激活函数对所得响应作非线性变换。将两者交替组合才构成这里讨论的 MLP；只有仿射层的堆叠仍然是一个仿射映射。先认识这两个单元，再追踪完整网络。",
+      "formula": "Z=XW_1^\\top+b_1,\\qquad A=\\operatorname{ReLU}(Z),\\qquad \\widehat Y=AW_2^\\top+b_2",
+      "takeaway": "第一层混合输入，ReLU 关闭负的隐藏响应，第二层混合剩下的响应。输出为负，并不表示隐藏层没有用 ReLU。",
+      "lead": "一个两层 MLP 怎样把 [1, −2] 变成 [1.2, −0.3]？先只看一条输入、一个被 ReLU 关掉的隐藏单元。",
+      "formulaFirst": true,
+      "example": {
+        "title": "同一个 2→3→2 网络，只算第一行",
+        "afterParagraph": 1,
+        "steps": [
+          "输入 \\(x=[1,-2]\\)。第一个隐藏单元为 \\(0.7\\times1+(-0.3)\\times(-2)+0.2=1.5\\)。另外两行权重同理，得到 \\(z=[1.5,-1.9,0.5]\\)。",
+          "ReLU 只把中间的 \\(-1.9\\) 置零，得到 \\(a=[1.5,0,0.5]\\)。",
+          "第二层第一个输出为 \\(0.6\\times1.5+(-0.2)\\times0+0.4\\times0.5+0.1=1.2\\)；第二个同理得 \\(-0.3\\)。"
+        ],
+        "conclusion": "开头只追一条输入；后面三行共用这 17 个参数，前向规则不变。"
+      },
+      "code": "import torch\n\nx = torch.tensor([1., -2.])\nw1 = torch.tensor([[.7, -.3], [-.4, .8], [.5, .2]])\nb1 = torch.tensor([.2, .1, .4])\nw2 = torch.tensor([[.6, -.2, .4], [-.3, .5, .7]])\nb2 = torch.tensor([.1, -.2])\nz = x @ w1.T + b1\na = z.relu()\nprediction = a @ w2.T + b2\nwithout_relu = z @ w2.T + b2\ntorch.testing.assert_close(prediction, torch.tensor([1.2, -.3]))\ntorch.testing.assert_close(without_relu, torch.tensor([1.58, -1.25]))\nprint('z / a / prediction:', z.tolist(), a.tolist(), prediction.tolist())\nprint('without ReLU:', without_relu.tolist())",
       "codeKind": "runnable",
-      "figures": [
-        {
-          "src": "/assets/figures/mlp-network-d2l.svg",
-          "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
-          "afterParagraph": 1,
-          "caption": "由下往上读：4 个输入经过 5 个隐藏单元，得到 3 个输出；每个隐藏单元先加权求和并加偏置，再经过激活。 图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers)。",
-          "width": 372,
-          "height": 187
-        }
-      ]
+      "codeExplanation": "三行张量运算与公式一一对应。对照只改一件事：用 z 而不是 ReLU 后的 a 作为第二层输入。左边输出从 1.2 变为 1.58，差值 0.38 就是原来关闭的隐藏响应对它的贡献。"
     },
     {
       "id": "shapes-parameters",
@@ -130,21 +129,31 @@
         "check": "用 torch.arange 构造每个位置都不同的输入，逐个检查一个指定 b,t 的输出，而不只 assert 最终 shape。"
       },
       "lead": "网络形状约定说明每个数组承载输入、隐藏表示、输出还是参数，以及各轴怎样对应。参数量则计数独立可学习的数值，不随同一权重被多少样本复用而增加。下面固定同一个 2→3→2 模型，为全部手算建立坐标。",
-      "codeKind": "fragment"
+      "codeKind": "fragment",
+      "figures": [
+        {
+          "src": "/assets/figures/mlp-network-d2l.svg",
+          "alt": "一个全连接前馈神经网络，由四个输入节点、五个隐藏单元和三个输出节点组成，相邻层之间全部连接。",
+          "afterParagraph": 4,
+          "caption": "这张图只示意全连接结构，宽度为 4→5→3；本章数值计算仍沿用刚才的 2→3→2 网络。图源：[《动手学深度学习》](https://d2l.ai/chapter_multilayer-perceptrons/mlp.html#hidden-layers)。",
+          "width": 372,
+          "height": 187
+        }
+      ]
     },
     {
       "id": "forward-by-hand",
-      "title": "完整手算一次前向与损失",
+      "title": "从一条预测到一批样本：为什么损失要除以 6",
       "body": [
         "沿用上一节的 17 参数网络，所有矩阵都采用 PyTorch 的权重朝向。三条输入和目标为 \\[X=\\begin{bmatrix}1&-2\\\\0.5&1\\\\-1&0.25\\end{bmatrix},\\qquad Y=\\begin{bmatrix}0.5&-0.1\\\\0.7&0.4\\\\-0.2&0.8\\end{bmatrix}.\\]第一层 \\(W_1=\\begin{bmatrix}0.7&-0.3\\\\-0.4&0.8\\\\0.5&0.2\\end{bmatrix}\\)、\\(b_1=[0.2,0.1,0.4]\\)；第二层 \\(W_2=\\begin{bmatrix}0.6&-0.2&0.4\\\\-0.3&0.5&0.7\\end{bmatrix}\\)、\\(b_2=[0.1,-0.2]\\)。代码中的 w1、b1、w2、b2 就是这些数，没有在不同页面重新抽取参数。",
-        "先算第一条输入。三个预激活分别为 \\(1(0.7)+(-2)(-0.3)+0.2=1.5\\)、\\(1(-0.4)+(-2)(0.8)+0.1=-1.9\\)、\\(1(0.5)+(-2)(0.2)+0.4=0.5\\)。ReLU 把中间一项置零，得到 \\(A_{1,:}=[1.5,0,0.5]\\)。第一项输出为 \\(1.5(0.6)+0(-0.2)+0.5(0.4)+0.1=1.2\\)，第二项为 \\(1.5(-0.3)+0(0.5)+0.5(0.7)-0.2=-0.3\\)。这里同一条样本的隐藏单元与不同样本的批次轴承担不同作用。",
+        "第一行就是开篇的 \\(z=[1.5,-1.9,0.5]\\)、\\(a=[1.5,0,0.5]\\)、\\(\\hat y=[1.2,-0.3]\\)。第二、三行仍用同一套参数，但不能照抄第一行的 ReLU 开关：例如第二行的第二个预激活为 \\(0.7\\)，没有被置零。",
         "逐行重复同一计算，得到下表。\\(Z\\) 是激活前的值，\\(A=\\operatorname{ReLU}(Z)\\) 是激活后的矩阵，代码中分别命名 z、h。参数共享意味着三行复用同一组权重，并不意味着三行拥有相同的激活开关；第一行第二单元关闭，而第二、三行的这个单元仍开放。",
         "本例固定半均方误差 \\(L=\\frac1{2BO}\\sum_{b,o}(\\widehat Y_{bo}-Y_{bo})^2\\)。六个残差依次为 \\(0.7,-0.2,-0.25,0.27,0.16,-0.65\\)，平方和为 \\(1.1135\\)，故 \\(L=1.1135/12=0.092791666\\ldots\\)。除以 12 来自二分之一与六个输出元素，而不是隐藏单元数。下一节用 \\(G=(\\widehat Y-Y)/6\\) 开始反传，避免把损失值本身误当成梯度。",
         "计算图中的实线表示前向依赖，反向箭头表示同一边对应的向量—Jacobian 乘积。第二层偏置直接影响预测，第一层偏置还须穿过第二层权重和 ReLU；因此两组偏置的梯度形状与数值本来就不同。图中只画一次共享运算，所有批次位置的贡献在参数处累加。"
       ],
       "formula": "Z=\\begin{bmatrix}1.5&-1.9&0.5\\\\0.25&0.7&0.85\\\\-0.575&0.7&-0.05\\end{bmatrix},\\quad A=\\max(0,Z),\\quad \\widehat Y=\\begin{bmatrix}1.2&-0.3\\\\0.45&0.67\\\\-0.04&0.15\\end{bmatrix}",
       "takeaway": "手算时固定一个损失定义；先标中间量，再讨论导数。",
-      "lead": "张量形状规定了运算是否合法，具体数字则能说明每一步实际算了什么。一个两层小网络足以把权重、偏置、激活和标量损失连成完整路径。只改动一个偏置，还可以直接观察非线性如何打开或关闭某条局部梯度路径。",
+      "lead": "给开篇的第一条输入再加两条，逐行复用相同权重。用六个预测与目标的差得到一个标量损失；这一步的平均分母会一路传到梯度。",
       "comparison": {
         "title": "同一批输入的前向轨迹",
         "columns": [
@@ -190,8 +199,9 @@
     },
     {
       "id": "backpropagation",
-      "title": "反向传播：每个矩阵梯度从哪里来",
+      "title": "反传先追一条路，再汇总五组梯度",
       "body": [
+        "只追第一条样本的第一个输出。残差是 \\(1.2-0.5=0.7\\)，对预测的导数是 \\(0.7/6\\)；这项预测对权重 \\((W_2)_{11}\\) 的导数是它乘到的激活 \\(1.5\\)。链式法则给这条路径的贡献为 \\((0.7/6)\\times1.5=0.175\\)。对同一输出的另一项权重 \\((W_2)_{12}\\)，乘到的激活是 0，这条路径的贡献就为 0。两条都是第一行的贡献，不是所有样本汇总后的参数梯度。",
         "继续使用刚才的三条输入与同一组参数。第一行上游梯度为 \\(G_{1,:}=[0.7,-0.2]/6=[0.116666\\ldots,-0.033333\\ldots]\\)。传到隐藏层的第一行是 \\(G_{1,:}W_2=[0.08,-0.04,0.023333\\ldots]\\)；第二个预激活为负，乘 ReLU 导数后变成 \\((\\Delta_1)_{1,:}=[0.08,0,0.023333\\ldots]\\)。输入导数因此为 \\((\\Delta_1)_{1,:}W_1=[0.067666\\ldots,-0.019333\\ldots]\\)。注意其中的除以 6 已经来自整个批次损失，不能在聚合参数梯度时再除一次 Batch。",
         "对 Batch 形式，设输入 \\(X\\in\\mathbb R^{B\\times D}\\)，预激活 \\(Z=XW_1^\\top+\\mathbf1b_1^\\top\\)，激活矩阵 \\(A=\\phi(Z)\\in\\mathbb R^{B\\times H}\\)，预测 \\(\\widehat Y=AW_2^\\top+\\mathbf1b_2^\\top\\in\\mathbb R^{B\\times O}\\)。这里 \\(H\\) 是隐藏宽度，\\(A\\) 才是隐藏激活。若 \\(L=\\frac12\\operatorname{mean}((\\widehat Y-Y)^2)\\)，损失对预测的导数为 \\(G=(\\widehat Y-Y)/(BO)\\)。PyTorch 的默认 MSELoss 不含前面的二分之一，因此使用它时 \\(G\\) 应再乘 2。",
         "先只改变第二层权重。第 \\((b,o)\\) 个预测的微分为 \\(d\\widehat Y_{bo}=\\sum_h A_{bh}\\,d(W_2)_{oh}\\)，代入 \\(dL=\\sum_{b,o}G_{bo}\\,d\\widehat Y_{bo}\\)，交换有限求和的次序：\\[dL=\\sum_{o,h}\\left(\\sum_bG_{bo}A_{bh}\\right)d(W_2)_{oh}.\\]每个权重微分前的系数就是对应梯度，因此 \\(\\nabla_{W_2}L=G^\\top A\\)，形状为 `[O,H]`。同理，偏置被所有样本共享，\\(\\nabla_{b_2}L=\\sum_bG_{b,:}\\)。",
@@ -200,7 +210,7 @@
         "一个偏置被 B 个样本共享时，其梯度是这些位置贡献之和；若上游 G 已经包含 mean 的分母，不能再额外除一次 B。广播的反向就是沿被扩展的轴求和。类似地，多个分支共用一组权重时，梯度会相加；最终梯度为零既可能是每条路径都为零，也可能是非零路径互相抵消，单看范数不能区分。",
         "将三行贡献相加，第二层偏置梯度为 \\([0.101666\\ldots,-0.096666\\ldots]\\)，第一层偏置梯度为 \\([0.0415,-0.028666\\ldots,0.038166\\ldots]\\)。两层权重梯度见下表；例如 \\(\\partial L/\\partial(W_1)_{11}=0.08(1)+(-0.0385)(0.5)+0(-1)=0.06075\\)。某行的 ReLU 关闭不会阻止同一权重接受其他行的贡献。代码以 float64 核对全部五组梯度，并对第一层每个权重作中心有限差分。"
       ],
-      "formula": "\\begin{aligned}G&=\\frac{\\widehat Y-Y}{BO},&\\nabla_{W_2}L&=G^\\top A,&\\nabla_{b_2}L&=\\sum_bG_{b,:},\\\\\\Delta_1&=(GW_2)\\odot\\phi^{\\prime}(Z),&\\nabla_{W_1}L&=\\Delta_1^\\top X,&\\nabla_XL&=\\Delta_1W_1.\\end{aligned}",
+      "formula": "\\begin{aligned}G&=\\frac{\\widehat Y-Y}{BO},&\\nabla_{W_2}L&=G^\\top A,&\\nabla_{b_2}L&=\\sum_bG_{b,:},\\\\\\Delta_1&=(GW_2)\\odot\\phi^{\\prime}(Z),&\\nabla_{W_1}L&=\\Delta_1^\\top X,&\\nabla_{b_1}L&=\\sum_b(\\Delta_1)_{b,:},\\\\\\nabla_XL&=\\Delta_1W_1.\\end{aligned}",
       "takeaway": "权重梯度聚合所有共享位置；mean 的分母必须进入最初的上游梯度。",
       "example": {
         "title": "沿同一计算图完成一次 SGD 更新",
@@ -212,7 +222,7 @@
         ],
         "conclusion": "前向、目标、反向和更新属于同一组状态；五组梯度中只有四组模型参数交给优化器。完整计算链可以逐项复算，不能由“loss 下降”单独替代梯度正确性验证。"
       },
-      "lead": "反向传播是沿前向依赖反向应用链式法则、计算损失对各参数梯度的过程。激活的局部导数调节每条路径，共享权重汇总各样本贡献。下面继续使用刚才的输入、参数与损失，逐项算出五组梯度。",
+      "lead": "先问：第一条样本会给第二层的一项权重贡献多少梯度？看清这条路后，再用矩阵运算把所有样本和所有参数一起算完。",
       "comparison": {
         "title": "五组导数：公式、形状与本例数值",
         "columns": [
@@ -378,6 +388,20 @@
     }
   ],
   "labs": [
+    {
+      "id": "forward-one-row",
+      "title": "先算一条样本：ReLU 到底关掉了什么？",
+      "runtime": "python",
+      "prompt": "给定一条输入 x 和两层权重，复用给好的 affine，补全 `mlp_one_row(x, w1, b1, w2, b2)` 并返回两个输出。w1、w2 都按 [out,in] 排列。只在两层之间做 ReLU；不处理非法形状。\n\n先猜：x=[1,-2] 时第二个输出能否是负数？把第二个隐藏偏置由 0.1 改成 3.0，再预测并核对输出。",
+      "starter": "def affine(x, w, b):\n    # 权重每一行对应一个输出；题目保证形状有效。\n    return [sum(wi * xi for wi, xi in zip(row, x)) + bi\n            for row, bi in zip(w, b)]\n\n\ndef mlp_one_row(x, w1, b1, w2, b2):\n    # TODO: 第一层仿射 → 隐藏层 ReLU → 第二层仿射。\n    raise NotImplementedError(\"补全一条样本的前向\")\n",
+      "solution": "def affine(x, w, b):\n    # 权重每一行对应一个输出；题目保证形状有效。\n    return [sum(wi * xi for wi, xi in zip(row, x)) + bi\n            for row, bi in zip(w, b)]\n\n\ndef mlp_one_row(x, w1, b1, w2, b2):\n    z = affine(x, w1, b1)\n    a = [max(0.0, zi) for zi in z]\n    return affine(a, w2, b2)\n",
+      "tests": "from math import isclose\n\nx = [1., -2.]\nw1 = [[.7, -.3], [-.4, .8], [.5, .2]]\nw2 = [[.6, -.2, .4], [-.3, .5, .7]]\nb2 = [.1, -.2]\n\n\ndef check(prediction, expected):\n    assert len(prediction) == len(expected)\n    assert all(isclose(y, e, rel_tol=1e-9, abs_tol=1e-9)\n               for y, e in zip(prediction, expected)), (prediction, expected)\n\n\ncheck(mlp_one_row(x, w1, [.2, .1, .4], w2, b2), [1.2, -.3])\n# 同一组非方形权重，只打开先前关闭的一个隐藏单元。\ncheck(mlp_one_row(x, w1, [.2, 3., .4], w2, b2), [1., .2])\nprint(\"通过：隐藏层 ReLU、非方形权重、线性输出与单个隐藏单元的干预。\")\n",
+      "hints": [
+        "`affine(x, w, b)` 已完成矩阵的逐行内积并加偏置；先用在第一层。",
+        "用 `[max(0.0, zi) for zi in z]` 得到隐藏激活；把它传入第二层，不要再对输出做 ReLU。"
+      ],
+      "explanation": "原来的第二个预激活是 −1.9，ReLU 后为 0；最终第二个输出仍然可以为 −0.3。改偏置后，这个激活变为 1.0，只需把第二层权重中这一列 [−0.2, 0.5] 加到原结果上。两层权重分别为 3×2 和 2×3，不能把输入与输出轴互换。"
+    },
     {
       "id": "affine-from-loops",
       "level": "入门",
@@ -574,7 +598,10 @@
         "explanation": "若第 j 维目标使用 \\(z_j=\\frac{y_j-\\mu_j}{\\sigma_j}\\)，归一化 MSE 对原单位平方误差的权重就是 \\(\\frac1{\\sigma_j^2}\\)。它能改善优化尺度，却不等于保持原物理单位下所有维度等权。统计量若用验证数据计算，还会引入数据泄漏。",
         "check": "只在训练集拟合统计量；同时报告归一化损失和反归一化后的逐维误差，核对最终评估指标使用哪一个空间。"
       },
-      "lead": "初始化为网络选择训练起点，标准化改变输入或目标的数值坐标。两者都影响信号与梯度的尺度，但分别作用于参数和数据。下面在已经明确的前反向计算上分析它们，而不把尺度规则当作收敛保证。"
+      "lead": "初始化为网络选择训练起点，标准化改变输入或目标的数值坐标。两者都影响信号与梯度的尺度，但分别作用于参数和数据。下面在已经明确的前反向计算上分析它们，而不把尺度规则当作收敛保证。",
+      "code": "import torch\n\ndef one_sgd_step(a_value, b_value):\n    a = torch.tensor(a_value, dtype=torch.float64, requires_grad=True)\n    b = torch.tensor(b_value, dtype=torch.float64, requires_grad=True)\n    loss = 0.5 * (a * b).square()\n    ga, gb = torch.autograd.grad(loss, (a, b))\n    with torch.no_grad():\n        new_output = (a - 0.001 * ga) * (b - 0.001 * gb)\n    return [ga.item(), gb.item()], new_output.item()\n\ng1, y1 = one_sgd_step(1., 1.)\ng2, y2 = one_sgd_step(100., 0.01)\nassert abs(y1 - 0.998001) < 1e-9\nassert abs(y2 + 8.9999991) < 1e-8\nprint(\"same initial output=1; gradients:\", g1, g2)\nprint(\"outputs after one step:\", y1, y2)",
+      "codeKind": "runnable",
+      "codeExplanation": "初始乘积相同，但梯度分别乘上另一个因子。第二组对 b 的更新从 0.01 走到 −0.09，输出约变为 −9，平方损失反而放大。用相同有效矩阵训练与用其因子训练，是不同的参数几何。"
     },
     {
       "id": "objectives",
@@ -697,6 +724,8 @@
     "constructive-spline"
   ],
   "advancedLabIds": [
+    "manual-gradient",
+    "masked-readout",
     "relu-spline"
   ],
   "advancedQuestions": [
@@ -745,10 +774,10 @@
   ],
   "quickReference": {
     "coreSections": [
-      "从仿射变换到非线性函数",
+      "先算一条预测：两次仿射，一次 ReLU",
       "张量形状、参数朝向与参数量",
-      "完整手算一次前向与损失",
-      "反向传播：每个矩阵梯度从哪里来",
+      "从一条预测到一批样本：为什么损失要除以 6",
+      "反传先追一条路，再汇总五组梯度",
       "ReLU、GELU、SiLU 与饱和"
     ],
     "advancedSections": [
@@ -767,11 +796,12 @@
       "constructive-spline"
     ],
     "coreLabs": [
-      "affine-from-loops",
-      "manual-gradient",
-      "masked-readout"
+      "forward-one-row",
+      "affine-from-loops"
     ],
     "advancedLabs": [
+      "manual-gradient",
+      "masked-readout",
       "relu-spline"
     ]
   }
